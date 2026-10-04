@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.9 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.10 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -107,6 +107,7 @@ what is open, and a package is only "done" for the phase gate when its gate test
 | P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, empty RECT, missing `End`, registry completeness) |
 | P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts` (sprites, exports, scenes, labels, limits, deterministic `MovieModel.id`) |
 | `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (exit codes, `--json`, report framing) |
+| `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` (field order, sorted maps, `--out` bytes, exit codes) |
 | P4 static render | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A golden frame, PNG byte-identity) |
 | P3 media, P5 onward | — | — | not started |
 
@@ -117,6 +118,11 @@ Two notes for whoever picks this up:
   decoded to four edges and zero runs. `IMPL-060` §6.1 already specifies the correct behaviour; the
   decoder was fixed and `packages/swf/test/shape-runs.test.ts` pins it (closed runs, `FillStyle1` runs,
   `SF0186` on an unclosed fill run).
+- The P0–P2 gate ("`inspect` + `dump` over the corpus, no uncaught errors") is as closed as the local
+  corpus allows: both verbs run over `fixtures/appendix-a.swf` and over synthetic fixtures for every
+  branch, and every failure path returns a `CMP-R029` code instead of throwing. The open corpus still
+  needs the `fetch-fixtures` harness (`WP-140-01`), and the AVM2 exit (`3`) has no decoder-side signal
+  yet — that is `WP-040-06`/`T-MOD-021`.
 - The compiler/emitter does not exist yet, so the P4 gate reaches the renderer through a test-local
   adapter (`packages/gfx/test/adapter.ts`). It is deleted when the production `VectorShape` →
   `ShapeGeometry` conversion lands (P6), which is also when the renderer stops being test-only.
@@ -429,3 +435,4 @@ art):
 | 1.7 | 2026-10-04 | Tech-spec pass: the five components are mapped in §1.1; phases **P12 (inspector)** and **P13 (clean engine)** added with their doc-map rows and milestones; WP index gains 150 (12/41) and 160 (13/51); totals re-derived to 208 WPs / ≈646.5 d |
 | 1.8 | 2026-10-04 | Folder reorganisation: the document map now points at `foundation/`, `decompiler/`, `transpiler/`, `engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/` and the registers directory; document ids, work packages and totals unchanged; verification moved to `tools/verify_docs.py` + `tools/gen_status.py` |
 | 1.9 | 2026-10-04 | Implementation started (Phase 10): §2.2 added to record the code that exists and where its evidence lives — P0 readers, P1 container/dictionary, P2 model, the `inspect` verb and the P4 reference renderer (`packages/gfx`), with the Appendix-A gate and the shape style-run defect it found; the phase tables and the work-package index are unchanged |
+| 1.10 | 2026-10-04 | `dump` implemented (`WP-040-14`): §2.2 gains its row; the P0–P2 gate note records what is closed locally and what still needs the corpus harness and the AVM2 signals |

@@ -12,7 +12,7 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [150](../code-inspector/150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 | 0 | 14 | 9 | ✅ |
 | [030](../decompiler/030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 | 9 | 16 | 20 | ✅ |
-| [040](../decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 | 5 | 24 | 30 | ✅ |
+| [040](../decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 | 5 | 28 | 30 | ✅ |
 | [060](../decompiler/060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 | 9 | 23 | 16 | ✅ |
 | [070](../decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 14 | 47 | 9 | 21 | 20 | ✅ |
 | [080](../decompiler/080-fonts-and-text.md) | Fonts and Text | 13 | 41 | 7 | 18 | 16 | ✅ |
@@ -26,7 +26,7 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 6 | 30 | 26 | ✅ |
 | [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 | 0 | 8 | 2 | ✅ |
-| **Total** | 16 documents | **208** | **≈ 646.5** | **68** | **262** | **256** | |
+| **Total** | 16 documents | **208** | **≈ 646.5** | **68** | **266** | **256** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -62,7 +62,7 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | --- | --- |
 | 150 | `T-INS-101`, `T-INS-102`, `T-INS-103`, `T-INS-104`, `T-INS-105`, `T-INS-106`, `T-INS-107`, `T-INS-108`, `T-INS-109`, `T-INS-110`, `T-INS-111`, `T-INS-112`, `T-INS-113`, `T-INS-114` |
 | 030 | `T-MOD-001`, `T-MOD-002`, `T-MOD-003`, `T-MOD-004`, `T-MOD-005`, `T-MOD-006`, `T-MOD-007`, `T-MOD-008`, `T-MOD-009`, `T-MOD-010`, `T-MOD-011`, `T-MOD-012`, `T-MOD-601`, `T-MOD-602`, `T-MOD-603`, `T-MOD-604` |
-| 040 | `T-MOD-013`, `T-MOD-014`, `T-MOD-015`, `T-MOD-016`, `T-MOD-017`, `T-MOD-018`, `T-MOD-019`, `T-MOD-020`, `T-MOD-021`, `T-MOD-022`, `T-MOD-023`, `T-MOD-024`, `T-MOD-025`, `T-MOD-026`, `T-MOD-027`, `T-MOD-028`, `T-MOD-029`, `T-MOD-030`, `T-MOD-031`, `T-MOD-032`, `T-MOD-033`, `T-MOD-034`, `T-MOD-035`, `T-MOD-036` |
+| 040 | `T-MOD-013`, `T-MOD-014`, `T-MOD-015`, `T-MOD-016`, `T-MOD-017`, `T-MOD-018`, `T-MOD-019`, `T-MOD-020`, `T-MOD-021`, `T-MOD-022`, `T-MOD-023`, `T-MOD-024`, `T-MOD-025`, `T-MOD-026`, `T-MOD-027`, `T-MOD-028`, `T-MOD-029`, `T-MOD-030`, `T-MOD-031`, `T-MOD-032`, `T-MOD-033`, `T-MOD-034`, `T-MOD-035`, `T-MOD-036`, `T-MOD-037`, `T-MOD-038`, `T-MOD-039`, `T-MOD-040` |
 | 060 | `T-MOD-101`, `T-MOD-102`, `T-MOD-103`, `T-MOD-104`, `T-MOD-105`, `T-MOD-106`, `T-MOD-107`, `T-MOD-108`, `T-MOD-109`, `T-MOD-110`, `T-MOD-111`, `T-MOD-112`, `T-MOD-113`, `T-MOD-114`, `T-MOD-115`, `T-MOD-116`, `T-MOD-117`, `T-MOD-118`, `T-MOD-119`, `T-MOD-120`, `T-MOD-121`, `T-MOD-122`, `T-MOD-123` |
 | 070 | `T-MOD-301`, `T-MOD-302`, `T-MOD-303`, `T-MOD-304`, `T-MOD-305`, `T-MOD-306`, `T-MOD-307`, `T-MOD-308`, `T-MOD-309`, `T-MOD-310`, `T-MOD-311`, `T-MOD-312`, `T-MOD-313`, `T-MOD-401`, `T-MOD-402`, `T-MOD-403`, `T-MOD-404`, `T-MOD-405`, `T-MOD-406`, `T-MOD-407`, `T-MOD-408` |
 | 080 | `T-MOD-501`, `T-MOD-502`, `T-MOD-503`, `T-MOD-504`, `T-MOD-505`, `T-MOD-506`, `T-MOD-507`, `T-MOD-508`, `T-MOD-509`, `T-MOD-510`, `T-MOD-511`, `T-MOD-512`, `T-MOD-513`, `T-MOD-514`, `T-MOD-515`, `T-MOD-516`, `T-MOD-517`, `T-MOD-518` |

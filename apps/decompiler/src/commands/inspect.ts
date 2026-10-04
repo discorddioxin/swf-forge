@@ -12,7 +12,7 @@ import { buildMovieModel, codeInfo, tagName } from '@swf-forge/swf';
 import type { Diagnostic, MovieModel, SwfFile } from '@swf-forge/swf';
 import { openSwfNodeSync, sha256Hex } from '@swf-forge/swf/node';
 
-import { EXIT, type CliIo } from '../exit.js';
+import { EXIT, exitForDiagnostics, type CliIo } from '../exit.js';
 
 export interface InspectRequest {
   readonly file: string;
@@ -152,15 +152,6 @@ function render(summary: InspectSummary, verbose: boolean): string[] {
   return lines;
 }
 
-/** Exit code for a report: `CMP-R029`'s table, mapped from the diagnostics present. */
-function exitFor(diagnostics: readonly Diagnostic[]): number {
-  const codes = new Set(diagnostics.map((d) => String(d.code)));
-  if (codes.has('SF0001')) return EXIT.unreadable;
-  if (codes.has('SF1000')) return EXIT.avm2;
-  if (diagnostics.some((d) => d.severity === 'error')) return EXIT.failed;
-  return EXIT.ok;
-}
-
 export function runInspect(request: InspectRequest, io: CliIo): number {
   let bytes: Uint8Array;
   try {
@@ -179,5 +170,5 @@ export function runInspect(request: InspectRequest, io: CliIo): number {
   } else {
     for (const line of render(summary, request.verbose)) io.out(line);
   }
-  return exitFor(file.diagnostics);
+  return exitForDiagnostics(file.diagnostics);
 }

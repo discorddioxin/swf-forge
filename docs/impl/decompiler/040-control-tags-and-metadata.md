@@ -290,6 +290,50 @@ dependency in the control layer and MUST be a type-only import so no runtime cyc
   never reproduced in the manifest or reports — with `SF0177` (info) noting that a hash was present.
   A body whose length is neither 2 nor 34 bytes is `SF0171`-style (reserved/extra bytes recorded).
 
+### 3.6 The model dump (`forge-decompile dump`)
+
+`inspect` answers "what is in this file"; `dump` answers "what does the pipeline see". It serialises the
+whole `MovieModel` (CMP-§3) together with the header, the dictionary and the diagnostics, and it is the
+artefact the inspector's tag view renders (`INS-D03`: "source maps + model dump") and the shape
+`verify` re-parses.
+
+**IMPL-040-R044** The verb has three modes and writes **nothing else**: human summary (default, stdout),
+`--json` (the dump object, stdout), `--out <dir>` (the same JSON written to `<dir>/model.json`). It never
+extracts media (`assets` owns that), never writes outside `--out`, and never opens the input for writing.
+
+**IMPL-040-R045** The JSON dump MUST be byte-deterministic (`REPO-R015`): the field order below is the
+emission order, and no field may carry a timestamp, an absolute path, a host name or a random value. Two
+runs over the same input bytes produce identical bytes on any machine. The human summary may name the
+input file it was given; the JSON dump never does.
+
+Top-level fields, in order: `format` (`"swf-forge/model-dump"`), `formatVersion` (`1`), `source`
+(`bytes`, `sha256`, `compression`, `version`, `fileLength`, `frameRate`, `stage`), `model` (`id`,
+`background`, `backgroundSource`, `metadata`), `dictionary`, `timeline` (the main timeline),
+`initActions`, `control`, `diagnostics`.
+
+**IMPL-040-R046** Everything derived from a map MUST be emitted as an array **sorted by key**: the
+dictionary by character id, `control.exports` by name, `control.scalingGrids` by id, timeline `labels`
+by name, `control.metadata` by key. Sequences that exist in file order keep file order: frames, `ops`,
+`actions`, `videoFrames`, `control.labels` (duplicates kept), `control.backgroundChanges`,
+`control.imports`, `control.tabIndexOps`, `initActions`, stream-sound spans. No field may depend on
+`Map` insertion order or on object key order.
+
+**IMPL-040-R047** The timeline object is doc 030 §7's frame-by-frame form: `declaredFrameCount`,
+`observedFrameCount`, `frames[]` (`index`, `label`, `ops[]`, `actions[]`, `soundStreamBlock`,
+`videoFrames[]`), `labels[]` (`name`, `frame`, `namedAnchor` — first occurrence per name, the map doc 030
+builds) and `streamSoundSpans[]` (`head`, `blocks`). An op is `{ kind: "place", … }` with every
+`PlacementOp` field, `{ kind: "remove", … }` or `{ kind: "tabIndex", … }`; each carries its `tagOffset`,
+and `null` is emitted for every absent optional field of its kind. `SetTabIndex` therefore appears twice
+by design: in `control.tabIndexOps` and in the owning frame's `ops` (`IMPL-040-R043`). A sprite
+character's `dictionary[].sprite` carries the same timeline object plus the sprite's character name and
+tag count.
+
+**IMPL-040-R048** `--out` writes exactly one file, `<dir>/model.json`: UTF-8, LF line endings, a
+2-space indent and one trailing newline — the same bytes `--json` prints. The directory is created when
+missing, a write failure is an internal error (exit `5`) naming the path, and a partial file is never
+left behind. Exit codes are `CMP-R029`'s: `SF0001` → `2`, `SF1000` → `3`, any error-severity diagnostic
+→ `1`, otherwise `0`; the summary goes to stdout, errors to stderr.
+
 ## 4. Ch.4 pinned layouts (normative, mirrors APP-§10.2)
 
 Field order is pinned in APP-§10.2; the table below records the version windows and the decoder-relevant
@@ -411,6 +455,10 @@ AVM2 content ever moves from "refuse" to "report".
 | `T-MOD-034` | `FileAttributes` bit-naming divergences (`E-022`): legacy `0x04`, `UseDirectBlit`/`UseGPU` bits, root-only occurrence | F1 |
 | `T-MOD-035` | `EnableTelemetry`: 2-byte and 34-byte bodies; hash redaction; reserved non-zero recorded | F1 |
 | `T-MOD-036` | `DefineBinaryData` layout: character id, reserved `UI32`, zero-length and large payloads, `ArrayBuffer` access | F1 |
+| `T-MOD-037` | model dump JSON: field order is the documented order, maps are sorted arrays, and 100 runs are byte-identical (`IMPL-040-R045`/`R046`) | F1 |
+| `T-MOD-038` | `dump --out <dir>` writes exactly `<dir>/model.json`, creates the directory, and its bytes equal `--json`'s stdout (`IMPL-040-R048`) | F1 |
+| `T-MOD-039` | dump of `fixtures/appendix-a.swf`: dictionary, one frame, the stroke character, `SetTabIndex` in both places, empty diagnostics (`IMPL-040-R047`) | F2 |
+| `T-MOD-040` | exit codes for the verb: unreadable input → `2`, error diagnostics → `1`, AVM2 content → `3`, clean file → `0` | F1 |
 
 ## 8. Work packages
 
@@ -468,3 +516,4 @@ APP-§10.2.
 | 1.0 | initial | Scoped from Ch.4/Ch.15 structure; layouts marked pending |
 | 1.1 | 2026-10-04 | Ch.4-grounded: version windows, duplicate-key rules, named-anchor byte, `End` at sprite level, `ImportAssets` SWF 8+ no-effect rule, `FileAttributes` mask table + bit-order traps, `SymbolClass` root class, `Metadata` biconditional, `DefineScalingGrid` twip rule, scene offset semantics; `SetTabIndexOp` export contract with doc 030 (R003/R024–R027); new diagnostics `SF0160`–`SF0174`; tests `T-MOD-013`–`T-MOD-033` (v1.1 added `T-MOD-024`–`T-MOD-033`); WPs 01–14 = 21.5 d; open items cut to the Ch.15 residue |
 | 1.2 | 2026-10-04 | Ch.15-grounded: `DefineBinaryData` exact layout (`Tag UI16`, `Reserved UI32`, data to end) and `EnableTelemetry` (2 bytes + optional SHA-256 `PasswordHash`, redacted), the root-SWF-only `FileAttributes` rule, and the Ch.15 bit-name divergences (`E-022`: bits 6/5 `Reserved` vs `UseDirectBlit`/`UseGPU`; bit 2 `NoCrossDomainCache` vs reserved) with the legacy bit now named (`SF0176`); diagnostics `SF0175`–`SF0179`; tests `T-MOD-034`–`036`; §3 rules `R041`–`R043` added (telemetry, then the ordering/framing rules shifted from `R041`/`R042`); WPs re-estimated to 24 d |
+| 1.3 | 2026-10-04 | §3.6 added: the `forge-decompile dump` contract (`R044`–`R048`) — three modes, the byte-deterministic JSON dump, sorted-map/fixed-order rules, the timeline form doc 030 §7 defines, and the `--out` file/exit-code rules; tests `T-MOD-037`–`T-MOD-040`; covered by the existing `WP-040-14` |

@@ -1,5 +1,6 @@
 /**
- * Exit codes and the output sink every verb writes through (`CMP-R029`).
+ * Exit codes, the output sink every verb writes through, and the diagnostics→code mapping
+ * (`CMP-R029`).
  *
  * Kept in its own module so a verb never has to import the dispatcher that imports the verb.
  */
@@ -22,4 +23,18 @@ export const EXIT = {
 export interface CliIo {
   readonly out: (line: string) => void;
   readonly err: (line: string) => void;
+}
+
+/**
+ * `CMP-R029` mapped from the diagnostics a decode produced: an unreadable container wins over AVM2
+ * content, which wins over ordinary errors.
+ */
+export function exitForDiagnostics(
+  diagnostics: readonly { readonly code: unknown; readonly severity: string }[],
+): number {
+  const codes = new Set(diagnostics.map((d) => String(d.code)));
+  if (codes.has('SF0001')) return EXIT.unreadable;
+  if (codes.has('SF1000')) return EXIT.avm2;
+  if (diagnostics.some((d) => d.severity === 'error')) return EXIT.failed;
+  return EXIT.ok;
 }

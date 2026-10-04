@@ -103,29 +103,34 @@ what is open, and a package is only "done" for the phase gate when its gate test
 
 | Slice | Code | Owning docs | Evidence |
 | --- | --- | --- | --- |
-| P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `packages/swf/test/framing.test.ts` (RECT/string/matrix primitives, `SF0102`/`SF0104`) |
-| P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, empty RECT, missing `End`, registry completeness) |
-| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts` (sprites, exports, scenes, labels, limits, deterministic `MovieModel.id`) |
-| `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (exit codes, `--json`, report framing) |
-| `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` (field order, sorted maps, `--out` bytes, exit codes) |
-| P4 static render | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A golden frame, PNG byte-identity) |
-| P3 media, P5 onward | — | — | not started |
+| P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `io.test.ts`, `framing.test.ts` (bit-width limits, soft/strict bounds, matrix rotation, primitive records) |
+| P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, lazy tag index/payload, length handling, missing `End`, duplicate ids); ordering and LZMA adapter WPs remain open |
+| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `place-filters.test.ts` (sprites/padding, placeholders, scenes/remap, ordered labels, removal ids, PlaceObject3/filter metadata) |
+| `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (duplicate definitions, strict length handling, exit codes, `--json`) |
+| `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` and audit synthetic probes (field order, sorted maps, file-order labels, op fields, `--out` bytes) |
+| P3 media decode | `packages/swf/src/tags/shape.ts` (shape/gradient decoding only) | [060](decompiler/060-shapes-and-gradients.md) | `shape-runs.test.ts`, `shape-regressions.test.ts`; image/font/sound export pipeline and the P3 asset demo remain incomplete |
+| P4 static-render reference path | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A pixels, deterministic PNG); browser integration and full P4 gate remain open |
+| P5 onward | — | — | not started; do not begin P5 before the P4 gate |
 
-Two notes for whoever picks this up:
+Current gate notes (evidence is local and synthetic; this does not claim the open-corpus exit gates):
 
 - The Appendix-A gate found a style-run defect in the shape decoder (only the `FillStyle0` run was
   closed, and the final run was flushed before the end record was read): a fill-less, stroke-only shape
   decoded to four edges and zero runs. `IMPL-060` §6.1 already specifies the correct behaviour; the
-  decoder was fixed and `packages/swf/test/shape-runs.test.ts` pins it (closed runs, `FillStyle1` runs,
-  `SF0186` on an unclosed fill run).
-- The P0–P2 gate ("`inspect` + `dump` over the corpus, no uncaught errors") is as closed as the local
-  corpus allows: both verbs run over `fixtures/appendix-a.swf` and over synthetic fixtures for every
-  branch, and every failure path returns a `CMP-R029` code instead of throwing. The open corpus still
-  needs the `fetch-fixtures` harness (`WP-140-01`), and the AVM2 exit (`3`) has no decoder-side signal
-  yet — that is `WP-040-06`/`T-MOD-021`.
-- The compiler/emitter does not exist yet, so the P4 gate reaches the renderer through a test-local
-  adapter (`packages/gfx/test/adapter.ts`). It is deleted when the production `VectorShape` →
-  `ShapeGeometry` conversion lands (P6), which is also when the renderer stops being test-only.
+  decoder was fixed and `packages/swf/test/shape-runs.test.ts` pins closed runs, `FillStyle1` runs, and
+  `SF0186` on an unclosed fill run.
+- P0–P2 regression gates now include shape flags/counts, duplicate definitions, missing-character
+  placeholders, ordered timeline ops/labels, control metadata, strict FileLength diagnostics and the
+  model dump. `SF1000` is emitted independently for `FileAttributes.ActionScript3` and `DoABC`; the CLI
+  still maps it to exit 3. The open corpus and fuzz harness remain outstanding (`WP-140-01` and related
+  harness work), so this is not a claim that all phase gates are complete.
+- The current P4 evidence is a platform-neutral reference renderer over the Appendix A fixture through
+  a test-local `VectorShape` → `ShapeGeometry` adapter (`packages/gfx/test/adapter.ts`). It proves the
+  pixel/PNG oracle, not browser integration, a production conversion path or the full P4 gate. Keep
+  P4 ahead of P5; the AVM1 front end has not started.
+- PlaceObject3 filter/image/cache metadata is now decoded and dumped in P2's model, but the renderer
+  does not implement filters. Rendering fidelity remains gated by P4/P9 requirements; parsing this
+  metadata is not evidence that those visual effects are supported.
 
 ## 3. Milestones
 

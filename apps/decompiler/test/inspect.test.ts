@@ -14,6 +14,8 @@ import { deflateSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { EXIT, runCli, type CliIo } from '@swf-forge/decompiler';
+import { Tag } from '@swf-forge/swf';
+import { buildSwf, concat, endTag, tag } from '@swf-forge/swf/test-support';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/appendix-a.swf', import.meta.url));
 const WORK = mkdtempSync(join(tmpdir(), 'swf-forge-'));
@@ -69,6 +71,51 @@ describe('forge-decompile inspect', () => {
     const second = capture();
     expect(runCli(['inspect', FIXTURE, '--json'], second.io)).toBe(EXIT.ok);
     expect(second.out).toEqual(first.out);
+  });
+
+  it('T-SWF-007 exposes duplicate definitions and marks the last definition as the lookup winner', () => {
+    const body = concat(
+      tag(Tag.DefineShape, Uint8Array.from([1, 0])),
+      tag(Tag.DefineShape2, Uint8Array.from([1, 0])),
+      endTag(),
+    );
+    const path = write('duplicate-definitions.swf', buildSwf({ version: 8, body, frameCount: 0 }));
+    const json = capture();
+    expect(runCli(['inspect', path, '--json'], json.io)).toBe(EXIT.ok);
+    const summary = JSON.parse(json.out.join('\n')) as {
+      definitions: readonly { id: number; tag: string; offset: number; shadowed: boolean }[];
+      diagnostics: { items: readonly { code: string; message: string }[] };
+    };
+    expect(summary.definitions).toEqual([
+      { id: 1, tag: 'DefineShape', offset: 2, shadowed: true },
+      { id: 1, tag: 'DefineShape2', offset: 6, shadowed: false },
+    ]);
+    expect(summary.diagnostics.items.find((item) => item.code === 'SF0109')?.message).toContain('offsets 2 and 6');
+
+    const human = capture();
+    expect(runCli(['inspect', path], human.io)).toBe(EXIT.ok);
+    expect(human.out.join('\n')).toContain('duplicate definitions');
+    expect(human.out.join('\n')).toContain('(shadowed)');
+    expect(human.out.join('\n')).toContain('(winner)');
+  });
+
+  it('supports --strict and --tolerate-length for a FileLength mismatch', () => {
+    const bytes = new Uint8Array(readFileSync(FIXTURE));
+    bytes[4] = (bytes[4] ?? 0) + 1;
+    const path = write('wrong-length.swf', bytes);
+    const strict = capture();
+    expect(runCli(['inspect', path, '--strict', '--json'], strict.io)).toBe(EXIT.failed);
+    const strictSummary = JSON.parse(strict.out.join('\n')) as {
+      diagnostics: { items: readonly { code: string; severity: string }[] };
+    };
+    expect(strictSummary.diagnostics.items.find((item) => item.code === 'SF0005')?.severity).toBe('error');
+
+    const tolerant = capture();
+    expect(runCli(['inspect', path, '--strict', '--tolerate-length', '--json'], tolerant.io)).toBe(EXIT.ok);
+    const tolerantSummary = JSON.parse(tolerant.out.join('\n')) as {
+      diagnostics: { items: readonly { code: string; severity: string }[] };
+    };
+    expect(tolerantSummary.diagnostics.items.find((item) => item.code === 'SF0005')?.severity).toBe('warning');
   });
 
   it('opens a CWS file through the Node inflater', () => {

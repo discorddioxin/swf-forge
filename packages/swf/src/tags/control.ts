@@ -216,15 +216,15 @@ export function decodeDefineScalingGrid(c: Cursor): { characterId: number; split
 
 /** `DefineSceneAndFrameLabelData` (86) — zero-based, main-timeline only (`SF0169`). */
 export function decodeSceneAndFrameLabelData(c: Cursor): {
-  scenes: readonly { name: string; startFrame: number }[];
+  scenes: readonly { name: string; frameOffset: number }[];
   labels: readonly { name: string; frame: number }[];
 } {
   const sceneCount = c.encodedU32();
-  const scenes: { name: string; startFrame: number }[] = [];
+  const scenes: { name: string; frameOffset: number }[] = [];
   for (let i = 0; i < sceneCount; i += 1) {
-    const startFrame = c.encodedU32();
+    const frameOffset = c.encodedU32();
     const name = c.string();
-    scenes.push({ name, startFrame });
+    scenes.push({ name, frameOffset });
   }
   const labelCount = c.encodedU32();
   const labels: { name: string; frame: number }[] = [];
@@ -232,13 +232,6 @@ export function decodeSceneAndFrameLabelData(c: Cursor): {
     const frame = c.encodedU32();
     const name = c.string();
     labels.push({ name, frame });
-  }
-  for (let i = 1; i < scenes.length; i += 1) {
-    const prior = scenes[i - 1];
-    const here = scenes[i];
-    if (prior && here && here.startFrame < prior.startFrame) {
-      c.emit(Codes.SCENE_DATA_INCONSISTENT, 'warning', `scene "${here.name}" starts before scene "${prior.name}"`);
-    }
   }
   return { scenes, labels };
 }

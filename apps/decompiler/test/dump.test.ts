@@ -108,6 +108,7 @@ describe('forge-decompile dump', () => {
       'backgroundSource',
       'backgroundChanges',
       'scenes',
+      'sceneFrameRemap',
       'labels',
       'exports',
       'rootClassName',
@@ -127,6 +128,22 @@ describe('forge-decompile dump', () => {
     expect(new Set(runs).size).toBe(1);
     expect(runs[0]).not.toContain(WORK);
     expect(runs[0]).not.toContain(MESSY);
+  });
+
+  it('T-MOD-029 preserves same-frame FrameLabel order in control.labels and keeps the timeline map sorted', () => {
+    const body = concat(tag(Tag.FrameLabel, asciiZ('z')), tag(Tag.FrameLabel, asciiZ('a')), showFrames(1), endTag());
+    const path = write('ordered-labels.swf', buildSwf({ version: 8, body, frameCount: 1 }));
+    const { dump } = loadDump(['dump', path, '--json']);
+    const control = dump.control as { labels: { name: string; frame: number }[] };
+    const timeline = dump.timeline as { labels: { name: string; frame: number }[] };
+    expect(control.labels).toEqual([
+      { name: 'z', frame: 0, namedAnchor: false },
+      { name: 'a', frame: 0, namedAnchor: false },
+    ]);
+    expect(timeline.labels).toEqual([
+      { name: 'a', frame: 0, namedAnchor: false },
+      { name: 'z', frame: 0, namedAnchor: false },
+    ]);
   });
 
   it('T-MOD-038: --out writes exactly model.json, byte-identical to --json', () => {

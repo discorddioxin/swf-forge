@@ -5,11 +5,15 @@ embedded ActionScript bytecode — into **TypeScript** that runs on the open web
 Web Audio, and can either **reproduce Flash semantics faithfully** or be **restructured into clean
 modern code** (a real game loop; no MovieClip or timeline system).
 
-**Status: specifications only.** No compiler, runtime, or converter code exists yet. Every document
-here is a contract that implementation work must satisfy. The upstream *SWF File Format
-Specification v19* is fully encoded — chapters 1–15 and Appendices A–C (see
-[docs/impl/000-roadmap.md](docs/impl/000-roadmap.md) §9 and §9.1). Implementation starts at phase
-**P0**; the work-package index totals **208 packages / ≈646.5 developer-days**.
+**Status: implementation underway.** The normative specifications and roadmap remain authoritative.
+The repository currently has SWF binary/container readers, dictionary and timeline modelling, the
+`forge-decompile inspect`/`dump` CLI, shape parsing, and a platform-neutral reference renderer tested
+against the Appendix A fixture. The AVM1 compiler/runtime, asset export pipeline, transpiler and
+production browser engines are not implemented. Work follows
+[the roadmap](docs/impl/000-roadmap.md) in order: P0–P2 foundations/model gates are being hardened,
+P4 static-render work is ahead of P5 AVM1, and no P5 work is claimed complete. The upstream *SWF File
+Format Specification v19* is encoded — chapters 1–15 and Appendices A–C; the work-package index totals
+**208 packages / ≈646.5 developer-days**.
 
 ---
 
@@ -129,19 +133,28 @@ Implementation plans (how it gets built, in what order):
    media subsystems.
 6. **[impl/000-roadmap.md](docs/impl/000-roadmap.md)** — phases and work packages, then the area docs.
 
-## Toolchain (planned; authoritative in TECH-SPEC §4)
+## Development and verification
 
-Verification: `python3 tools/verify_docs.py` must print `ISSUES: 0` before any commit that touches
-the documents; `python3 tools/gen_status.py` regenerates `docs/impl/registers/STATUS.md` after any
-work-package edit. `python3 tools/audit_dev.py` (`pnpm audit:dev`) is the code-side ledger: it must
-print `NEW FINDINGS: 0`, which means no drift has appeared beyond the findings recorded in
-`audits/dev/` (see `audits/dev/03-mechanical-checks.md`).
+The workspace uses Node ≥ 20, pnpm 9, TypeScript project references, Vitest, ESLint and Prettier.
+From the repository root:
 
-Node ≥ 20 LTS · pnpm workspaces · TypeScript 5 `strict` with project references (`tsc -b`) · `tsup`
-for libraries, Vite for the inspector · `vitest` (node/jsdom/browser) + Playwright for visual/audio
-gates · ESLint flat config + Prettier · API Extractor reports · CI stages `lint`, `unit`, `browser`,
-`fixtures`, `conformance`, `budgets`, `spec`, `fuzz` — including `tools/spec-verify`, which keeps
-this document set internally consistent (citations, id bands, WP totals, appendix tables).
+```sh
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm test
+pnpm build
+pnpm lint
+pnpm spec:verify
+pnpm test:audit
+pnpm audit:dev
+```
+
+The generated `docs/impl/registers/STATUS.md` is refreshed with `pnpm spec:status` after work-package
+edits. `pnpm audit:dev` requires a build for its runtime and dump probes; it prints `NEW FINDINGS: 0`
+when no findings beyond the reviewed ledger in `audits/dev/baseline.json` have appeared. CI runs these
+gates on pushes and pull requests, with build before the audit. See
+[`tools/README.md`](tools/README.md) and [`audits/dev/03-mechanical-checks.md`](audits/dev/03-mechanical-checks.md)
+for the document verifier, audit coverage table and scope limits.
 
 ## Non-goals (v1)
 

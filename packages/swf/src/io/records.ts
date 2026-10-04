@@ -50,8 +50,10 @@ export function readMatrix(c: Cursor): Mat2D {
   let cc = 0;
   if (c.ub(1) === 1) {
     const nRotateBits = c.ub(5);
-    b = c.fb(nRotateBits);
-    cc = c.fb(nRotateBits);
+    const rotateSkew0 = c.fb(nRotateBits);
+    const rotateSkew1 = c.fb(nRotateBits);
+    b = rotateSkew1;
+    cc = rotateSkew0;
   }
   const nTranslateBits = c.ub(5);
   const tx = c.sb(nTranslateBits);

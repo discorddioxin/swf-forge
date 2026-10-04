@@ -4,6 +4,7 @@ export { buildMovieModel, fallbackId } from './movie.js';
 export type { AssembleTimelineOptions } from './timeline.js';
 export type { BuildMovieOptions } from './movie.js';
 export type {
+  CharacterKind,
   CharacterModel,
   DisplayOp,
   FileAttributesModel,

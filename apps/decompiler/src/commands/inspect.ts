@@ -18,6 +18,8 @@ export interface InspectRequest {
   readonly file: string;
   readonly json: boolean;
   readonly verbose: boolean;
+  readonly strict?: boolean;
+  readonly strictLength?: boolean;
 }
 
 export interface InspectSummary {
@@ -45,6 +47,13 @@ export interface InspectSummary {
   };
   readonly tags: readonly { readonly code: number; readonly name: string; readonly count: number }[];
   readonly characters: readonly { readonly id: number; readonly tag: string; readonly sprite: boolean }[];
+  /** Every definition in stream order, including shadowed duplicate ids. */
+  readonly definitions: readonly {
+    readonly id: number;
+    readonly tag: string;
+    readonly offset: number;
+    readonly shadowed: boolean;
+  }[];
   readonly labels: readonly string[];
   readonly diagnostics: {
     readonly total: number;
@@ -75,6 +84,14 @@ function summarize(file: SwfFile, model: MovieModel, path: string, sha256: strin
   const characters = [...model.characters.values()]
     .sort((a, b) => a.id - b.id)
     .map((character) => ({ id: character.id, tag: character.tagName, sprite: character.sprite !== null }));
+  const lastDefinitionIndex = new Map<number, number>();
+  file.definitions.forEach((definition, index) => lastDefinitionIndex.set(definition.id, index));
+  const definitions = file.definitions.map((definition, index) => ({
+    id: definition.id,
+    tag: tagName(definition.tagCode),
+    offset: definition.offset,
+    shadowed: lastDefinitionIndex.get(definition.id) !== index,
+  }));
 
   const items = file.diagnostics.map((d: Diagnostic) => ({
     code: String(d.code),
@@ -109,6 +126,7 @@ function summarize(file: SwfFile, model: MovieModel, path: string, sha256: strin
     },
     tags,
     characters,
+    definitions,
     labels: [...model.mainTimeline.labels.keys()].sort(),
     diagnostics: {
       total: file.diagnostics.length,
@@ -137,6 +155,17 @@ function render(summary: InspectSummary, verbose: boolean): string[] {
   for (const character of s.characters) {
     lines.push(`    #${character.id}  ${character.tag}${character.sprite ? ' (sprite)' : ''}`);
   }
+  const duplicateIds = new Set(
+    s.definitions.filter((definition) => definition.shadowed).map((definition) => definition.id),
+  );
+  if (duplicateIds.size > 0) {
+    lines.push('  duplicate definitions');
+    for (const definition of s.definitions.filter((entry) => duplicateIds.has(entry.id))) {
+      lines.push(
+        `    #${definition.id}  ${definition.tag} @${definition.offset}${definition.shadowed ? ' (shadowed)' : ' (winner)'}`,
+      );
+    }
+  }
   if (s.labels.length > 0) lines.push(`  labels         ${s.labels.join(', ')}`);
   lines.push(`  tags           ${s.tags.map((t) => `${t.code}(${t.name})x${t.count}`).join(' ')}`);
   lines.push(
@@ -162,7 +191,10 @@ export function runInspect(request: InspectRequest, io: CliIo): number {
   }
 
   const sha256 = sha256Hex(bytes);
-  const file = openSwfNodeSync(bytes);
+  const file = openSwfNodeSync(bytes, {
+    mode: request.strict ? 'strict' : 'soft',
+    strictLength: request.strictLength ?? false,
+  });
   const summary = summarize(file, buildMovieModel(file), request.file, sha256);
 
   if (request.json) {

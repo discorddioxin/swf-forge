@@ -204,7 +204,7 @@ export interface CharacterModel {
 export type CharacterKind =
   | 'shape' | 'shape4' | 'morphShape' | 'sprite' | 'button' | 'text' | 'editText'
   | 'font' | 'font2' | 'font3' | 'font4' | 'bitmap' | 'bitmapLossless'
-  | 'sound' | 'video' | 'binaryData';
+  | 'sound' | 'video' | 'binaryData' | 'missing' | 'unknown';
 ```
 
 **SWF-R023** Duplicate character ids MUST be resolved as "last definition wins" (Flash behaviour),

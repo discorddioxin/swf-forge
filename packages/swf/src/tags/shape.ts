@@ -82,6 +82,8 @@ export interface StrokePath {
 export interface VectorShape {
   readonly id: number;
   readonly version: ShapeVersion;
+  /** Raw DefineShape4 flag byte, preserved for reporting; null on older shape tags. */
+  readonly rawShape4Flags: number | null;
   readonly bounds: Rect;
   readonly edgeBounds: Rect | null;
   readonly recomputedBounds: Rect | null;
@@ -192,78 +194,101 @@ function readGradient(c: Cursor, version: ShapeVersion, focal: boolean): Gradien
   return { spreadMode, interpolationMode, stops, focalPoint };
 }
 
+const STYLE_DEDUPE_CEILING = 250;
+
+/** A byte key, rather than a re-serialised object, so only byte-identical styles count. */
+function styleByteKey(c: Cursor, start: number): string {
+  let key = '';
+  for (let i = start; i < c.offset; i += 1) key += String.fromCharCode(c.bytes[i] ?? 0);
+  return key;
+}
+
+function reportStyleDedupe(c: Cursor, count: number, duplicate: boolean): void {
+  if (count >= STYLE_DEDUPE_CEILING && duplicate) {
+    c.emit(
+      Codes.SHAPE_STYLE_DEDUPE_CEILING,
+      'warning',
+      `style array has ${count} entries at the dedupe ceiling with byte-identical styles; kept verbatim`,
+    );
+  }
+}
+
 function readFillStyleArray(c: Cursor, version: ShapeVersion): (FillStyle | null)[] {
   let count = c.u8();
-  if (count === 0xff) {
-    if (version === 1) {
-      c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended FillStyleCount used by DefineShape (v1)');
-    }
+  if (count === 0xff && version > 1) {
     if (version === 4) {
-      c.emit(
-        Codes.SHAPE_RESERVED_FLAG_BITS,
-        'info',
-        'extended FillStyleCount in DefineShape4 (the chapter reserves 0xFF for older tags)',
-      );
+      c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended FillStyleCount used by DefineShape4');
     }
     count = c.u16();
   }
   const fills: (FillStyle | null)[] = [null];
+  const keys = count >= STYLE_DEDUPE_CEILING ? new Set<string>() : null;
+  let duplicate = false;
   for (let i = 0; i < count; i += 1) {
+    const start = c.offset;
     const style = readFillStyle(c, version);
+    if (keys !== null) {
+      const key = styleByteKey(c, start);
+      if (keys.has(key)) duplicate = true;
+      else keys.add(key);
+    }
     fills.push(style);
     if (style === null) break; // unknown type: the array length is unknowable, stop cleanly
   }
-  if (count >= 250) {
-    c.emit(
-      Codes.SHAPE_STYLE_DEDUPE_CEILING,
-      'warning',
-      `style array has ${count} entries at the dedupe ceiling; kept verbatim`,
-    );
-  }
+  reportStyleDedupe(c, count, duplicate);
   return fills;
 }
 
 function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null)[] {
   let count = c.u8();
-  if (count === 0xff) {
-    if (version === 1) {
-      c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended LineStyleCount used by DefineShape (v1)');
+  if (count === 0xff && version > 1) {
+    if (version === 4) {
+      c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended LineStyleCount used by DefineShape4');
     }
     count = c.u16();
   }
   const lines: (LineStyle | null)[] = [null];
+  const keys = count >= STYLE_DEDUPE_CEILING ? new Set<string>() : null;
+  let duplicate = false;
   const withAlpha = version >= 3;
   for (let i = 0; i < count; i += 1) {
+    const start = c.offset;
     const width = c.u16();
     if (version < 4) {
       lines.push({ width, color: withAlpha ? readRgba(c) : readRgb(c) });
-      continue;
+    } else {
+      const startCap = c.ub(2);
+      const join = c.ub(2);
+      const hasFill = c.ub(1) === 1;
+      const noHScale = c.ub(1) === 1;
+      const noVScale = c.ub(1) === 1;
+      const pixelHinting = c.ub(1) === 1;
+      c.ub(5); // reserved
+      const noClose = c.ub(1) === 1;
+      const endCap = c.ub(2);
+      const fill = hasFill ? readFillStyle(c, version) : undefined;
+      const color = hasFill ? { r: 0, g: 0, b: 0, a: 255 } : readRgba(c);
+      const miterLimit = join === 2 ? c.fixed8() : undefined;
+      lines.push({
+        width,
+        color,
+        caps: { start: startCap, end: endCap },
+        join,
+        ...(miterLimit !== undefined ? { miterLimit } : {}),
+        noHScale,
+        noVScale,
+        pixelHinting,
+        noClose,
+        ...(fill ? { fill } : {}),
+      });
     }
-    const startCap = c.ub(2);
-    const join = c.ub(2);
-    const hasFill = c.ub(1) === 1;
-    const noHScale = c.ub(1) === 1;
-    const noVScale = c.ub(1) === 1;
-    const pixelHinting = c.ub(1) === 1;
-    c.ub(5); // reserved
-    const noClose = c.ub(1) === 1;
-    const endCap = c.ub(2);
-    const fill = hasFill ? readFillStyle(c, version) : undefined;
-    const color = hasFill ? { r: 0, g: 0, b: 0, a: 255 } : readRgba(c);
-    const miterLimit = join === 2 ? c.fixed8() : undefined;
-    lines.push({
-      width,
-      color,
-      caps: { start: startCap, end: endCap },
-      join,
-      ...(miterLimit !== undefined ? { miterLimit } : {}),
-      noHScale,
-      noVScale,
-      pixelHinting,
-      noClose,
-      ...(fill ? { fill } : {}),
-    });
+    if (keys !== null) {
+      const key = styleByteKey(c, start);
+      if (keys.has(key)) duplicate = true;
+      else keys.add(key);
+    }
   }
+  reportStyleDedupe(c, count, duplicate);
   return lines;
 }
 
@@ -350,6 +375,16 @@ export function readShapeWithStyle(
     flushStroke(lineRun);
   };
 
+  let moveToPending = false;
+  let moveToHasEdge = false;
+  const reportEmptyMoveTo = (): void => {
+    if (moveToPending && !moveToHasEdge) {
+      c.emit(Codes.SHAPE_EMPTY_SUBPATH, 'info', 'empty subpath (move-to with no edges) dropped');
+    }
+    moveToPending = false;
+    moveToHasEdge = false;
+  };
+
   let guard = 0;
   for (;;) {
     guard += 1;
@@ -365,13 +400,16 @@ export function readShapeWithStyle(
       const fillStyle0Bit = c.ub(1) === 1;
       const moveTo = c.ub(1) === 1;
       if (!newStyles && !lineStyleBit && !fillStyle1Bit && !fillStyle0Bit && !moveTo) {
+        reportEmptyMoveTo();
         break; // End record
       }
       if (moveTo) {
         const moveBits = c.ub(5);
+        reportEmptyMoveTo();
         flushAll();
         pen.x += c.sb(moveBits);
         pen.y += c.sb(moveBits);
+        moveToPending = true;
         for (const run of [fill0Run, fill1Run, lineRun]) run.start = { x: pen.x, y: pen.y };
       }
       if (fillStyle0Bit) {
@@ -462,6 +500,7 @@ export function readShapeWithStyle(
       };
     }
     edges.push(edge);
+    if (moveToPending) moveToHasEdge = true;
     const edgeIndex = edges.length - 1;
     for (const run of [fill0Run, fill1Run, lineRun]) {
       if (run.styleId !== 0) run.edgeRefs.push(edgeIndex);
@@ -470,6 +509,8 @@ export function readShapeWithStyle(
     pen.y = edge.toY;
   }
 
+  reportEmptyMoveTo();
+  c.align();
   flushAll();
 
   for (const id of usedFill)
@@ -522,6 +563,7 @@ export function readShapeWithStyle(
   return {
     id,
     version,
+    rawShape4Flags: null,
     bounds: declaredBounds,
     edgeBounds: null,
     recomputedBounds: recomputed,
@@ -551,14 +593,25 @@ export function decodeDefineShapeVersion(tagCode: number, c: Cursor): DefineShap
   if (version === 4) {
     edgeBounds = readRect(c);
     flags = c.u8();
+    if (c.version < 8) {
+      c.emit(
+        Codes.SHAPE_TAG_NEWER_THAN_VERSION,
+        'info',
+        `DefineShape4 requires SWF 8; declared file version is ${c.version}`,
+        start,
+        { context: 'DefineShape4 version', characterId: null },
+      );
+    }
   }
   const shape = readShapeWithStyle(c, id, version, bounds);
-  const reservedBits = flags & 0b0001_1111;
+  const reservedBits = flags & 0b1111_1000;
   if (reservedBits !== 0) {
     c.emit(
       Codes.SHAPE_RESERVED_FLAG_BITS,
       'info',
-      `reserved DefineShape4 flag bits 0x${reservedBits.toString(16)} non-zero (preserved)`,
+      `reserved DefineShape4 flag bits 0x${reservedBits.toString(2).padStart(8, '0')} set in raw flag byte 0x${flags.toString(16).padStart(2, '0')} (preserved)`,
+      c.offset,
+      { context: 'DefineShape4 reserved flags', characterId: null },
     );
   }
   const used = c.offset - start;
@@ -568,10 +621,11 @@ export function decodeDefineShapeVersion(tagCode: number, c: Cursor): DefineShap
   return {
     shape: {
       ...shape,
+      rawShape4Flags: version === 4 ? flags : null,
       edgeBounds,
-      fillRule: (flags & 0b0010_0000) !== 0 ? 'nonZero' : 'evenOdd',
-      nonScalingStrokes: (flags & 0b0001_0000) !== 0,
-      scalingStrokes: (flags & 0b0000_1000) !== 0,
+      fillRule: (flags & 0b0000_0100) !== 0 ? 'nonZero' : 'evenOdd',
+      nonScalingStrokes: (flags & 0b0000_0010) !== 0,
+      scalingStrokes: (flags & 0b0000_0001) !== 0,
     },
     boundsPx: {
       xMin: toPixels(bounds.xMin),

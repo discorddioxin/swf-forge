@@ -109,9 +109,10 @@ dependency in the control layer and MUST be a type-only import so no runtime cyc
   requested from the page URL. Compilation stores `{name, frame, namedAnchor}`; nothing in the emitted
   bundle may touch `window.location` itself (the shell owns the URL, SEC-R011).
 - **IMPL-040-R011** `DefineSceneAndFrameLabelData` MUST produce a scene table (`{name, frameOffset}[]`,
-  offsets zero-based and global to the timeline) and a **frame remap** from scene-relative to absolute
-  frame indices. `TimelineModel.frames` stays absolute; `nextScene`/`prevScene` compute from the scene
-  table at runtime (emitted as data, doc 120).
+  offsets zero-based and global to the timeline) and a compact frame remap (`{sceneIndex, frameOffset,
+  frameCount}[]`) where `absoluteFrame = frameOffset + sceneFrame` for `0 <= sceneFrame < frameCount`.
+  `TimelineModel.frames` stays absolute; `nextScene`/`prevScene` compute from the scene table at runtime
+  (emitted as data, doc 120). Invalid offsets follow R013 and the remap is built from the clamped scene table.
 - **IMPL-040-R012** The tag's frame-label list (`FrameNum` zero-based, global to the symbol) is a second
   label source. Labels from it and from `FrameLabel` tags share one namespace with the §3.2 first-wins
   rule; both lists MUST be merged deterministically (tag order first, then the scene data's list) so two
@@ -321,7 +322,9 @@ by name, `control.metadata` by key. Sequences that exist in file order keep file
 **IMPL-040-R047** The timeline object is doc 030 §7's frame-by-frame form: `declaredFrameCount`,
 `observedFrameCount`, `frames[]` (`index`, `label`, `ops[]`, `actions[]`, `soundStreamBlock`,
 `videoFrames[]`), `labels[]` (`name`, `frame`, `namedAnchor` — first occurrence per name, the map doc 030
-builds) and `streamSoundSpans[]` (`head`, `blocks`). An op is `{ kind: "place", … }` with every
+builds) and `streamSoundSpans[]` (`head`, `blocks`). `observedFrameCount` is measured before padding;
+`frames` contains `max(declaredFrameCount, observedFrameCount)` entries, retaining observed extras and
+appending empty entries only when the declared count is larger (IMPL-030-R033). An op is `{ kind: "place", … }` with every
 `PlacementOp` field, `{ kind: "remove", … }` or `{ kind: "tabIndex", … }`; each carries its `tagOffset`,
 and `null` is emitted for every absent optional field of its kind. `SetTabIndex` therefore appears twice
 by design: in `control.tabIndexOps` and in the owning frame's `ops` (`IMPL-040-R043`). A sprite
@@ -369,8 +372,11 @@ export interface MovieControlModel {
   readonly background: number;                       // 0xRRGGBB
   readonly backgroundSource: 'default' | 'tag';
   readonly backgroundChanges: readonly { frame: number; rgb: number }[];
-  readonly scenes: readonly { name: string; startFrame: number }[];
+  readonly scenes: readonly { name: string; frameOffset: number }[];
+  readonly sceneFrameRemap: readonly { sceneIndex: number; frameOffset: number; frameCount: number }[];
   readonly labels: ReadonlyMap<string, { frame: number; namedAnchor: boolean }[]>;
+  /** Ordered FrameLabel tags, followed by scene-data labels; duplicates remain in this sequence. */
+  readonly labelEntries: readonly { name: string; frame: number; namedAnchor: boolean }[];
   readonly exports: ReadonlyMap<string, number>;
   readonly exportsById: ReadonlyMap<number, string>;  // Ch.4's Tag-keyed dedupe
   readonly rootClassName: string | null;              // SymbolClass Tag 0
@@ -447,7 +453,7 @@ AVM2 content ever moves from "refuse" to "report".
 | `T-MOD-026` | an `ImportAssets` tag in a SWF 8+ file has **no effect** (characters stay missing) while the same tag in a SWF 7 file resolves | F1 |
 | `T-MOD-027` | `SymbolClass` Tag 0 → `rootClassName`; other tags → export names; no AVM2 instantiation attempted | F1 |
 | `T-MOD-028` | `Metadata` at most once; `HasMetadata`/tag biconditional both directions | F1 |
-| `T-MOD-029` | frame-label merge order (tag labels first) is byte-for-byte reproducible over 100 runs | F2 |
+| `T-MOD-029` | control-label sequences preserve FrameLabel file order (including same-frame `z`,`a`), then append scene-data labels; timeline name map remains first-wins | F2 |
 | `T-MOD-030` | `NamedAnchor` navigation data reaches the shell; the emitted bundle never reads `location` | F1 |
 | `T-MOD-031` | `Protect` password recorded as present/absent only; never reproduced in report or bundle | F1 |
 | `T-MOD-032` | reserved bits of `FileAttributes` and `EnableDebugger2` are recorded verbatim and never mask behaviour | F1 |

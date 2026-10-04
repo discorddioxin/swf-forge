@@ -150,10 +150,10 @@ codes, and the disassembler prints any unverified row with a `?`.
 | Code | Name | Payload | S | Notes |
 | --- | --- | --- | --- | --- |
 | 0x00 | `End` | — | — | Terminates an action block; the SWF 3 example ends with `SetTarget ""` then `End` |
-| 0x04 | `NextFrame` | — | — | | 
-| 0x05 | `PreviousFrame` | — | — | | 
-| 0x06 | `Play` | — | — | | 
-| 0x07 | `Stop` | — | — | | 
+| 0x04 | `NextFrame` | — | — | |
+| 0x05 | `PreviousFrame` | — | — | |
+| 0x06 | `Play` | — | — | |
+| 0x07 | `Stop` | — | — | |
 | 0x08 | `ToggleQuality` | — | — | Renderer quality (GFX-R007) |
 | 0x09 | `StopSounds` | — | — | Master-gain path (AUD-R074) |
 | 0x81 | `GotoFrame` | `Frame UI16` (length always 2) | — | Absolute frame index; `[verify]` 0- vs 1-basedness (§11) |

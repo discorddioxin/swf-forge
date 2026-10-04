@@ -17,15 +17,17 @@ Checks:
     2  callsite     every emit site's severity equals the registry's
     3  doc          every per-code `§8` table severity equals the registry's
     4  coverage     every registry code has an owning document; doc codes exist in the registry
-    5  unemitted    registry codes no source or test references
+    5  unemitted    production sink emissions, strict exceptions, and mere references are distinct
     6  rules        `IMPL-NNN-Rnnn` definitions vs citations, two-part form aware
-    7  tests        `T-XXX-nnn` declarations vs citations; historical allowlist still needed
+    7  tests        `T-XXX-nnn` citations plus generated test/WP/document ownership coverage
     8  imports      comment-stripped cross-package import restrictions (eslint's intent)
     9  determinism  forbidden sources of nondeterminism on output paths
    10  version      version-gated diagnostics the owning module cannot reach
    11  dump         the model dump against `IMPL-040` §3.6 plus normative op interfaces (probe)
    12  pins         behavioural pins for the two audit blockers (runtime probe)
    13  sources      errata/status registers cannot become definition sources
+   14  emission ownership: every code is emitted, exception-reported, or mapped to an existing WP
+   15  test coverage: every declared test id is classified and emitted in the coverage report
 
 Exit codes: 0 = no new findings · 1 = new findings · 2 = invalid invocation or required inputs missing.
 
@@ -245,57 +247,119 @@ def check_registry():
 
 # ------------------------------------------------------------------- 2. call-site severities
 EMIT_START = re.compile(r"\bemit\s*\(")
-SEV_FIELD = re.compile(r"severity:\s*'([^']+)'")
-CODE_TOKEN_FIELD = re.compile(r"Codes\.([A-Z][A-Z0-9_]*)|'((?:SF)\d{4})'")
+SWF_READ_ERROR_START = re.compile(r"\bnew\s+SwfReadError\s*\(")
+SEVERITY_LITERAL = re.compile(r"""['"](error|warning|info)['"]""")
+CODE_TOKEN_FIELD = re.compile(r"""Codes\.([A-Z][A-Z0-9_]*)|['"](SF\d{4})['"]""")
+
+# Strict length checking intentionally promotes these two default warnings to errors.
+# Keep the exception exact; any additional call site must match the registry severity.
+CALLSITE_SEVERITY_OVERRIDES = {
+    ("packages/swf/src/container/header.ts", "SF0004", "error"),
+    ("packages/swf/src/container/header.ts", "SF0005", "error"),
+}
+
+
+def expression_until(text, start, stop_at_closing_brace=False):
+    """Read one TS expression, stopping at its top-level comma or object-closing brace."""
+    depths = {"(": 0, "[": 0, "{": 0}
+    matching = {")": "(", "]": "[", "}": "{"}
+    quote = None
+    i = start
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            if ch == chr(92):
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in ("'", '"', "`"):
+            quote = ch
+            i += 1
+            continue
+        if ch in depths:
+            depths[ch] += 1
+        elif ch in matching:
+            opener = matching[ch]
+            if depths[opener] == 0:
+                if ch == "}" and stop_at_closing_brace:
+                    return text[start:i]
+                if ch in ",}":
+                    return text[start:i]
+            else:
+                depths[opener] -= 1
+        elif ch == "," and not any(depths.values()):
+            return text[start:i]
+        i += 1
+    return text[start:]
+
+
+def object_property(text, name):
+    match = re.search(rf"""(?<![\w$]){re.escape(name)}\s*:""", text)
+    if not match:
+        return None
+    return expression_until(text, match.end(), stop_at_closing_brace=True)
+
+
+def code_tokens(expression):
+    names, literals = [], []
+    for name, literal in CODE_TOKEN_FIELD.findall(expression or ""):
+        (names if name else literals).append(name or literal)
+    return names, literals
 
 
 def scan_emissions(text):
-    """Yield (offset, [names], [literal codes], severity) for every `emit(...)` payload.
-
-    A payload is either positional (`emit(Codes.X, 'warning', …)`) or an object
-    (`emit({ code: Codes.X, severity: 'warning', … })`), sometimes with other fields between, and the
-    `code:` value may be a ternary (`code: a > b ? Codes.LONGER : Codes.SHORTER`).  The scanner takes
-    the text between `code:` and `severity:` and collects every code token in it, so a branching
-    payload registers all of its codes.
-    """
-    for m in EMIT_START.finditer(text):
-        window = text[m.end():m.end() + 600]
-        positional = re.match(r"\s*(?:Codes\.)?([A-Z][A-Z0-9_]*)\s*,\s*'(\w+)'", window)
+    """Yield `(offset, names, literal codes, possible severities)` for DiagnosticSink emissions."""
+    for match in EMIT_START.finditer(text):
+        window = text[match.end():match.end() + 2048]
+        positional = re.match(r"""\s*(?:Codes\.)?([A-Z][A-Z0-9_]*)\s*,\s*['"](error|warning|info)['"]""", window)
         if positional:
-            yield m.start(), [positional.group(1)], [], positional.group(2)
+            yield match.start(), [positional.group(1)], [], [positional.group(2)]
             continue
-        sev = SEV_FIELD.search(window)
-        if not sev:
+        code_expr = object_property(window, "code")
+        severity_expr = object_property(window, "severity")
+        if code_expr is None or severity_expr is None:
             continue
-        head = window[:sev.start()]
-        ci = head.rfind("code:")
-        if ci < 0:
-            continue
-        names, literals = [], []
-        for name, literal in CODE_TOKEN_FIELD.findall(head[ci + 5:]):
-            (names if name else literals).append(name or literal)
+        names, literals = code_tokens(code_expr)
+        severities = list(dict.fromkeys(SEVERITY_LITERAL.findall(severity_expr)))
+        if (names or literals) and severities:
+            yield match.start(), names, literals, severities
+
+
+def scan_swfreadd_errors(text):
+    """Yield `(offset, names, literal codes)` surfaced by strict `SwfReadError` exceptions."""
+    for match in SWF_READ_ERROR_START.finditer(text):
+        argument = expression_until(text, match.end())
+        names, literals = code_tokens(argument)
         if names or literals:
-            yield m.start(), names, literals, sev.group(1)
+            yield match.start(), names, literals
 
 
 def check_callsites(by_name, rows):
     for path in code_files():
         if os.path.abspath(path) == os.path.abspath(REGISTRY_PATH):
             continue
+        relpath = rel(path)
         stripped = strip_ts_comments(read(path))
-        line_of = lambda pos: stripped.count("\n", 0, pos) + 1  # noqa: E731
-        for pos, names, literals, sev in scan_emissions(stripped):
-            for name, literal in zip(names + [None] * len(literals), [None] * len(names) + literals):
+        line_of = lambda pos: stripped.count(chr(10), 0, pos) + 1  # noqa: E731
+        for pos, names, literals, severities in scan_emissions(stripped):
+            tokens = [(name, None) for name in names] + [(None, literal) for literal in literals]
+            for name, literal in tokens:
                 code = by_name.get(name) if name else literal
                 if code is None:
                     report("callsite", f"callsite.unknown-constant:{name}", "error",
-                           f"{rel(path)}:{line_of(pos)}: Codes.{name} is not in the registry")
+                           f"{relpath}:{line_of(pos)}: Codes.{name} is not in the registry")
                     continue
-                if code in rows and rows[code]["severity"] != sev:
-                    report("callsite", f"callsite.severity:{code}", "error",
-                           f"{rel(path)}:{line_of(pos)}: {code} emitted as {sev!r}, "
-                           f"registry says {rows[code]['severity']!r}")
-
+                if code not in rows:
+                    continue
+                for severity in severities:
+                    if rows[code]["severity"] != severity and (
+                            relpath, code, severity) not in CALLSITE_SEVERITY_OVERRIDES:
+                        report("callsite", f"callsite.severity:{code}", "error",
+                               f"{relpath}:{line_of(pos)}: {code} emitted as {severity!r}, "
+                               f"registry says {rows[code]['severity']!r}")
 
 # -------------------------------------------------------------------- 3. doc-vs-registry severity
 DOC_ROW = re.compile(r"^\|\s*`?(SF\d{4})`?\s*\|\s*([a-z][a-z /]*?)\s*\|", re.M)
@@ -451,46 +515,133 @@ def check_coverage(rows):
 
 
 # -------------------------------------------------------------------------- 5. emission coverage
+# Deferred diagnostics must have a named, existing roadmap WP. When a WP implements the case,
+# remove its entry; the checker rejects stale mappings. Codes raised as strict exceptions are
+# reported separately from DiagnosticSink emissions.
+DEFERRED_DIAGNOSTIC_WPS = {
+    "SF0025": "WP-020-08",
+    "SF0026": "WP-020-08",
+    "SF0027": "WP-020-03",
+    "SF0111": "WP-030-01",
+    "SF0115": "WP-030-06",
+    "SF0118": "WP-030-06",
+    "SF0119": "WP-030-06",
+    "SF0125": "WP-030-06",
+    "SF0127": "WP-030-07",
+}
+EXCEPTION_DIAGNOSTIC_WPS = {"SF0016": "WP-010-02"}
+
+
 def check_unemitted(rows, by_name):
     name_of = {code: name for name, code in by_name.items()}
     referenced = collections.defaultdict(set)
+    emitted, thrown = set(), set()
+    emission_sites, exception_sites = collections.defaultdict(list), collections.defaultdict(list)
     for path in code_files():
         if os.path.abspath(path) == os.path.abspath(REGISTRY_PATH):
             continue
+        relpath = rel(path).replace("\\", "/")
+        is_test = "/test/" in relpath
         text = read(path)
-        kind = "test" if "/test/" in rel(path).replace("\\", "/") else "src"
+        kind = "test" if is_test else "src"
         for name in re.findall(r"Codes\.([A-Z][A-Z0-9_]*)", text):
             referenced[by_name.get(name, name)].add(kind)
-        for code in re.findall(r"'SF\d{4}'", text):
-            referenced[code.strip("'")].add(kind)
-    # An "emission" is a diagnostic actually handed to a sink: `emit(Codes.X, 'sev')`,
-    # `emit({ code: Codes.X, severity: ... })` or a literal code in the same object shape.  A match
-    # (e.g. the CLI's `SF1000` exit-code mapper) is a reference, not an emission, and is reported
-    # separately so a code that no path can produce stays visible.
-    emitted = set()
-    for path in code_files():
-        if os.path.abspath(path) == os.path.abspath(REGISTRY_PATH):
+        for code in re.findall(r"""['"]SF\d{4}['"]""", text):
+            referenced[code[1:-1]].add(kind)
+
+        # Only production sources count as a reachable emission; a test-only call to `emit()`
+        # must not make a registry code appear implemented.
+        if is_test:
             continue
-        for _pos, names, literals, _sev in scan_emissions(strip_ts_comments(read(path))):
-            for name in names:
-                code = by_name.get(name)
-                if code:
-                    emitted.add(code)
-            emitted.update(literals)
+        stripped = strip_ts_comments(text)
+        line_of = lambda pos: stripped.count(chr(10), 0, pos) + 1  # noqa: E731
+        for pos, names, literals, _severities in scan_emissions(stripped):
+            codes = [by_name.get(name) for name in names] + literals
+            for code in filter(None, codes):
+                emitted.add(code)
+                emission_sites[code].append(f"{relpath}:{line_of(pos)}")
+        for pos, names, literals in scan_swfreadd_errors(stripped):
+            codes = [by_name.get(name) for name in names] + literals
+            for code in filter(None, codes):
+                thrown.add(code)
+                exception_sites[code].append(f"{relpath}:{line_of(pos)}")
+
     unemitted = []
     for code in sorted(rows):
+        if code in emitted or code in thrown or code in DEFERRED_DIAGNOSTIC_WPS:
+            continue
         kinds = referenced.get(code, set())
         name = name_of.get(code, "?")
-        if code not in emitted and not kinds:
+        if not kinds:
             unemitted.append(code)
             report("unemitted", f"unemitted:{code}", "info",
-                   f"{code} ({name}) is never emitted and never referenced outside codes.ts")
-        elif code not in emitted:
+                   f"{code} ({name}) has no production emission/exception and no source/test reference")
+        else:
             where = "tests only" if kinds == {"test"} else ", ".join(sorted(kinds))
             report("unemitted", f"unemitted.mentioned:{code}", "info",
-                   f"{code} ({name}) is never emitted; referenced in {where}")
-    return referenced, unemitted
+                   f"{code} ({name}) has no production emission/exception; referenced in {where}")
+    return referenced, unemitted, emitted, thrown, emission_sites, exception_sites
 
+
+def work_package_docs():
+    packages = {}
+    row = re.compile(r"^\|\s*`?(WP-\d{3}-\d{2})`?\s*\|", re.M)
+    for path in impl_docs():
+        for match in row.finditer(read(path)):
+            packages.setdefault(match.group(1), set()).add(doc_num(path))
+    return packages
+
+
+def check_emission_ownership(rows, by_name, range_owner, emitted, thrown, emission_sites, exception_sites):
+    """Build the registry-wide emitted / exception / explicitly deferred coverage table."""
+    name_of = {code: name for name, code in by_name.items()}
+    packages = work_package_docs()
+    for code, wp in sorted(DEFERRED_DIAGNOSTIC_WPS.items()):
+        if code not in rows:
+            report("emission-ownership", f"ownership.unknown-code:{code}", "error",
+                   f"deferred map contains {code}, but the registry does not")
+        elif code in emitted or code in thrown:
+            report("emission-ownership", f"ownership.stale:{code}", "error",
+                   f"{code} now has a production report path; remove its deferred mapping to {wp}")
+        if wp not in packages:
+            report("emission-ownership", f"ownership.unknown-wp:{code}", "error",
+                   f"{code} is mapped to {wp}, which is not a work package in numbered implementation docs")
+
+    for code, wp in sorted(EXCEPTION_DIAGNOSTIC_WPS.items()):
+        if code not in rows:
+            report("emission-ownership", f"ownership.unknown-exception:{code}", "error",
+                   f"exception map contains {code}, but the registry does not")
+        elif code not in thrown:
+            report("emission-ownership", f"ownership.missing-exception:{code}", "error",
+                   f"{code} is marked exception-reported through {wp}, but no SwfReadError path was found")
+        if wp not in packages:
+            report("emission-ownership", f"ownership.unknown-wp:{code}", "error",
+                   f"{code} is mapped to {wp}, which is not a work package in numbered implementation docs")
+
+    coverage = []
+    for code in sorted(rows):
+        if code in emitted:
+            status = "emitted"
+            owner = (range_owner.get(int(code[2:])) or ("unallocated", ""))[0]
+            sites = sorted(set(emission_sites.get(code, [])))
+        elif code in thrown:
+            status = "exception"
+            owner = EXCEPTION_DIAGNOSTIC_WPS.get(code, "unmapped")
+            sites = sorted(set(exception_sites.get(code, [])))
+        elif code in DEFERRED_DIAGNOSTIC_WPS:
+            status = "deferred"
+            owner = DEFERRED_DIAGNOSTIC_WPS[code]
+            sites = []
+        else:
+            status = "unmapped"
+            owner = "unmapped"
+            sites = []
+            report("emission-ownership", f"ownership.unmapped:{code}", "error",
+                   f"{code} has no production sink/exception path and no owning roadmap WP")
+        coverage.append({"code": code, "name": name_of.get(code, "?"),
+                         "severity": rows[code]["severity"], "status": status,
+                         "owner": owner, "sites": sites})
+    return coverage
 
 # ------------------------------------------------------------------------------- 6. rule ids
 RULE_DEF = re.compile(r"\*\*IMPL-(\d{3})-R(\d{3})\*\*")
@@ -575,16 +726,31 @@ def historical_test_ids():
     return set()
 
 
+def test_work_package_owners():
+    owners = collections.defaultdict(set)
+    wp_row = re.compile(r"^\|\s*`?(WP-\d{3}-\d{2})`?\s*\|", re.M)
+    for path in impl_docs():
+        for line in read(path).splitlines():
+            match = wp_row.match(line)
+            if match:
+                for tid in TEST_ANY.findall(line):
+                    owners[tid].add(match.group(1))
+    return owners
+
+
 def check_tests():
-    # This is the same definition surface as verify_docs.py check 8b: test rows from numbered
-    # design/implementation specs only. Errata occurrences and generated STATUS snapshots are
-    # citations/evidence, not definitions; check_sources() prevents them from becoming one accidentally.
-    declared = set()
+    # Numbered docs are the only declaration source: errata and generated STATUS rows are not tests.
+    declared_docs = collections.defaultdict(set)
     for path in impl_docs() + spec_docs():
-        declared |= set(TEST_DECL.findall(read(path)))
-    cited = set()
+        for tid in TEST_DECL.findall(read(path)):
+            declared_docs[tid].add(rel(path))
+    declared = set(declared_docs)
+    citations = collections.defaultdict(lambda: {"src": set(), "test": set()})
     for path in code_files():
-        cited |= set(TEST_ANY.findall(read(path)))
+        kind = "test" if "/test/" in rel(path).replace("\\", "/") else "src"
+        for tid in TEST_ANY.findall(read(path)):
+            citations[tid][kind].add(rel(path))
+    cited = set(citations)
     historical = historical_test_ids()
     for tid in sorted(cited - declared - historical):
         report("tests", f"tests.citation-undeclared:{tid}", "error",
@@ -593,8 +759,25 @@ def check_tests():
         report("tests", f"tests.allowlist-stale:{tid}", "warning",
                f"{tid} is declared in the numbered docs but still on verify_docs.py's "
                f"HISTORICAL_TEST_IDS allowlist")
-    return declared, cited
 
+    wp_owners = test_work_package_owners()
+    coverage = []
+    for tid in sorted(declared):
+        citation = citations.get(tid, {"src": set(), "test": set()})
+        if citation["test"]:
+            status = "test-cited"
+        elif citation["src"]:
+            status = "source-only"
+        else:
+            status = "scheduled-or-unwired"
+        docs = sorted(declared_docs[tid])
+        owners = sorted(wp_owners.get(tid, set()))
+        if not owners:
+            owners = ["doc-" + doc_num(doc) for doc in docs]
+        coverage.append({"id": tid, "status": status, "declared_in": docs,
+                         "owner": owners, "test_files": sorted(citation["test"]),
+                         "source_files": sorted(citation["src"])})
+    return declared, cited, coverage
 
 # ------------------------------------------------------------------------------ 8. imports
 IMPORT_FROM = re.compile(r"\bimport\b[^;]*?\bfrom\s*['\"]([^'\"]+)['\"]", re.S)
@@ -969,14 +1152,15 @@ def check_dump(probe_enabled, rows):
 # committing more fixtures: `clean`, which MUST produce no diagnostics at all, and `dirty`, which
 # carries a duplicated label and a sprite declaring more frames than it contains.
 PLACE_OP_KEYS = ["kind", "tag", "index", "depth", "move", "characterId", "name", "matrix",
-                 "cxform", "ratio", "clipDepth", "className", "blendMode", "bitmapCache",
-                 "visible", "opaqueBackground", "clipActions", "tagOffset"]
+                 "cxform", "ratio", "clipDepth", "className", "image", "filters", "blendMode",
+                 "cacheAsBitmap", "rawCacheValue", "visible", "opaqueBackground", "clipActions",
+                 "tagOffset"]
 REMOVE_OP_KEYS = ["kind", "tag", "index", "depth", "characterId", "tagOffset"]
 TABINDEX_OP_KEYS = ["kind", "index", "depth", "tabIndex", "tagOffset"]
 DICTIONARY_KEYS = ["id", "tag", "tagCode", "tagOffset", "length", "sprite"]
 SPRITE_KEYS = ["characterName", "declaredFrameCount", "observedFrameCount", "tagCount", "timeline"]
-CONTROL_KEYS = ["background", "backgroundSource", "backgroundChanges", "scenes", "labels",
-                "exports", "rootClassName", "imports", "scalingGrids", "tabIndexOps",
+CONTROL_KEYS = ["background", "backgroundSource", "backgroundChanges", "scenes", "sceneFrameRemap",
+                "labels", "exports", "rootClassName", "imports", "scalingGrids", "tabIndexOps",
                 "scriptLimits", "attributes", "metadata"]
 DIAGNOSTIC_FIELDS = {"code", "severity", "offset", "count", "message"}
 SYNTH_DIAGNOSTICS = {"dirty": {"SF0023", "SF0116", "SF0124", "SF0153"}}
@@ -1199,7 +1383,10 @@ def check_dump_synth(run, rows):
                 fail("op-kinds", f"frame 0 ops {[op['kind'] for op in ops]} != "
                                  f"{expected_op_kinds}")
             elif dirty and (ops[1].get("tag") != "PlaceObject3" or ops[1].get("characterId") != 2
-                            or ops[1].get("className") != "BitmapClass" or ops[1].get("bitmapCache") != 1):
+                            or ops[1].get("className") != "BitmapClass"
+                            or ops[1].get("image") != {"kind": "characterId"}
+                            or ops[1].get("cacheAsBitmap") is not True
+                            or ops[1].get("rawCacheValue") != 1):
                 fail("place3-values", f"PlaceObject3's class/character/cache values were not retained: "
                                        f"{ops[1]}")
             else:
@@ -1250,9 +1437,12 @@ def check_dump_synth(run, rows):
                                             f"frame(s), the fixture writes {2 if dirty else 1}")
                 if sprites[3]["characterName"] != "sprite_3" or sprites[3]["tagCount"] != 1:
                     fail("sprite-name", f"sprite 3 block {sprites[3]} != name 'sprite_3', 1 tag")
-                if len(sprites[7]["timeline"]["frames"]) != sprites[7]["observedFrameCount"]:
-                    fail("sprite-frames", "the sprite timeline's frames do not match its "
-                                          "observedFrameCount")
+                expected_frame_length = max(sprites[7]["declaredFrameCount"],
+                                            sprites[7]["observedFrameCount"])
+                if len(sprites[7]["timeline"]["frames"]) != expected_frame_length:
+                    fail("sprite-frames", "the sprite timeline length is not max(declared, observed): "
+                                          f"{len(sprites[7]['timeline']['frames'])} != "
+                                          f"{expected_frame_length}")
 
             # The `clean` fixture is the audit's own conformance baseline: it MUST be diagnostic-free.
             diagnostics = doc.get("diagnostics")
@@ -1314,9 +1504,9 @@ def main():
     check_callsites(by_name, rows)
     check_doc_severity(rows)
     owner = check_coverage(rows)
-    referenced, unemitted = check_unemitted(rows, by_name)
+    referenced, unemitted, emitted, thrown, emission_sites, exception_sites = check_unemitted(rows, by_name)
     defined, cited, uncited, _ = check_rules()
-    declared, cited_tests = check_tests()
+    declared, cited_tests, test_coverage = check_tests()
     check_imports()
     check_determinism()
     check_op_field_sets()
@@ -1326,6 +1516,8 @@ def main():
     probe = {"status": "skipped", "reason": "--no-probe"} if args.no_probe else run_probe()
     check_pins(probe)
     check_sources()
+    emission_coverage = check_emission_ownership(
+        rows, by_name, owner, emitted, thrown, emission_sites, exception_sites)
 
     findings.sort(key=lambda f: (f["key"], f["message"]))
     checked = [f["key"] for f in findings]
@@ -1370,24 +1562,39 @@ def main():
 
     if args.json:
         print(json.dumps({
-            "checks": 13,
+            "checks": 15,
             "findings": findings,
+            "emission_coverage": emission_coverage,
+            "test_coverage": test_coverage,
             "known": len(known),
             "new": [f["key"] for f in new],
             "fixed": fixed,
             "skipped": sorted(skipped),
             "probe": probe,
             "dump": dump_result,
-            "summary": {"registry": len(rows), "unemitted": len(unemitted),
+            "summary": {"registry": len(rows), "emitted": len(emitted),
+                        "exception_reported": len(thrown), "deferred": sum(r["status"] == "deferred" for r in emission_coverage),
+                        "unmapped": sum(r["status"] == "unmapped" for r in emission_coverage),
+                        "unemitted": len(unemitted),
                         "rules_defined": sum(len(v) for v in defined.values()),
                         "rules_cited": sum(len(v) for v in cited.values()),
                         "tests_declared": len(declared), "tests_cited_in_code": len(cited_tests),
+                        "tests_cited_in_test_files": sum(r["status"] == "test-cited" for r in test_coverage),
+                        "tests_scheduled_or_unwired": sum(r["status"] == "scheduled-or-unwired" for r in test_coverage),
                         "version_gated": len(gated)},
         }, indent=2, sort_keys=True))
     else:
-        print(f"audit_dev — {len(rows)} registry codes, {len(unemitted)} never referenced, "
-              f"{sum(len(v) for v in defined.values())} rules defined, "
-              f"{len(declared)} test ids declared")
+        status_counts = collections.Counter(row["status"] for row in emission_coverage)
+        test_counts = collections.Counter(row["status"] for row in test_coverage)
+        print(f"audit_dev — {len(rows)} registry codes; {status_counts['emitted']} sink-emitted, "
+              f"{status_counts['exception']} exception-reported, {status_counts['deferred']} deferred, "
+              f"{status_counts['unmapped']} unmapped; {sum(len(v) for v in defined.values())} rules; "
+              f"{len(declared)} test ids ({test_counts['test-cited']} test-cited, "
+              f"{test_counts['source-only']} source-only, {test_counts['scheduled-or-unwired']} scheduled/unwired)")
+        for row in emission_coverage:
+            if row["status"] in {"deferred", "exception", "unmapped"}:
+                where = ", ".join(row["sites"]) if row["sites"] else "—"
+                print(f"  [emission] {row['code']} {row['status']} owner={row['owner']} site={where}")
         shown = collections.Counter()
         for f in findings:
             known_n = known.get(f["key"], 0)

@@ -7,8 +7,35 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { Cursor, DiagnosticSink, buildTagIndex, readTagHeader } from '@swf-forge/swf';
+import { Cursor, DiagnosticSink, buildTagIndex, openSwf, readTagHeader } from '@swf-forge/swf';
 import { ByteWriter, buildSwf, concat, endTag, showFrames, tag, writeRect } from '@swf-forge/swf/test-support';
+
+describe('container decompression diagnostics', () => {
+  it('T-SWF-001 reports SF0006 for ZWS when no LZMA decoder is installed', () => {
+    const zws = Uint8Array.from([0x5a, 0x57, 0x53, 13, 8, 0, 0, 0]);
+    const file = openSwf(zws);
+    expect(file.sink.codes()).toContain('SF0006');
+    expect(file.sink.codes()).not.toContain('SF0003');
+  });
+});
+
+describe('openSwf tag payload sentinel', () => {
+  it('T-SWF-018 marks a not-a-SWF read as not-a-swf, not not-requested', () => {
+    const file = openSwf(new Uint8Array(8));
+    expect(
+      file.readTag({
+        code: 0,
+        offset: 0,
+        length: 0,
+        depth: 0,
+        inSprite: null,
+        index: 0,
+        headerOffset: 0,
+        longHeader: false,
+      }),
+    ).toEqual({ kind: 'skipped', reason: 'not-a-swf' });
+  });
+});
 
 describe('readTagHeader', () => {
   it('reads code 1 / length 3 from 43 00', () => {

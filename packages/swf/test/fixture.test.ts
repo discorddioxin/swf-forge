@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { openSwf, toPixels } from '@swf-forge/swf';
+import { buildSwf, showFrames } from '@swf-forge/swf/test-support';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/appendix-a.swf', import.meta.url));
 
@@ -52,6 +53,17 @@ describe('fixtures/appendix-a.swf', () => {
     expect(file.tagIndex.tags[0]?.longHeader).toBe(false);
   });
 
+  it('T-SWF-018 lazily builds the index on first access and memoizes the raw tag payload', () => {
+    const bytes = buildSwf({ body: showFrames(1), frameCount: 1 });
+    const file = openSwf(bytes, { indexStrategy: 'lazy' });
+    expect(file.diagnostics.map((entry) => entry.code)).not.toContain('SF0102');
+    expect(file.tagIndex.tags.map((entry) => entry.code)).toEqual([1]);
+    expect(file.diagnostics.map((entry) => entry.code)).toContain('SF0102');
+    const tag = file.tagIndex.tags[0];
+    if (!tag) throw new Error('missing tag after lazy index');
+    expect(file.readTag(tag)).toBe(file.readTag(tag));
+  });
+
   it('reports no errors and re-reads the SetBackgroundColor payload', () => {
     const file = openSwf(fixture());
     expect(file.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
@@ -59,6 +71,7 @@ describe('fixtures/appendix-a.swf', () => {
     expect(first).toBeDefined();
     if (!first) throw new Error('missing first tag');
     const payload = file.readTag(first);
+    expect(file.readTag(first)).toBe(payload);
     expect(payload.kind).toBe('bytes');
     if (payload.kind === 'bytes') {
       expect(Array.from(payload.view)).toEqual([0xff, 0xff, 0xff]);

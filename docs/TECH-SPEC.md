@@ -427,7 +427,7 @@ binary so it can be used alone. The umbrella delegates; it contains no logic (TE
 | Binary | Verbs | Notes |
 | --- | --- | --- |
 | `swfforge` | `build`, `inspect`, `verify`, `report`, `diff`, `clean`, `serve`, `fetch-fixtures` | prints the resolved config at `--verbose` |
-| `forge-decompile` | `inspect`, `dump`, `diff`, `assets` | `--json`, `--media`, `--out <dir>` |
+| `forge-decompile` | `inspect`, `dump`, `diff`, `assets` | `--json`, `--verbose`, `--out <dir>`, `--strict`, `--tolerate-length` |
 | `forge-transpile` | `build`, `verify`, `report` | identical flags to `swfforge build` |
 | `forge-clean` | `clean`, `report`, `apply` | `--from <flash-out>`, `--policy <file>`, `--strict` |
 | `forge-inspect` | `serve <projectDir>` | optional local server for the browser inspector |

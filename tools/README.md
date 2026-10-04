@@ -6,6 +6,7 @@ Three stdlib-only Python 3 scripts. No dependencies, no network, safe to run fro
 python3 tools/verify_docs.py            # document consistency gate — prints "ISSUES: 0" when clean
 python3 tools/gen_status.py             # regenerates docs/impl/registers/STATUS.md
 python3 tools/audit_dev.py              # code-vs-spec integrity ledger (pnpm audit:dev)
+pnpm test:audit                         # unit tests for the collector's parsers and ownership gates
 ```
 
 ## `verify_docs.py`
@@ -63,19 +64,22 @@ deterministic and every path it prints is repository-relative (`REPO-R015`).
 | 2 | `callsite` — every `emit(...)` severity equals the registry's | all `*.ts` |
 | 3 | `doc` — the `§8` severity tables equal the registry | `docs/impl/**` |
 | 4 | `coverage` — range allocation and documentation for every code | `docs/impl/**` |
-| 5 | `unemitted` — codes no path can emit (dead diagnostics) | all `*.ts` |
+| 5 | `unemitted` — production sink emissions are distinguished from strict `SwfReadError` paths and mere references; test-only emits cannot claim implementation | source + tests |
 | 6 | `rules` — `IMPL-NNN-Rnnn` definitions vs citations, two-part aware | docs + comments |
-| 7 | `tests` — code citations resolve to canonical test rows in numbered spec docs; the historical allowlist is parsed from `verify_docs.py`; errata/STATUS are not declaration sources | numbered docs + source/tests |
+| 7 | `tests` — citations resolve to canonical test rows; every declared id is classified as test-cited, source-only, or scheduled/unwired and linked to a WP/document; the historical allowlist is parsed from `verify_docs.py`; errata/STATUS are not definition sources | numbered docs + source/tests |
 | 8 | `imports` — cross-package restrictions, comment-stripped | `eslint.config.js`, sources |
 | 9 | `determinism` — no clock/random/cwd/env on output paths | output modules |
 | 10 | `version` — unreachable version-gated diagnostics | docs + modules |
 | 11 | `dump` — R044–R048 run modes/bytes/order plus synthetic maps, labels, op fields and sprites, compared to IMPL-030/040 types | built CLI + temporary SWFs |
 | 12 | `pins` — behavioural pins for the audit's blockers (probe) | built `swf` + fixture |
 | 13 | `sources` — errata/STATUS rows cannot become definition sources and silently affect the audit | `docs/impl/registers/**` |
+| 14 | `emission-ownership` — every registry code is sink-emitted, exception-reported, or explicitly deferred to a real roadmap WP; stale/unowned mappings fail | registry, source call sites, WP tables |
+| 15 | `test-coverage` — emits a declared-test coverage table with executable test/source citations and WP/document owners; undeclared citations fail | numbered docs, work-package rows, source/tests |
 
-The check list and its current results are recorded in `audits/dev/03-mechanical-checks.md`; that
-document also lists the blind spots found while building the script, which is the reason it does not
-consist of greps.
+`pnpm test:audit` unit-tests the collector's branch-aware emission scanner, exception detection,
+production-vs-test distinction, deferred-WP mapping and test-id ownership parsing. The current checks
+and recorded outcomes are in `audits/dev/03-mechanical-checks.md`. CI runs the docs gate, collector
+unit tests and `pnpm audit:dev` after building its runtime probes.
 
 ## `gen_status.py`
 
@@ -85,6 +89,6 @@ diagnostics, and the chapter/appendix coverage table. The output is generated �
 edit the documents and re-run the script. `verify_docs.py` check 7c fails if the snapshot's totals
 disagree with the documents.
 
-Both scripts are the first implementation work packages of the roadmap (`WP-140-08` in
-`docs/impl/harness/140-conformance-harness.md`); when the real toolchain lands they move to
-`packages/testing` or stay here as CI entry points, whichever the tech spec says at that point.
+These tools are the first implementation work packages of the roadmap (`WP-140-08` in
+`docs/impl/harness/140-conformance-harness.md`); when the full test toolchain lands they move to
+`packages/testing` or stay here as CI entry points, whichever the technical specification requires.

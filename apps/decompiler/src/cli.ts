@@ -6,6 +6,8 @@
  * `CMP-R029`'s exit codes.
  */
 
+import { SwfReadError } from '@swf-forge/swf';
+
 import { runDump } from './commands/dump.js';
 import { runInspect } from './commands/inspect.js';
 import { EXIT, type CliIo } from './exit.js';
@@ -16,8 +18,8 @@ export type { CliIo } from './exit.js';
 export const USAGE = `forge-decompile — inspect a SWF and report what it contains
 
 Usage:
-  forge-decompile inspect <file.swf> [--json] [--verbose]
-  forge-decompile dump <file.swf> [--json] [--verbose] [--out <dir>]
+  forge-decompile inspect <file.swf> [--json] [--verbose] [--strict] [--tolerate-length]
+  forge-decompile dump <file.swf> [--json] [--verbose] [--strict] [--tolerate-length] [--out <dir>]
   forge-decompile <command> --help
 
 Commands:
@@ -27,6 +29,8 @@ Commands:
 Options:
   --json        machine-readable output on stdout (stable field order)
   --verbose     include info-level diagnostics and per-frame sprite detail
+  --strict      fail on FileLength mismatch and structural read errors where supported
+  --tolerate-length  keep FileLength mismatch as a warning (default; overrides --strict for length only)
   --out <dir>   dump: write <dir>/model.json (same bytes as --json) and print a summary
 
 Exit codes:
@@ -92,7 +96,16 @@ export function runCli(argv: readonly string[], io: CliIo): number {
           io.out(USAGE);
           return file === undefined ? EXIT.unreadable : EXIT.ok;
         }
-        return runInspect({ file, json: flags.has('--json'), verbose: flags.has('--verbose') }, io);
+        return runInspect(
+          {
+            file,
+            json: flags.has('--json'),
+            verbose: flags.has('--verbose'),
+            strict: flags.has('--strict'),
+            strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
+          },
+          io,
+        );
       }
       case 'dump': {
         const file = files[0];
@@ -101,7 +114,14 @@ export function runCli(argv: readonly string[], io: CliIo): number {
           return file === undefined ? EXIT.unreadable : EXIT.ok;
         }
         return runDump(
-          { file, json: flags.has('--json'), verbose: flags.has('--verbose'), out: values.get('--out') ?? null },
+          {
+            file,
+            json: flags.has('--json'),
+            verbose: flags.has('--verbose'),
+            strict: flags.has('--strict'),
+            strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
+            out: values.get('--out') ?? null,
+          },
           io,
         );
       }
@@ -115,6 +135,10 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         return EXIT.unreadable;
     }
   } catch (error) {
+    if (error instanceof SwfReadError) {
+      io.err(error.message);
+      return EXIT.failed;
+    }
     io.err(`internal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
     return EXIT.internal;
   }

@@ -53,7 +53,12 @@ export function parseHeader(
   compression: Compression,
   fileSize: number,
   sink: DiagnosticSink,
-  opts: { mode?: 'soft' | 'strict'; declaredVersion?: number; reportPaddingBits?: boolean } = {},
+  opts: {
+    mode?: 'soft' | 'strict';
+    strictLength?: boolean;
+    declaredVersion?: number;
+    reportPaddingBits?: boolean;
+  } = {},
 ): HeaderResult {
   const version = opts.declaredVersion ?? 0;
   if (fileLength < 8 || fileLength > 2 ** 31) {
@@ -128,7 +133,7 @@ export function parseHeader(
     // `IMPL-020-R011`: the declared length and the decompressed payload are cross-checked.
     sink.emit({
       code: payload.length > fileLength - 8 ? Codes.DECOMPRESSED_LONGER : Codes.DECOMPRESSED_SHORTER,
-      severity: 'warning',
+      severity: opts.strictLength === true ? 'error' : 'warning',
       message: `decompressed payload is ${payload.length} byte(s); FileLength ${fileLength} + 8-byte header implies ${Math.max(0, fileLength - 8)}`,
       offset: 0,
       context: 'container',
@@ -137,7 +142,7 @@ export function parseHeader(
   if (compression === 'none' && fileSize !== fileLength) {
     sink.emit({
       code: fileSize > fileLength ? Codes.DECOMPRESSED_LONGER : Codes.DECOMPRESSED_SHORTER,
-      severity: 'warning',
+      severity: opts.strictLength === true ? 'error' : 'warning',
       message: `file is ${fileSize} byte(s) on disk; FileLength declares ${fileLength}`,
       offset: 4,
       context: 'container',

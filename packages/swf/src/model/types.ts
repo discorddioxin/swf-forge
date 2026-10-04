@@ -75,12 +75,33 @@ export interface SpriteModel {
   readonly streamSoundSpans: readonly StreamSoundSpan[];
 }
 
-/** A dictionary entry plus its decoded timeline when the character is a sprite. */
+export type CharacterKind =
+  | 'shape'
+  | 'shape4'
+  | 'morphShape'
+  | 'sprite'
+  | 'button'
+  | 'text'
+  | 'editText'
+  | 'font'
+  | 'font2'
+  | 'font3'
+  | 'font4'
+  | 'bitmap'
+  | 'bitmapLossless'
+  | 'sound'
+  | 'video'
+  | 'binaryData'
+  | 'unknown'
+  | 'missing';
+
+/** A dictionary entry or a placement-created missing-character placeholder. */
 export interface CharacterModel {
   readonly id: number;
-  readonly tagCode: number;
+  readonly kind: CharacterKind;
+  readonly tagCode: number | null;
   readonly tagName: string;
-  readonly index: TagRef;
+  readonly index: TagRef | null;
   readonly sprite: SpriteModel | null;
 }
 
@@ -116,7 +137,15 @@ export interface MovieControlModel {
   readonly background: number;
   readonly backgroundSource: 'default' | 'tag';
   readonly backgroundChanges: readonly { readonly frame: number; readonly rgb: number }[];
-  readonly scenes: readonly { readonly name: string; readonly startFrame: number }[];
+  readonly scenes: readonly { readonly name: string; readonly frameOffset: number }[];
+  /** Control tag label sequence in file order; duplicates and scene-data entries are retained. */
+  readonly labelEntries: readonly { readonly name: string; readonly frame: number; readonly namedAnchor: boolean }[];
+  /** Compact scene-relative to absolute mapping: `absolute = frameOffset + sceneFrame`. */
+  readonly sceneFrameRemap: readonly {
+    readonly sceneIndex: number;
+    readonly frameOffset: number;
+    readonly frameCount: number;
+  }[];
   /** Every label on the main timeline, in file order; duplicates kept. */
   readonly labels: ReadonlyMap<string, readonly { readonly frame: number; readonly namedAnchor: boolean }[]>;
   readonly exports: ReadonlyMap<string, number>;

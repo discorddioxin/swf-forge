@@ -5,15 +5,15 @@
  * `PlaceObject2`/`3` read one or two flag bytes and then the fields in an order *different* from the
  * flag order. `Ratio` is UI16, not UI8. A matrix in a *move* tag replaces the previous transform.
  *
- * Filters (`FILTERLIST`), clip actions and the PlaceObject3 backing fields are separate work packages
- * (`WP-030-04`, `WP-030-05`); until they land, clip actions are handed on as a byte range
- * (`ActionBlockRef`) and a filter list stops the walk with an explicit diagnostic.
+ * Filters and PlaceObject3 backing fields are decoded here; clip actions are preserved as a bounded
+ * byte range (`ActionBlockRef`) for the AVM1 action stage.
  */
 
 import { Codes } from '../diagnostics/codes.js';
 import type { Cursor } from '../io/cursor.js';
 import { readCxform, readCxformWithAlpha, readMatrix } from '../io/records.js';
 import type { Cxform, Mat2D, Rgba } from '../io/types.js';
+import { readFilterList, type FilterSpec } from './filters.js';
 
 /** Byte range handed to the AVM1 front end (`IMPL-030-R029`). */
 export interface ActionBlockRef {
@@ -38,8 +38,13 @@ export interface PlacementOp {
   readonly ratio: number | null;
   readonly clipDepth: number | null;
   readonly className: string | null;
+  readonly image: { readonly kind: 'class' | 'characterId' } | null;
+  readonly filters: readonly FilterSpec[] | null;
   readonly blendMode: number | null;
-  readonly bitmapCache: number | null;
+  /** True when the raw cache flag is enabled or a filter list implies bitmap caching. */
+  readonly cacheAsBitmap: boolean;
+  /** Preserve the PlaceObject3 BitmapCache UI8 when present. */
+  readonly rawCacheValue: number | null;
   readonly visible: boolean | null;
   readonly opaqueBackground: Rgba | null;
   /** Byte range of the CLIPACTIONS block, for doc 050; null when absent. */
@@ -53,6 +58,7 @@ export interface RemovalOp {
   readonly index: number;
   readonly tag: 'RemoveObject' | 'RemoveObject2';
   readonly depth: number;
+  readonly characterId: number | null;
   readonly tagOffset: number;
 }
 
@@ -96,8 +102,11 @@ function placementBase(ctx: DecodeContext, tag: PlacementTag): Omit<PlacementOp,
     ratio: null,
     clipDepth: null,
     className: null,
+    image: null,
+    filters: null,
     blendMode: null,
-    bitmapCache: null,
+    cacheAsBitmap: false,
+    rawCacheValue: null,
     visible: null,
     opaqueBackground: null,
     clipActions: null,
@@ -209,39 +218,52 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
     );
   }
   const characterId = hasCharacter ? c.u16() : null;
+  const image = hasImage ? { kind: hasCharacter ? ('characterId' as const) : ('class' as const) } : null;
   const matrix = hasMatrix ? readMatrix(c) : null;
   const cxform = hasCxform ? readCxformWithAlpha(c) : null;
   const ratio = hasRatio ? c.u16() : null;
   const name = hasName ? c.string() : null;
   const clipDepth = hasClipDepth ? c.u16() : null;
 
+  let filters: readonly FilterSpec[] | null = null;
   if (hasFilterList) {
-    c.emit(
-      Codes.PLACEOBJECT3_BACKING,
-      'info',
-      'PlaceObject3 filter list present; the remaining backing fields are decoded by WP-030-04 — the rest of this body is left undecoded',
-    );
-    return {
-      ...placementBase(ctx, 'PlaceObject3'),
-      depth,
-      move,
-      characterId,
-      matrix,
-      cxform,
-      ratio,
-      name,
-      clipDepth,
-      className,
-    };
+    const decoded = readFilterList(c);
+    filters = decoded.filters;
+    if (!decoded.complete) {
+      const cacheAsBitmap = filters.length > 0;
+      if (cacheAsBitmap) {
+        c.emit(Codes.CACHE_AS_BITMAP, 'info', 'CacheAsBitmap implied by the filter list');
+      }
+      return {
+        ...placementBase(ctx, 'PlaceObject3'),
+        depth,
+        move,
+        characterId,
+        matrix,
+        cxform,
+        ratio,
+        name,
+        clipDepth,
+        className,
+        image,
+        filters,
+        cacheAsBitmap,
+      };
+    }
   }
 
   const blendMode = hasBlendMode ? c.u8() : null;
   if (blendMode !== null && blendMode > BLEND_MODE_MAX) {
     c.emit(Codes.BLEND_MODE_UNKNOWN, 'warning', `unknown blend mode value ${blendMode} treated as normal`);
   }
-  const bitmapCache = hasCacheAsBitmap ? c.u8() : null;
-  if (bitmapCache !== null && bitmapCache !== 0) {
-    c.emit(Codes.CACHE_AS_BITMAP, 'info', 'CacheAsBitmap set on this placement');
+  const rawCacheValue = hasCacheAsBitmap ? c.u8() : null;
+  const cacheAsBitmap = (rawCacheValue !== null && rawCacheValue !== 0) || (filters?.length ?? 0) > 0;
+  if (cacheAsBitmap) {
+    c.emit(
+      Codes.CACHE_AS_BITMAP,
+      'info',
+      (filters?.length ?? 0) > 0 ? 'CacheAsBitmap implied by the filter list' : 'CacheAsBitmap set on this placement',
+    );
   }
   const visible = hasVisible ? c.u8() !== 0 : null;
   let opaqueBackground: Rgba | null = null;
@@ -273,8 +295,11 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
     name,
     clipDepth,
     className,
+    image,
+    filters,
     blendMode,
-    bitmapCache,
+    cacheAsBitmap,
+    rawCacheValue,
     visible,
     opaqueBackground,
     clipActions,
@@ -289,11 +314,11 @@ export function decodeRemoveObject(c: Cursor, index: number, tagOffset: number):
     c.emit(Codes.VALUE_OUT_OF_RANGE, 'info', 'RemoveObject body carries trailing bytes');
     c.seek(c.limit);
   }
-  return { kind: 'remove', index, tag: 'RemoveObject', depth, tagOffset };
+  return { kind: 'remove', index, tag: 'RemoveObject', depth, characterId, tagOffset };
 }
 
 /** `RemoveObject2` (28): `Depth UI16`. */
 export function decodeRemoveObject2(c: Cursor, index: number, tagOffset: number): RemovalOp {
   const depth = c.u16();
-  return { kind: 'remove', index, tag: 'RemoveObject2', depth, tagOffset };
+  return { kind: 'remove', index, tag: 'RemoveObject2', depth, characterId: null, tagOffset };
 }

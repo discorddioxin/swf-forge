@@ -368,8 +368,8 @@ Result mapping (our `Mat2D`):
 | Mat2D | MATRIX field | Default when absent |
 | --- | --- | --- |
 | `a` | `ScaleX` | `1` |
-| `b` | `RotateSkew0` | `0` |
-| `c` | `RotateSkew1` | `0` |
+| `b` | `RotateSkew1` | `0` |
+| `c` | `RotateSkew0` | `0` |
 | `d` | `ScaleY` | `1` |
 | `tx` / `ty` | `TranslateX` / `TranslateY` (twips) | `0` |
 
@@ -502,7 +502,7 @@ and recording it here**). Errata `E-011` records the two corrections that produc
 | `SF0006` | error | `ZWS` present but no LZMA decoder available | SWF-D02 |
 | `SF0007` | error | decompressed output exceeds the configured cap | SWF-R010 |
 | `SF0008` | warning | non-zero padding bits discarded by `align()` (`--strict-bits`) | IMPL-010-R006 |
-| `SF0009` | warning / info | overlong or 5-byte-overflowing `EncodedU32` | IMPL-010-R013/014 |
+| `SF0009` | info | overlong or 5-byte-overflowing `EncodedU32` (strict-mode rejection, if added, remains an error) | IMPL-010-R013/014 |
 | `SF0010` | warning | string truncated at the configured cap | IMPL-010-R024 |
 | `SF0011` | warning | invalid UTF-8 replaced with U+FFFD | IMPL-010-R022 |
 | `SF0012` | info | legacy (≤ SWF 5) string decoded with the fallback encoding | AVM1-D01 |
@@ -546,6 +546,7 @@ applies).
 | `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 |
 | `T-SWF-016` | strict mode throws `SwfReadError` with the documented code and offset | F1 |
 | `T-SWF-017` | zero allocations from a warm cursor over 10⁶ reads (allocation counter) | F1 |
+| `T-SWF-024` | every registered diagnostic severity matches its owning implementation §8 table | F1 |
 
 ### Vector table
 

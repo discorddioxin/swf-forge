@@ -70,20 +70,24 @@ describe('sprite handling', () => {
     expect(file.sink.codes()).toContain('SF0129');
   });
 
-  it('assembles the sprite timeline from its own slice, observed frames winning', () => {
-    const movie = buildMovieModel(openSwf(spriteSwf()));
+  it('T-MOD-601 pads the sprite timeline to its declared FrameCount', () => {
+    const file = openSwf(spriteSwf());
+    const movie = buildMovieModel(file);
     const sprite = movie.characters.get(5)?.sprite;
     expect(sprite).toBeDefined();
     expect(sprite?.declaredFrameCount).toBe(2);
     expect(sprite?.characterName).toBe('sprite_5');
-    expect(sprite?.timeline.frames.length).toBe(1);
+    expect(sprite?.timeline.frames.length).toBe(2);
+    expect(sprite?.timeline.observedFrameCount).toBe(1);
     expect(sprite?.timeline.labels.get('intro')).toBe(0);
     const ops = sprite?.timeline.frames[0]?.ops ?? [];
     expect(ops.map((op) => op.kind)).toEqual(['place', 'place']);
     expect(ops[1]).toMatchObject({ kind: 'place', depth: 1, characterId: 9 });
+    expect(movie.characters.get(9)?.kind).toBe('missing');
+    expect(file.sink.codes()).toContain('SF0110');
   });
 
-  it('reports the sprite frame-count mismatch (SF0023) without padding', () => {
+  it('reports the sprite frame-count mismatch (SF0023) and pads to the declared count', () => {
     const file = openSwf(spriteSwf());
     const mismatch = file.sink.list().find((d) => d.code === 'SF0023');
     expect(mismatch?.message).toContain('sprite 5');
@@ -106,6 +110,63 @@ describe('sprite handling', () => {
 });
 
 describe('movie model', () => {
+  it('T-MOD-021 detects FileAttributes AS3 and DoABC independently as SF1000', () => {
+    const as3Only = openSwf(
+      buildSwf({
+        version: 10,
+        body: concat(tag(Tag.FileAttributes, Uint8Array.from([8, 0, 0, 0])), endTag()),
+        frameCount: 0,
+      }),
+    );
+    buildMovieModel(as3Only);
+    expect(as3Only.diagnostics.filter((diagnostic) => diagnostic.code === 'SF1000')).toHaveLength(1);
+
+    const doAbcOnly = openSwf(
+      buildSwf({
+        version: 10,
+        body: concat(tag(Tag.DoABC, Uint8Array.from([0, 0, 0, 0, 0])), endTag()),
+        frameCount: 0,
+      }),
+    );
+    buildMovieModel(doAbcOnly);
+    expect(doAbcOnly.diagnostics.filter((diagnostic) => diagnostic.code === 'SF1000')).toHaveLength(1);
+
+    const both = openSwf(
+      buildSwf({
+        version: 10,
+        body: concat(
+          tag(Tag.FileAttributes, Uint8Array.from([8, 0, 0, 0])),
+          tag(Tag.DoABC, Uint8Array.from([0, 0, 0, 0, 0])),
+          endTag(),
+        ),
+        frameCount: 0,
+      }),
+    );
+    buildMovieModel(both);
+    expect(both.diagnostics.filter((diagnostic) => diagnostic.code === 'SF1000')).toHaveLength(2);
+  });
+
+  it('T-MOD-025 reports SetTabIndex at an empty depth and keeps the op', () => {
+    const emptyBody = concat(tag(Tag.SetTabIndex, Uint8Array.from([1, 0, 3, 0])), showFrames(1), endTag());
+    const emptyFile = openSwf(buildSwf({ version: 7, body: emptyBody, frameCount: 1 }));
+    const emptyMovie = buildMovieModel(emptyFile);
+    expect(emptyMovie.mainTimeline.frames[0]?.ops).toEqual([
+      { kind: 'tabIndex', index: 0, depth: 1, tabIndex: 3, tagOffset: 2 },
+    ]);
+    expect(emptyFile.sink.codes()).toContain('SF0166');
+
+    const placedBody = concat(
+      tag(Tag.DefineShape, shapeBody(1)),
+      tag(Tag.PlaceObject2, placeBody(1, 1)),
+      tag(Tag.SetTabIndex, Uint8Array.from([1, 0, 3, 0])),
+      showFrames(1),
+      endTag(),
+    );
+    const placedFile = openSwf(buildSwf({ version: 7, body: placedBody, frameCount: 1 }));
+    buildMovieModel(placedFile);
+    expect(placedFile.sink.codes()).not.toContain('SF0166');
+  });
+
   it('models the appendix fixture: stage, background, one frame, one character', () => {
     const movie = buildMovieModel(openSwf(new Uint8Array(readFileSync(FIXTURE))));
     expect(movie.frameCount).toBe(1);
@@ -137,7 +198,7 @@ describe('movie model', () => {
   it('pads the main timeline to the declared frame count', () => {
     const body = concat(showFrames(1), endTag());
     const movie = buildMovieModel(openSwf(buildSwf({ version: 6, body, frameCount: 3 })));
-    expect(movie.mainTimeline.observedFrameCount).toBe(3);
+    expect(movie.mainTimeline.observedFrameCount).toBe(1);
     expect(movie.mainTimeline.frames[1]?.ops).toEqual([]);
     const mismatch = movie.mainTimeline.declaredFrameCount;
     expect(mismatch).toBe(3);
@@ -166,7 +227,14 @@ describe('movie model', () => {
     const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
     const movie = buildMovieModel(file);
     expect(movie.background).toBe(0x102030);
-    expect(movie.control.scenes.map((s) => s.name)).toEqual(['Intro', 'Level 1']);
+    expect(movie.control.scenes).toEqual([
+      { name: 'Intro', frameOffset: 0 },
+      { name: 'Level 1', frameOffset: 1 },
+    ]);
+    expect(movie.control.sceneFrameRemap).toEqual([
+      { sceneIndex: 0, frameOffset: 0, frameCount: 1 },
+      { sceneIndex: 1, frameOffset: 1, frameCount: 0 },
+    ]);
     expect(movie.control.labels.get('start')?.[0]).toEqual({ frame: 1, namedAnchor: false });
     expect(movie.control.scriptLimits).toEqual({ maxRecursionDepth: 256, scriptTimeout: 15 });
     expect(movie.metadata).toEqual({ xmp: '<xmp/>' });

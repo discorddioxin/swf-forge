@@ -222,15 +222,16 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
               headerOffset,
               { tagCode: code },
             );
-          } else if (prior) {
-            cursor.emit(
-              Codes.DUPLICATE_CHARACTER,
-              'warning',
-              `character id ${id} defined twice (${tagName(prior.tagCode)} then ${info.name}); the first definition wins`,
-              headerOffset,
-              { tagCode: code, characterId: id },
-            );
           } else {
+            if (prior) {
+              cursor.emit(
+                Codes.DUPLICATE_CHARACTER,
+                'warning',
+                `character id ${id} defined twice at body offsets ${prior.offset} and ${bodyOffset}; the last definition wins and the earlier entry remains in stream order`,
+                headerOffset,
+                { tagCode: code, characterId: id },
+              );
+            }
             const entry: DefinitionEntry = {
               id,
               tagCode: code,

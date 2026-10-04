@@ -27,6 +27,7 @@ import {
 import { Tag, tagName } from '../tags/tag-codes.js';
 import { openTagCursor, assembleTimeline } from './timeline.js';
 import type {
+  CharacterKind,
   CharacterModel,
   FileAttributesModel,
   ImportEntry,
@@ -45,6 +46,54 @@ export interface BuildMovieOptions {
 }
 
 const BUTTON_TAGS: ReadonlySet<number> = new Set([Tag.DefineButton, Tag.DefineButton2]);
+
+function characterKindForTag(tagCode: number): Exclude<CharacterKind, 'missing'> {
+  switch (tagCode) {
+    case Tag.DefineShape:
+    case Tag.DefineShape2:
+    case Tag.DefineShape3:
+      return 'shape';
+    case Tag.DefineShape4:
+      return 'shape4';
+    case Tag.DefineMorphShape:
+    case Tag.DefineMorphShape2:
+      return 'morphShape';
+    case Tag.DefineSprite:
+      return 'sprite';
+    case Tag.DefineButton:
+    case Tag.DefineButton2:
+      return 'button';
+    case Tag.DefineText:
+    case Tag.DefineText2:
+      return 'text';
+    case Tag.DefineEditText:
+      return 'editText';
+    case Tag.DefineFont:
+      return 'font';
+    case Tag.DefineFont2:
+      return 'font2';
+    case Tag.DefineFont3:
+      return 'font3';
+    case Tag.DefineFont4:
+      return 'font4';
+    case Tag.DefineBits:
+    case Tag.DefineBitsJPEG2:
+    case Tag.DefineBitsJPEG3:
+    case Tag.DefineBitsJPEG4:
+      return 'bitmap';
+    case Tag.DefineBitsLossless:
+    case Tag.DefineBitsLossless2:
+      return 'bitmapLossless';
+    case Tag.DefineSound:
+      return 'sound';
+    case Tag.DefineVideoStream:
+      return 'video';
+    case Tag.DefineBinaryData:
+      return 'binaryData';
+    default:
+      return 'unknown';
+  }
+}
 
 function rgbToNumber(color: { r: number; g: number; b: number }): number {
   return (color.r << 16) | (color.g << 8) | color.b;
@@ -74,17 +123,70 @@ export function fallbackId(body: Uint8Array, prefix: unknown): string {
 }
 
 interface ControlPass {
-  control: Omit<MovieControlModel, 'labels' | 'tabIndexOps'>;
+  control: Omit<MovieControlModel, 'labels' | 'tabIndexOps' | 'labelEntries'>;
   initActions: InitActionBlock[];
   labels: Map<string, { frame: number; namedAnchor: boolean }[]>;
+  labelEntries: { name: string; frame: number; namedAnchor: boolean }[];
+}
+
+function normalizeScenes(
+  scenes: readonly { name: string; frameOffset: number }[],
+  frameCount: number,
+  c: ReturnType<typeof openTagCursor>,
+): { name: string; frameOffset: number }[] {
+  const normalized: { name: string; frameOffset: number }[] = [];
+  let previousRaw = -1;
+  let previousOffset = 0;
+  for (let i = 0; i < scenes.length; i += 1) {
+    const scene = scenes[i];
+    if (!scene) continue;
+    const context = { context: `scene data entry ${i}`, characterId: null };
+    if (i === 0 && scene.frameOffset !== 0) {
+      c.emit(
+        Codes.SCENE_DATA_INCONSISTENT,
+        'warning',
+        `first scene starts at ${scene.frameOffset}, not 0`,
+        c.offset,
+        context,
+      );
+    }
+    if (i > 0 && scene.frameOffset <= previousRaw) {
+      c.emit(
+        Codes.SCENE_DATA_INCONSISTENT,
+        'warning',
+        scene.frameOffset === previousRaw
+          ? `scene "${scene.name}" repeats offset ${scene.frameOffset}`
+          : `scene "${scene.name}" starts before the prior scene`,
+        c.offset,
+        context,
+      );
+    }
+    if (scene.frameOffset > frameCount) {
+      c.emit(
+        Codes.SCENE_DATA_INCONSISTENT,
+        'warning',
+        `scene "${scene.name}" offset ${scene.frameOffset} exceeds frame count ${frameCount}`,
+        c.offset,
+        context,
+      );
+    }
+    const bounded = Math.min(scene.frameOffset, frameCount);
+    const frameOffset = i === 0 ? 0 : Math.max(previousOffset, bounded);
+    normalized.push({ name: scene.name, frameOffset });
+    previousRaw = scene.frameOffset;
+    previousOffset = frameOffset;
+  }
+  return normalized;
 }
 
 function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' | 'strict'): ControlPass {
   let background = 0xffffff;
   let backgroundSource: 'default' | 'tag' = 'default';
   const backgroundChanges: { frame: number; rgb: number }[] = [];
-  const scenes: { name: string; startFrame: number }[] = [];
+  const scenes: { name: string; frameOffset: number }[] = [];
   const labels = new Map<string, { frame: number; namedAnchor: boolean }[]>();
+  const tagLabelEntries: { name: string; frame: number; namedAnchor: boolean }[] = [];
+  const sceneLabelEntries: { name: string; frame: number; namedAnchor: boolean }[] = [];
   const exports = new Map<string, number>();
   const exportsById = new Map<number, string>();
   const imports: ImportEntry[] = [];
@@ -142,7 +244,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       case Tag.DefineScalingGrid: {
         const { characterId, splitter } = decodeDefineScalingGrid(c);
         if (splitter.xMax - splitter.xMin < 1 || splitter.yMax - splitter.yMin < 1) break;
-        const target = file.definitions.find((d) => d.id === characterId);
+        const target = [...file.definitions].reverse().find((d) => d.id === characterId);
         if (!target || (target.tagCode !== Tag.DefineSprite && !BUTTON_TAGS.has(target.tagCode))) {
           c.emit(
             Codes.SCALING_GRID_TARGET,
@@ -159,8 +261,26 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
         scriptLimits = { maxRecursionDepth: limits.maxRecursionDepth, scriptTimeout: limits.scriptTimeout };
         break;
       }
-      case Tag.FileAttributes:
-        attributes = { ...decodeFileAttributes(c), origin: ref };
+      case Tag.FileAttributes: {
+        const info = decodeFileAttributes(c);
+        attributes = { ...info, origin: ref };
+        if (info.as3) {
+          c.emit(
+            Codes.AVM2_CONTENT,
+            'error',
+            `FileAttributes AS3 flag indicates AVM2 content at tag offset ${ref.headerOffset}`,
+            ref.headerOffset,
+          );
+        }
+        break;
+      }
+      case Tag.DoABC:
+        c.emit(
+          Codes.AVM2_CONTENT,
+          'error',
+          `DoABC tag indicates AVM2 content at offset ${ref.headerOffset}`,
+          ref.headerOffset,
+        );
         break;
       case Tag.Metadata: {
         const { xmp } = decodeMetadata(c);
@@ -174,8 +294,10 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       }
       case Tag.DefineSceneAndFrameLabelData: {
         const data = decodeSceneAndFrameLabelData(c);
-        for (const scene of data.scenes) scenes.push({ name: scene.name, startFrame: scene.startFrame });
+        scenes.push(...normalizeScenes(data.scenes, file.header.frameCount, c));
         for (const entry of data.labels) {
+          const label = { name: entry.name, frame: entry.frame, namedAnchor: false };
+          sceneLabelEntries.push(label);
           const list = labels.get(entry.name) ?? [];
           list.push({ frame: entry.frame, namedAnchor: false });
           labels.set(entry.name, list);
@@ -189,6 +311,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       }
       case Tag.FrameLabel: {
         const { name, namedAnchor } = decodeFrameLabel(c);
+        tagLabelEntries.push({ name, frame, namedAnchor });
         const list = labels.get(name) ?? [];
         list.push({ frame, namedAnchor });
         labels.set(name, list);
@@ -218,6 +341,12 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
 
   const metadata: Record<string, string> = {};
   if (metadataXmp !== null) metadata['xmp'] = metadataXmp;
+  const sceneFrameRemap = scenes.map((scene, sceneIndex) => {
+    const frameOffset = Math.min(scene.frameOffset, file.header.frameCount);
+    const nextOffset = scenes[sceneIndex + 1]?.frameOffset ?? file.header.frameCount;
+    const endFrame = Math.min(nextOffset, file.header.frameCount);
+    return { sceneIndex, frameOffset, frameCount: Math.max(0, endFrame - frameOffset) };
+  });
 
   return {
     control: {
@@ -225,6 +354,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       backgroundSource,
       backgroundChanges,
       scenes,
+      sceneFrameRemap,
       exports,
       exportsById,
       rootClassName,
@@ -236,6 +366,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
     },
     initActions,
     labels,
+    labelEntries: [...tagLabelEntries, ...sceneLabelEntries],
   };
 }
 
@@ -250,7 +381,7 @@ function buildSpriteModel(
   const tags = file.tagIndex.tags.slice(range.start, range.end);
   const timeline = assembleTimeline(file, tags, {
     declaredFrameCount: range.frameCount,
-    padToDeclared: false,
+    padToDeclared: true,
     mode,
   });
   return {
@@ -268,7 +399,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
   const mode = options.mode ?? 'soft';
   const topRefs = file.tagIndex.tags.filter((tag) => tag.inSprite === null);
 
-  const { control, initActions, labels } = collectControl(file, topRefs, mode);
+  const { control, initActions, labels, labelEntries } = collectControl(file, topRefs, mode);
   const characters = new Map<number, CharacterModel>();
   for (const definition of file.definitions) {
     const ref = file.tagIndex.tags[definition.tagIndex];
@@ -279,6 +410,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
         : null;
     characters.set(definition.id, {
       id: definition.id,
+      kind: characterKindForTag(definition.tagCode),
       tagCode: definition.tagCode,
       tagName: tagName(definition.tagCode),
       index: ref,
@@ -299,12 +431,30 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     },
   });
 
+  const timelines = [
+    mainTimeline,
+    ...[...characters.values()].flatMap((character) => (character.sprite ? [character.sprite.timeline] : [])),
+  ];
+  for (const timeline of timelines) {
+    for (const frameModel of timeline.frames) {
+      for (const op of frameModel.ops) {
+        if (op.kind === 'place' && op.characterId !== null && !characters.has(op.characterId)) {
+          characters.set(op.characterId, {
+            id: op.characterId,
+            kind: 'missing',
+            tagCode: null,
+            tagName: 'missing',
+            index: null,
+            sprite: null,
+          });
+        }
+      }
+    }
+  }
+
   // `IMPL-040-R043`: the tab-index ops live in the frame op lists; the control model mirrors them.
   const tabIndexOps: SetTabIndexOp[] = [];
-  for (const timeline of [
-    mainTimeline,
-    ...[...characters.values()].flatMap((ch) => (ch.sprite ? [ch.sprite.timeline] : [])),
-  ]) {
+  for (const timeline of timelines) {
     for (const frameModel of timeline.frames) {
       for (const op of frameModel.ops) if (op.kind === 'tabIndex') tabIndexOps.push(op);
     }
@@ -337,6 +487,6 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     mainTimeline,
     initActions,
     metadata: control.metadata,
-    control: { ...control, labels, tabIndexOps },
+    control: { ...control, labels, labelEntries, tabIndexOps },
   };
 }

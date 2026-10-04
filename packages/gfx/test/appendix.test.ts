@@ -58,7 +58,9 @@ function frameZero(file: SwfFile): DrawItem[] {
   const entries = applyOps([], ops);
 
   const geometries = new Map<number, ShapeGeometry>();
-  for (const [id, character] of movie.characters) geometries.set(id, decodeShape(file, character.index));
+  for (const [id, character] of movie.characters) {
+    if (character.index) geometries.set(id, decodeShape(file, character.index));
+  }
 
   return collectDrawItems(entries, (characterId) => {
     const geometry = geometries.get(characterId);
@@ -104,12 +106,12 @@ describe('appendix-a static render', () => {
     const file = openSwf(fixtureBytes());
     const movie = buildMovieModel(file);
     const character = movie.characters.get(1);
-    expect(character).toBeDefined();
-    const cursor = new Cursor(file.body, character!.index.offset, character!.index.offset + character!.index.length, {
+    if (!character?.index) throw new Error('appendix-a shape #1 is missing its definition tag');
+    const cursor = new Cursor(file.body, character.index.offset, character.index.offset + character.index.length, {
       sink: file.sink,
       version: file.version,
     });
-    const { shape } = decodeDefineShapeVersion(character!.index.code, cursor);
+    const { shape } = decodeDefineShapeVersion(character.index.code, cursor);
     expect(shape.paths).toEqual([]);
     expect(shape.strokes).toEqual([{ styleId: 1, edgeRefs: [0, 1, 2, 3], closed: true }]);
     expect(shape.styles.lines[1]).toMatchObject({ width: 20, color: { r: 0, g: 0, b: 0, a: 255 } });

@@ -55,6 +55,7 @@ export type { TagInfo } from './tags/tag-codes.js';
 
 // ---- shapes (`IMPL-060`) ------------------------------------------------------------------------
 export { decodeDefineShapeVersion, readShapeWithStyle } from './tags/shape.js';
+export { readFilterList } from './tags/filters.js';
 export type {
   DefineShapeResult,
   Edge,
@@ -72,6 +73,7 @@ export type {
 // ---- model (`CMP` §3, `IMPL-030` §7/§8, `IMPL-040` §5) ------------------------------------------
 export { assembleTimeline, buildMovieModel, fallbackId, openTagCursor } from './model/index.js';
 export type {
+  CharacterKind,
   CharacterModel,
   DisplayOp,
   FileAttributesModel,
@@ -116,4 +118,16 @@ export {
   decodeSymbolClass,
 } from './tags/control.js';
 export type { ActionBlockRef, PlacementOp, PlacementTag, RemovalOp, TimelineOp } from './tags/place.js';
+export type {
+  BevelFilterSpec,
+  BlurFilterSpec,
+  ColorMatrixFilterSpec,
+  ConvolutionFilterSpec,
+  DropShadowFilterSpec,
+  FilterListResult,
+  FilterSpec,
+  GlowFilterSpec,
+  GradientGlowFilterSpec,
+  UnknownFilterSpec,
+} from './tags/filters.js';
 export type { AssetPair, ExportAssetsResult, FileAttributesInfo } from './tags/control.js';

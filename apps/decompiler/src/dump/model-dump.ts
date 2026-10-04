@@ -12,6 +12,7 @@ import type {
   Cxform,
   Diagnostic,
   DisplayOp,
+  FilterSpec,
   Mat2D,
   MovieModel,
   PlacementOp,
@@ -74,6 +75,14 @@ export interface DumpAction {
   readonly length: number;
 }
 
+type SerializedFilter<F> = F extends unknown
+  ? F extends { readonly kind: 'unknown'; readonly raw: Uint8Array }
+    ? Omit<F, 'raw'> & { readonly raw: readonly number[] }
+    : F
+  : never;
+
+export type DumpFilter = SerializedFilter<FilterSpec>;
+
 export interface DumpPlacement {
   readonly kind: 'place';
   readonly tag: string;
@@ -87,8 +96,11 @@ export interface DumpPlacement {
   readonly ratio: number | null;
   readonly clipDepth: number | null;
   readonly className: string | null;
+  readonly image: { readonly kind: 'class' | 'characterId' } | null;
+  readonly filters: readonly DumpFilter[] | null;
   readonly blendMode: number | null;
-  readonly bitmapCache: number | null;
+  readonly cacheAsBitmap: boolean;
+  readonly rawCacheValue: number | null;
   readonly visible: boolean | null;
   readonly opaqueBackground: DumpRgba | null;
   readonly clipActions: DumpAction | null;
@@ -100,11 +112,13 @@ export interface DumpRemoval {
   readonly tag: string;
   readonly index: number;
   readonly depth: number;
+  readonly characterId: number | null;
   readonly tagOffset: number;
 }
 
 export interface DumpTabIndex {
   readonly kind: 'tabIndex';
+  readonly index: number;
   readonly depth: number;
   readonly tabIndex: number;
   readonly tagOffset: number;
@@ -151,9 +165,9 @@ export interface DumpSprite {
 export interface DumpCharacter {
   readonly id: number;
   readonly tag: string;
-  readonly tagCode: number;
-  readonly tagOffset: number;
-  readonly length: number;
+  readonly tagCode: number | null;
+  readonly tagOffset: number | null;
+  readonly length: number | null;
   readonly sprite: DumpSprite | null;
 }
 
@@ -168,7 +182,12 @@ export interface DumpControl {
   readonly background: number;
   readonly backgroundSource: 'default' | 'tag';
   readonly backgroundChanges: readonly { readonly frame: number; readonly rgb: number }[];
-  readonly scenes: readonly { readonly name: string; readonly startFrame: number }[];
+  readonly scenes: readonly { readonly name: string; readonly frameOffset: number }[];
+  readonly sceneFrameRemap: readonly {
+    readonly sceneIndex: number;
+    readonly frameOffset: number;
+    readonly frameCount: number;
+  }[];
   readonly labels: readonly DumpLabel[];
   readonly exports: readonly { readonly name: string; readonly id: number }[];
   readonly rootClassName: string | null;
@@ -287,6 +306,10 @@ function action(value: ActionBlockRef | null): DumpAction | null {
   return value === null ? null : { offset: value.offset, length: value.length };
 }
 
+function filterDump(value: FilterSpec): DumpFilter {
+  return value.kind === 'unknown' ? { ...value, raw: Array.from(value.raw) } : value;
+}
+
 function opDump(op: DisplayOp): DumpOp {
   if (op.kind === 'place') {
     const place: PlacementOp = op;
@@ -303,8 +326,11 @@ function opDump(op: DisplayOp): DumpOp {
       ratio: place.ratio,
       clipDepth: place.clipDepth,
       className: place.className,
+      image: place.image,
+      filters: place.filters === null ? null : place.filters.map(filterDump),
       blendMode: place.blendMode,
-      bitmapCache: place.bitmapCache,
+      cacheAsBitmap: place.cacheAsBitmap,
+      rawCacheValue: place.rawCacheValue,
       visible: place.visible,
       opaqueBackground: place.opaqueBackground === null ? null : rgba(place.opaqueBackground),
       clipActions: action(place.clipActions),
@@ -312,9 +338,16 @@ function opDump(op: DisplayOp): DumpOp {
     };
   }
   if (op.kind === 'remove') {
-    return { kind: 'remove', tag: op.tag, index: op.index, depth: op.depth, tagOffset: op.tagOffset };
+    return {
+      kind: 'remove',
+      tag: op.tag,
+      index: op.index,
+      depth: op.depth,
+      characterId: op.characterId,
+      tagOffset: op.tagOffset,
+    };
   }
-  return { kind: 'tabIndex', depth: op.depth, tabIndex: op.tabIndex, tagOffset: op.tagOffset };
+  return { kind: 'tabIndex', index: op.index, depth: op.depth, tabIndex: op.tabIndex, tagOffset: op.tagOffset };
 }
 
 /**
@@ -391,12 +424,13 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
       frame: change.frame,
       rgb: change.rgb,
     })),
-    scenes: model.control.scenes.map((scene) => ({ name: scene.name, startFrame: scene.startFrame })),
-    labels: [...model.control.labels.entries()]
-      .flatMap(([name, entries]) =>
-        entries.map((entry) => ({ name, frame: entry.frame, namedAnchor: entry.namedAnchor })),
-      )
-      .sort((a, b) => a.frame - b.frame || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0)),
+    scenes: model.control.scenes.map((scene) => ({ name: scene.name, frameOffset: scene.frameOffset })),
+    sceneFrameRemap: model.control.sceneFrameRemap.map((entry) => ({ ...entry })),
+    labels: model.control.labelEntries.map((entry) => ({
+      name: entry.name,
+      frame: entry.frame,
+      namedAnchor: entry.namedAnchor,
+    })),
     exports: [...model.control.exports.entries()]
       .map(([name, id]) => ({ name, id }))
       .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id - b.id)),
@@ -412,6 +446,7 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
       .sort((a, b) => a.id - b.id),
     tabIndexOps: model.control.tabIndexOps.map((op) => ({
       kind: 'tabIndex' as const,
+      index: op.index,
       depth: op.depth,
       tabIndex: op.tabIndex,
       tagOffset: op.tagOffset,
@@ -441,9 +476,9 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
     .map((character) => ({
       id: character.id,
       tag: character.tagName,
-      tagCode: character.index.code,
-      tagOffset: character.index.headerOffset,
-      length: character.index.length,
+      tagCode: character.index?.code ?? null,
+      tagOffset: character.index?.headerOffset ?? null,
+      length: character.index?.length ?? null,
       sprite:
         character.sprite === null
           ? null
@@ -574,7 +609,7 @@ export function renderDump(dump: ModelDump, input: string, verbose: boolean): st
   lines.push(
     `  control       scenes ${control.scenes.length}, exports ${control.exports.length}, imports ${control.imports.length}, metadata ${control.metadata.length}, tabIndex ${control.tabIndexOps.length}, scaling grids ${control.scalingGrids.length}`,
   );
-  for (const scene of control.scenes) lines.push(`    scene "${scene.name}" at frame ${scene.startFrame}`);
+  for (const scene of control.scenes) lines.push(`    scene "${scene.name}" at frame ${scene.frameOffset}`);
   for (const label of control.labels) {
     lines.push(`    label "${label.name}" at frame ${label.frame}${label.namedAnchor ? ' (named anchor)' : ''}`);
   }

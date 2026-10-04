@@ -82,7 +82,7 @@ verify      → structural re-checks on the emitted output        (this doc + do
     residual/
       <fn>.bytecode.ts     T2 blobs + interpreter entry descriptors
     assets/
-      index.ts             asset registry (typed) 
+      index.ts             asset registry (typed)
   assets/                  ktx2/png/webp/ogg/mp4/... (content-hashed filenames)
   forge.manifest.json      full manifest (runtime + tooling)
   build-info.json          tool versions, chapter-pin status, gate states, budgets

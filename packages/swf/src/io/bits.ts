@@ -14,9 +14,3 @@ export function signExtend(value: number, bits: number): number {
   const half = 2 ** (bits - 1);
   return value >= half ? value - 2 ** bits : value;
 }
-
-/** Fixed-point interpretation of a signed bit field: `bits - 16` integer bits (`fb`). */
-export function fixedFromSigned(value: number, bits: number): number {
-  const signed = signExtend(value, bits);
-  return signed;
-}

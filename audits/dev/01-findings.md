@@ -9,6 +9,10 @@ belongs in `docs/`.
 Severity legend: **blocker** wrong output for legal input · **major** a `MUST` missing, inverted or
 mis-wired with user-visible effect · **minor** one diagnostic, flag, field name or dead-code divergence.
 
+> The narratives below preserve each finding's original rule, symptom, and proposed fix. They are a
+> historical audit record, not a statement that every defect remains open. Verified dispositions for
+> F-01–F-24 and O-01–O-03 are recorded at the end of this file and in `02-conformance.md`.
+
 ---
 
 ## F-01 — `DefineShape4` flag bits are read at the wrong offsets (blocker)
@@ -692,3 +696,53 @@ and `prettier` are the only code gates, and `pnpm typecheck && pnpm test` are gr
 are live. The doc gate even carries a two-entry historical allowlist (`T-MOD-201`, `T-RT-020`), which is
 correct for the doc set but reinforces the same point: a green gate is not conformance evidence. The
 audit's evidence is the probe scripts and the registry scan in this folder, not the CI status.
+
+---
+
+## Verified disposition — 2026-10-04
+
+The original F-01–F-24 defect statements above are preserved for provenance. All 24 have been remediated
+in the current worktree and have the evidence recorded in [`02-conformance.md`](02-conformance.md) §2.
+The mapping below is a status index; it does not promote any phase/component gate.
+
+| Finding | Verified disposition |
+| --- | --- |
+| F-01 | Fixed; `T-MOD-111–118` plus the full Shape4 runtime probe. |
+| F-02 | Fixed; `T-MOD-113` plus the v1 `0xFF` count probe. |
+| F-03 | Fixed; `T-SWF-001` asserts `SF0006` for unavailable ZWS decoding. |
+| F-04 | Fixed; `T-SWF-007` asserts duplicate preservation and last-definition lookup. |
+| F-05 | Fixed; `T-SWF-024` compares registry severities to implementation tables. |
+| F-06 | Fixed; `T-SWF-018` pins lazy tag indexing/payload access. |
+| F-07 | Fixed; model test asserts the `missing` placeholder and `SF0110`. |
+| F-08 | Fixed; `T-SWF-015`/`016` pin soft and strict invalid-width handling. |
+| F-09 | Fixed; `T-MOD-112`/`116` pin version and empty-subpath diagnostics. |
+| F-10 | Fixed; `T-SWF-015` pins cursor post-condition and sub-cursor clamping. |
+| F-11 | Fixed; `T-SWF-024` pins `SF0009` severity against the owning table. |
+| F-12 | Fixed; doc 020 §8 now agrees with `IMPL-020-R028`; the document verifier passes. |
+| F-13 | Fixed; `T-MOD-601` pins sprite declared-frame padding. |
+| F-14 | Fixed; model test pins `frameOffset` and scene remapping. |
+| F-15 | Fixed; `T-MOD-118` covers fill and line style duplicate ceilings. |
+| F-16 | Fixed; `T-MOD-025` pins the empty-depth `SF0166` condition. |
+| F-17 | Fixed; CLI tests and runtime source pins cover both documented flags. |
+| F-18 | Fixed; numeric IO conformance tests cite `T-SWF-004`, `013`, `015`, and `016`. |
+| F-19 | Fixed; `T-SWF-024` checks the full registry/table range, not selected examples. |
+| F-20 | Fixed; unused `fixedFromSigned` helper removed from source and barrel. |
+| F-21 | Fixed; `T-MOD-039` and dump probe preserve `SetTabIndexOp.index` in both copies. |
+| F-22 | Fixed; `T-MOD-029` and dump probe preserve same-frame control-label order. |
+| F-23 | Fixed; `T-MOD-003` preserves `RemoveObject.characterId` and nulls the `RemoveObject2` value. |
+| F-24 | Fixed; `T-MOD-009` and dump interface probe cover PlaceObject3 image/filter/cache metadata. |
+
+### Systemic observations
+
+- **O-01 — diagnostic ownership:** addressed by check 14. Current audit classifies 87 codes as 77
+  sink-emitted, 1 exception-reported, 9 deferred to existing work packages, and 0 unmapped. The per-code
+  table and owners are generated on each audit run; deferred work remains open.
+- **O-02 — test traceability:** addressed as a traceability/process control by check 15. The current table
+  has 383 declared ids: 30 test-cited, 1 source-only, and 352 scheduled/unwired, each with an owning
+  work package or source document. The 352 rows are not executed tests and remain roadmap debt.
+- **O-03 — code-aware gates:** addressed in local/CI configuration. `.github/workflows/ci.yml` runs the
+  document gate, audit-tool tests, typecheck, project tests, build, lint, and full audit. All local gates
+  passed; no hosted GitHub Actions result is claimed here.
+
+See `02-conformance.md` §1 for exact commands/results and §5 for preserved roadmap caveats; see
+`03-mechanical-checks.md` for checker behavior, baseline semantics, and remaining scope.

@@ -67,7 +67,7 @@ export interface SwfOpenOptions {
   /** Diagnostics sink; one per movie. */
   sink?: DiagnosticSink;
   /** Whether to build the full tag index eagerly (default) or stream it on demand. */
-  indexStrategy?: 'eager' | 'lazy';
+  indexStrategy?: 'eager' | 'lazy'; // lazy builds the same full index on first `tagIndex`/`definitions` access
 }
 
 export function openSwf(bytes: Uint8Array, opts?: SwfOpenOptions): SwfFile;
@@ -121,8 +121,7 @@ export interface TagRef {
 
 export type TagPayload =
   | { kind: 'bytes'; view: Uint8Array }          // undecoded, for payloads handed to other stages
-  | { kind: 'decoded'; value: unknown }          // memoised decode by the owning module
-  | { kind: 'skipped'; reason: 'unknown' | 'unsupported' | 'not-requested' };
+  | { kind: 'skipped'; reason: 'unknown' | 'unsupported' | 'not-requested' | 'not-a-swf' };
 
 export interface TagIndex {
   readonly tags: readonly TagRef[];
@@ -136,9 +135,11 @@ export interface TagIndex {
 **IMPL-020-R003** `TagIndex` MUST store `TagRef`s in file order, always. Consumers that want a
 different order sort a copy.
 
-**IMPL-020-R004** `readTag()` MUST be idempotent and memoised by `TagRef.index`; two calls for the same
-tag MUST NOT decode twice, and MUST return the identical object (this is what makes the pipeline's
-lazy, demand-driven decode affordable).
+**IMPL-020-R004** `readTag()` MUST return a zero-copy raw byte view and be idempotent/memoised by
+`TagRef.index`; two calls for the same tag MUST return the identical payload object. `indexStrategy: 'lazy'`
+MUST defer framing/index construction until `tagIndex` or `definitions` is first accessed. Tag decoding is
+owned by each tag/model stage; the `decoded` payload variant remains deferred until a shared decode owner
+exists, rather than advertising an unused API surface.
 
 ## 4. Container: signature, decompression, header
 
@@ -190,14 +191,14 @@ bytes 17..n   LZMA-compressed data        // may end with an LZMA end marker
 Parse order (Ch.2): `Signature` (3) → `Version` (UI8) → `FileLength` (UI32) → `FrameSize` (`RECT`) →
 `FrameRate` (UI16, 8.8) → `FrameCount` (UI16).
 
-- **IMPL-020-R011** `FrameLength` vs actual size policy (design SWF-R009, `--tolerate-length`
-  default on):
+- **IMPL-020-R011** `FileLength` vs actual size policy (design SWF-R009, `--tolerate-length`
+  default on); `--strict` promotes either mismatch to an error and returns failure after producing the report:
 
 | Situation | Diagnostic | Behaviour |
 | --- | --- | --- |
-| `FWS` and `fileLength != fileSize` | `SF0005`/`SF0004` | warn; use the actual bytes present |
-| `CWS`/`ZWS` and decompressed > `fileLength` | `SF0004` (warning) | keep the extra bytes (usually a padded writer) |
-| `CWS`/`ZWS` and decompressed < `fileLength` | `SF0005` (warning) | continue with what exists |
+| `FWS` and `fileLength != fileSize` | `SF0005`/`SF0004` (warning by default, error under `--strict`) | use the actual bytes present |
+| `CWS`/`ZWS` and decompressed > `fileLength` | `SF0004` (warning by default, error under `--strict`) | keep the extra bytes (usually a padded writer) |
+| `CWS`/`ZWS` and decompressed < `fileLength` | `SF0005` (warning by default, error under `--strict`) | continue with what exists |
 | `fileLength` absurd (< 8 or > 2 GiB) | `SF0028` (warning) | ignore the field, use actual sizes |
 
 - **IMPL-020-R012** `FrameRate` MUST be stored raw and derived as `raw / 256` (the Appendix A fixture's
@@ -296,8 +297,8 @@ export interface Dictionary {
 
 export interface CharacterModel {
   readonly id: number;
-  readonly kind: CharacterKind;          // the union from CMP-§5 (shape, sprite, font, sound, …)
-  readonly definitionTag: TagRef;
+  readonly kind: CharacterKind;          // the union from CMP-§5, including `missing`
+  readonly definitionTag: TagRef | null; // null only for a placement-created missing placeholder
   readonly exportNames: readonly string[];
   /** Lazily decoded payload; memoised; returns undefined if the payload is malformed. */
   payload<T>(): T | undefined;
@@ -401,7 +402,7 @@ alongside the container range:
 | `SF0103` | warning | sprite nesting deeper than 32 (sub-stream abandoned) |
 | `SF0104` | info | unknown tag code skipped by length |
 | `SF0107` | warning | definition tag with character id 0 (ignored) |
-| `SF0109` | warning | duplicate character id (first definition wins) |
+| `SF0109` | warning | duplicate character id (last definition wins; earlier definition remains reachable as a shadowed entry) |
 
 `SF0105`, `SF0106` and `SF0108` are unassigned inside this block; `SF0110` is shared with `IMPL-030`
 for an undefined character reference seen from the placement side (`E-016`).
@@ -418,7 +419,7 @@ for an undefined character reference seen from the placement side (`E-016`).
 | `T-SWF-010` | every diagnostic code emitted is inside its documented range (catches E-002-class bugs) | F1 |
 | `T-SWF-011` | `maxDecompressedBytes` abort: a 512 MiB bomb is rejected without exhausting memory | F1 |
 | `T-SWF-012` | determinism: two opens of the same bytes produce identical tag indices, dictionary order, and diagnostics | F1 |
-| `T-SWF-018` | lazy decode memoisation: a payload decoded twice yields the same object and one decode call | F1 |
+| `T-SWF-018` | first-access lazy tag indexing and memoized raw payload views (identical object for a repeated read) | F1 |
 | `T-SWF-019` | ordering checks: one fixture per rule violation, correct code and count | F2 |
 | `T-SWF-020` | `showFrame`/`FrameCount` mismatch policy (declared wins, frames padded/truncated) | F2 |
 | `T-SWF-021` | zero-copy: tag bodies are views (`byteOffset` inside the decompressed buffer) | F1 |

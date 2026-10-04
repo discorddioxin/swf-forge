@@ -19,9 +19,11 @@ export interface SwfOpenOptions {
   maxDictionaryEntries?: number;
   /** Parser mode: 'soft' recovers, 'strict' throws on the first structural error. */
   mode?: 'soft' | 'strict';
+  /** Promote a FileLength mismatch from warning to error (`SWF-R009`). */
+  strictLength?: boolean;
   /** Diagnostics sink; one per movie. */
   sink?: DiagnosticSink;
-  /** Whether to build the full tag index eagerly (default) or stream it on demand. */
+  /** Whether to build the full tag index eagerly (default) or on first access. */
   indexStrategy?: 'eager' | 'lazy';
   /** Synchronous inflater for `CWS`/`ZWS` payloads (see `@swf-forge/swf/node`). */
   inflate?: (data: Uint8Array, maxBytes: number) => InflateResult;
@@ -42,8 +44,7 @@ export interface InflateResult {
 
 export type TagPayload =
   | { kind: 'bytes'; view: Uint8Array }
-  | { kind: 'decoded'; value: unknown }
-  | { kind: 'skipped'; reason: 'unknown' | 'unsupported' | 'not-requested' };
+  | { kind: 'skipped'; reason: 'unknown' | 'unsupported' | 'not-requested' | 'not-a-swf' };
 
 export interface SwfFile {
   readonly header: SwfHeader;
@@ -85,30 +86,42 @@ function assemble(
       : 0;
   const { header, tagStreamOffset } = parseHeader(payload, fileLength, compression, input.length, sink, {
     mode: opts.mode ?? 'soft',
+    strictLength: opts.strictLength ?? false,
     declaredVersion: version,
     reportPaddingBits: opts.reportPaddingBits ?? false,
   });
 
-  let stream: TagStreamResult;
-  if (opts.indexStrategy === 'lazy') {
-    stream = { index: emptyIndex(), definitions: [], trailingBytes: 0, sawEnd: false };
-  } else {
-    stream = buildTagIndex(payload.subarray(tagStreamOffset), sink, {
+  let stream: TagStreamResult | undefined =
+    opts.indexStrategy === 'lazy'
+      ? undefined
+      : buildTagIndex(payload.subarray(tagStreamOffset), sink, {
+          mode: opts.mode ?? 'soft',
+          declaredFrames: header.frameCount,
+          ...(opts.maxDictionaryEntries !== undefined ? { maxDictionaryEntries: opts.maxDictionaryEntries } : {}),
+        });
+  const ensureStream = (): TagStreamResult => {
+    stream ??= buildTagIndex(payload.subarray(tagStreamOffset), sink, {
       mode: opts.mode ?? 'soft',
       declaredFrames: header.frameCount,
       ...(opts.maxDictionaryEntries !== undefined ? { maxDictionaryEntries: opts.maxDictionaryEntries } : {}),
     });
-  }
-
+    return stream;
+  };
   const memo = new Map<number, TagPayload>();
   const body = payload.subarray(tagStreamOffset);
 
   const file: SwfFile = {
     header,
     body,
-    tagIndex: stream.index,
-    definitions: stream.definitions,
-    diagnostics: sink.list(),
+    get tagIndex() {
+      return ensureStream().index;
+    },
+    get definitions() {
+      return ensureStream().definitions;
+    },
+    get diagnostics() {
+      return sink.list();
+    },
     sink,
     sizes: {
       file: input.length,
@@ -163,7 +176,7 @@ export function openSwf(input: Uint8Array, opts: SwfOpenOptions = {}): SwfFile {
       sizes: { file: input.length, decompressed: 0, ratio: 0 },
       sha256: opts.sha256 ?? '',
       version: header.version,
-      readTag: () => ({ kind: 'skipped', reason: 'not-requested' }),
+      readTag: () => ({ kind: 'skipped', reason: 'not-a-swf' }),
     };
   }
 
@@ -175,10 +188,13 @@ export function openSwf(input: Uint8Array, opts: SwfOpenOptions = {}): SwfFile {
   }
 
   if (!opts.inflate) {
+    const isLzma = compression === 'lzma';
     sink.emit({
-      code: Codes.DECOMPRESSION_FAILED,
+      code: isLzma ? Codes.NO_LZMA_DECODER : Codes.DECOMPRESSION_FAILED,
       severity: 'error',
-      message: `${compression === 'zlib' ? 'CWS' : 'ZWS'} payload needs an inflater; pass opts.inflate (Node: @swf-forge/swf/node) or use openSwfAsync`,
+      message: isLzma
+        ? 'ZWS payload needs an LZMA decoder; pass opts.inflate (Node: @swf-forge/swf/node) or use a supported openSwfAsync path'
+        : 'CWS payload needs a zlib inflater; pass opts.inflate (Node: @swf-forge/swf/node) or use openSwfAsync',
       offset: 0,
       context: 'container',
     });

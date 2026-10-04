@@ -7,13 +7,33 @@
  * row would otherwise be emitted with no review.
  */
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { Codes, DiagnosticSink, codeInfo, openSwf, registeredCodes } from '@swf-forge/swf';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/appendix-a.swf', import.meta.url));
+const IMPL_DOCS = fileURLToPath(new URL('../../../docs/impl/', import.meta.url));
+
+function numberedImplementationDocs(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = `${directory}/${entry.name}`;
+    if (entry.isDirectory()) return numberedImplementationDocs(path);
+    return /^\d{3}-.*\.md$/.test(entry.name) ? [path] : [];
+  });
+}
+
+function documentedDiagnosticSeverities(): Map<string, string> {
+  const expected = new Map<string, string>();
+  for (const path of numberedImplementationDocs(IMPL_DOCS)) {
+    const content = readFileSync(path, 'utf8');
+    for (const match of content.matchAll(/^\|\s*`?(SF\d{4})`?\s*\|\s*(error|warning|info)\s*\|/gm)) {
+      expected.set(match[1] ?? '', match[2] ?? '');
+    }
+  }
+  return expected;
+}
 
 describe('code registry', () => {
   it('has a row for every exported code', () => {
@@ -24,11 +44,13 @@ describe('code registry', () => {
     expect(registered.size).toBe(exported.length);
   });
 
-  it('keeps the SF0001-SF0020 IO/header range at the documented severities', () => {
-    expect(codeInfo('SF0001')?.severity).toBe('error');
-    expect(codeInfo('SF0002')?.severity).toBe('warning');
-    expect(codeInfo('SF0013')?.severity).toBe('warning');
-    expect(codeInfo('SF0020')?.severity).toBe('error');
+  it('T-SWF-024 matches every registry severity to the owning implementation §8 table', () => {
+    const documented = documentedDiagnosticSeverities();
+    const codes = registeredCodes();
+    expect(codes.filter((code) => !documented.has(code))).toEqual([]);
+    for (const code of codes) {
+      expect(codeInfo(code)?.severity, `${code} severity`).toBe(documented.get(code));
+    }
   });
 
   it('folds repeated diagnostics and counts them', () => {

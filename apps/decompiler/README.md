@@ -13,6 +13,14 @@ node apps/decompiler/dist/main.js inspect path/to/movie.swf --json
 node apps/decompiler/dist/main.js dump    path/to/movie.swf --out dist/model
 ```
 
+## Options
+
+- `--json`: stable machine-readable summary/dump.
+- `--verbose`: include info diagnostics and detailed sprite output.
+- `--strict`: promote `FileLength` mismatches to errors and enable strict cursor failures where supported.
+- `--tolerate-length`: keep `FileLength` mismatches as warnings; this is the default and overrides only the length part of `--strict`.
+- `dump --out <dir>`: write the canonical `model.json` there.
+
 ## Verbs
 
 | Verb | Status | Spec |

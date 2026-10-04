@@ -1,158 +1,127 @@
-# Conformance record — what was checked, what passed, what is not yet due
+# Conformance record — verified audit remediation
 
-Companion to `01-findings.md`. This file exists so the audit is falsifiable in both directions: it
-records the checks that **passed** (§1) with the same rigour as the findings, the registry codes that are
-not yet reachable and who owns them (§2), the documents that no code claims yet (§3), the SWF
-Specification 19 cross-checks made during the audit (§4) and the traceability numbers (§5).
+Companion to [`01-findings.md`](01-findings.md) and [`03-mechanical-checks.md`](03-mechanical-checks.md).
+This records the current worktree evidence for F-01–F-24 and O-01–O-03; it does not replace the
+normative rules in `docs/specs/` or `docs/impl/`. A green local run is evidence for the listed fixtures
+and gates only, not proof of complete SWF conformance.
 
-## 1. Checks that passed
+## 1. Verification run
 
-The original rows were verified against the cited rules during the audit at `a76f2ea`. "✓" means the
-code is conformant as written; rows marked `△` are partial and rows marked `✗` are the new dump-side
-non-conformances found by the continuation pass at base `73483d5`.
+Verified locally on 2026-10-04 after a successful build. Commands and outcomes:
 
-| # | Rule / requirement | Evidence | Result |
-| --- | --- | --- | --- |
-| 1 | `IMPL-010-R007` `bits === 0` returns `0` without moving the cursor | `io/cursor.ts` `ub()` first branch | ✓ |
-| 2 | `IMPL-010-R013` `EncodedU32` uses `>>> 0` and accepts a 4-bit fifth byte | `io/integers.ts` | ✓ |
-| 3 | `IMPL-010-R016` `sb(32)` special-cases `2**32` (not `1 << 32`) | `io/cursor.ts` | ✓ |
-| 4 | `IMPL-010-R017` `fb(n)` is signed-then-scaled arithmetic | `io/bits.ts`; probe: `0x30000 @ 19 → 3.0` | ✓ |
-| 5 | `IMPL-010-R019` `-0` and canonical `NaN`, with `SF0015` | `io/real.ts` | ✓ |
-| 6 | `IMPL-010-R020` no `Math.fround` in the float path | `io/real.ts` | ✓ |
-| 7 | `IMPL-010-R021`/`R024` string termination and the 64 KiB cap | `io/strings.ts`; `STRING_TRUNCATED` | ✓ |
-| 8 | `IMPL-010-R042` duplicate-string dedupe in the string table | `io/strings.ts` | ✓ |
-| 9 | `IMPL-020-R012` `FrameRate` stored raw, derived `raw / 256`, `SF0022` outside the plausible band | `container/header.ts:94-122` — the code compares the derived fps against `240`, which is exactly the doc's `> 240×256` raw test | ✓ |
-| 10 | `IMPL-020-R017` long-header-used-for-a-short-body → `SF0030` | `container/tag-stream.ts` | ✓ |
-| 11 | `IMPL-020-R019` body past end of stream → `SF0101`, last tag kept | `container/tag-stream.ts` | ✓ |
-| 12 | `IMPL-020-R020` missing `End` → `SF0102`; trailing bytes → `SF0024` | `container/tag-stream.ts` | ✓ |
-| 13 | `IMPL-020-R022` the tag slice excludes `End` | `container/tag-stream.ts` | ✓ |
-| 14 | `IMPL-020-R023` sprite nesting depth cap of 32, sub-stream abandoned with `SF0103` | `container/tag-stream.ts` | ✓ |
-| 15 | `IMPL-020-R024` declared vs observed `ShowFrame` count → `SF0023` (main timeline) | `model/movie.ts:291`, `T-MOD` model tests | ✓ (sprite path is F-13) |
-| 16 | `IMPL-020-R027` character id `0` not registered, `SF0107` | `container/tag-stream.ts` | ✓ |
-| 17 | `IMPL-020-R031` `maxDictionaryEntries` counted in registered definitions, `SF0031` | `container/tag-stream.ts` | ✓ |
-| 18 | `IMPL-020-R036` `sha256`/`fnv1a64` id policy | `node/hash.ts`, `model/movie.ts` | ✓ |
-| 19 | `IMPL-020-R035` `SwfFile` exposes sizes and version for reports | `container/open.ts:113-118` | ✓ |
-| 20 | `IMPL-020` §3 sprite ranges and per-sprite tag slices | `TagIndex.spriteRanges` | ✓ |
-| 21 | `IMPL-030-R003` version dispatch by tag code, never by declared version | `tags/shape.ts:546` | ✓ (colour follows the tag) |
-| 22 | `IMPL-060-R008` style arrays stored 1-based with `styles[0] = null` | `tags/shape.ts:194-200` | ✓ |
-| 23 | `IMPL-060-R014` `StateNewStyles` diagnostic split: v1 → `SF0184`, Shape4 → `SF0191` | `tags/shape.ts:400-407` | ✓ |
-| 24 | `IMPL-060-R016`–`R022` rule-band aliasing for `SF0192`–`SF0195` gradient cases | `tags/shape.ts` | ✓ |
-| 25 | `IMPL-060-R030` shape record state machine closes runs over one `Edge` list, `flushAll` at MoveTo/End/StateNewStyles | `tags/shape.ts` + `test/shape-runs.test.ts` (F-05 of the earlier slice, fixed in `257d99f`) | ✓ |
-| 26 | `IMPL-060` §8 `SF0186` unclosed run / `SF0187` bounds > 1 % / `SF0189` unused style | `tags/shape.ts`; tests | ✓ |
-| 27 | `IMPL-060` §8 `SF0192`–`SF0195` gradient mode/ramp/focal diagnostics | `tags/shape.ts` | ✓ |
-| 28 | `IMPL-060` 1e6 edge guard | `tags/shape.ts` | ✓ |
-| 29 | `IMPL-040-R035` `Metadata` ⇔ `FileAttributes.HasMetadata` biconditional | `model/movie.ts:200-206` | ✓ |
-| 30 | doc 040 §8 `SF0163`/`SF0164`/`SF0167`/`SF0168`/`SF0169` | `model/movie.ts`, `tags/control.ts` | ✓ |
-| 31 | doc 030 §8 `SF0162`, `SF0165`, `SF0170` (with the dead `> 65535` branch noted as minor in the slice notes) | `tags/control.ts` | ✓ |
-| 32 | Frame-label and scene frame indices share one zero-based frame space | `model/movie.ts:190-195` (`frame` counter) vs `model/timeline.ts:113-127` (`at = frames.length`) — both count preceding `ShowFrame`s at the same tag position | ✓ (this was on the audit's suspicion list; the two indexes are consistent) |
-| 33 | `GFX` fill-rule key is driven by the model's `fillRule` | `packages/gfx/src/render/renderer.ts` (`nonzero` iff `nonZero`) | ✓ (blocked upstream by F-01) |
-| 34 | Analytic AA coverage within the `GFX-§13.4` budget | probe: max 0.5/255, RMS 0.09/255 vs ≤ 3/255 | ✓ |
-| 35 | Degenerate geometry dropped before tessellation | `packages/gfx/src/vector/geometry.ts` | ✓ |
-| 36 | `TECH-R010` determinism: no `Date`/`Math.random`/absolute paths in emitted output | `dump` byte-identical across runs (`--json` vs `--out`, 2902 B) | ✓ |
-| 37 | `TECH-R029` gate order: no component started before its phase | `apps/` contains only `decompiler`; roadmap §2.2 matches | ✓ |
-| 38 | `ARCH-R001` no player mode / no AVM2 execution surface in `gfx` or `swf` | import rules in `eslint.config.js` + source scan | ✓ |
-| 39 | Diagnostics sink folds repeats by `(code, context, characterId)` with a count | `diagnostics/sink.ts:5-30` | ✓ |
-| 40 | `SF0186` alone for an unclosed fill, `SF0189` only for unused styles | `test/shape-runs.test.ts` fixtures | ✓ |
-| 41 | `IMPL-040-R044` the verb's three modes write nothing else: human summary on stdout, `--json` the dump object, `--out` the same bytes, no extraction | `commands/dump.ts`; probe: human exit 0 and no JSON on stdout, `--json` never names the input path | ✓ |
-| 42 | `IMPL-040-R045`/`R048` byte-determinism and `--out` equality | probe: two `--json` runs byte-identical, `model.json` identical to stdout, exactly one file written, no timestamp/absolute path in the bytes | ✓ |
-| 43 | `IMPL-040-R046` every map-derived field is an array sorted by key | `synth` probe: definitions written 5, 2 → dictionary ids `[2, 3, 5, 7]`; exports `Zeta, Alpha` → `[Alpha, Zeta]`; grids 7, 3 → `[3, 7]`; the singleton XMP metadata has the documented keyed-array shape (not a multi-key sort proof) | ✓ |
-| 44 | `IMPL-040-R046` sequences keep file order | `synth` probe: `backgroundChanges` reports frame 1 and ops keep tag order; two same-frame `FrameLabel`s `z,a` are emitted as `a,z` by frame/name sorting | ✗ F-22 |
-| 45 | `IMPL-040-R047` the label map is first-occurrence per name, sorted by name | `synth` probe: `timeline.labels` = `a@0, b@1, z@0` while `control.labels` keeps all occurrences | ✓ |
-| 46 | `IMPL-040-R047` timeline/frame key sets, frame indices, and op shapes | probe: 9 top-level keys, `TIMELINE_KEYS`, `FRAME_KEYS`; the `place` op's current 18-field shape is present, but the normative spec interface has 3 other fields missing (F-24) | △ F-24 |
-| 47 | `IMPL-040-R047` `SetTabIndex` appears twice, with the ordinal required by `IMPL-040-R024` | both copies are present and byte-identical, but each omits `SetTabIndexOp.index` (`dump.synth:op-field:tabIndex:index`, `dump.synth:control-tabindex-field:index`) | △ F-21 |
-| 48 | `IMPL-040-R047` a sprite's `dictionary[].sprite` carries the same timeline object plus the character name and tag count | `synth` probe: sprite blocks for ids 3 and 7, `frames.length === observedFrameCount`, declared count from the sprite header | ✓ |
-| 49 | A file with no diagnostics decodes with none; diagnostic aggregates match the item severities | clean/dirty `synth` probes: clean has 0; dirty totals/severity buckets match the item list and codes resolve in registry | ✓ |
-| 50 | The dirty fixture produces exactly the expected warnings | duplicate label → `SF0153`, sprite frame mismatch → `SF0023`, PlaceObject3 image/class field → `SF0124`, cache hint → `SF0116`; no other code | ✓ |
-| 51 | `IMPL-030` §3/§4.5 preserves `RemoveObject.CharacterId` (and represents `RemoveObject2` without one) | dirty SWF writes `RemoveObject(CharacterId=5, Depth=1)`; decoder reads then discards 5, and dump op lacks the required field | ✗ F-23 |
-| 52 | `IMPL-040-R048` `--out` creates its directory and writes exactly the canonical bytes | `synth`/Appendix probe writes into a non-existent temp subdirectory, checks its only file is `model.json`, exact bytes, LF and trailing newline | ✓ |
+| Gate | Result | Evidence |
+| --- | --- | --- |
+| `pnpm spec:verify` | PASS | `ISSUES: 0` |
+| `pnpm test:audit` | PASS | 7 collector unit tests |
+| `pnpm typecheck` | PASS | workspace and test TypeScript projects compile |
+| `pnpm test` | PASS | 12 files, 83 tests |
+| `pnpm build` | PASS | TypeScript projects and decompiler build |
+| `pnpm lint` | PASS | ESLint and Prettier checks |
+| `pnpm audit:dev --verbose` | PASS; 0 new findings | full built probes: Shape4 flags 5/5, v1 style-count probe true; dump probes pass |
 
-## 2. Registry codes that are never emitted or matched
+The full-probe audit reports **87** registry codes: **77** sink-emitted, **1** exception-only
+(`SF0016`, owned by `WP-010-02`), **9** explicitly deferred to existing work packages, and **0**
+unmapped. `SF0013` is also raised on a strict exception path, but is classified as sink-emitted because
+its soft path emits the diagnostic. The audit reports 570 implementation rules and 383 declared test ids. The dump probe reports 9
+ordered top-level keys, one Appendix A frame and 3,023 bytes; its clean synthetic SWF has no diagnostics,
+and the dirty synthetic SWF reports exactly `SF0023`, `SF0116`, `SF0124`, and `SF0153`.
 
-Scan: every `codes.ts` key, searched across `packages/**` and `apps/**` excluding `codes.ts` itself;
-`audit_dev.py` distinguishes an actual `emit(...)` from a mere reference. An "owning WP" of `—` means
-the code is not reachable from any implemented or scheduled work item.
+After the full-probe run, `audits/dev/baseline.json` was refreshed from observed output. Its 28 entries
+are informational only: 10 documented-but-not-yet-registered diagnostic-code ranges, 2 package-name
+mentions found only in comments, and 16 implementation-rule groups with no code-comment citation. The
+subsequent full audit reports `findings=28 known=28 new=0 fixed=0`; none is a remaining F-01–F-24 defect.
+A known/clean baseline is not itself conformance evidence.
 
-| Code | Severity | Meaning (registry) | Owning work item | Reachable today? |
-| --- | --- | --- | --- | --- |
-| `SF0006` | error | `ZWS` present but no LZMA decoder available | WP-020-03 | **yes — wrong code emitted (F-03)** |
-| `SF0025` | warning | `FileAttributes` not first (SWF ≥ 8) | WP-020-08 | no (`ordering.ts` absent) |
-| `SF0026` | warning | tag ordering violation (definition after use) | WP-020-08 | no |
-| `SF0027` | warning | `ZWS` `compressedLength` disagrees with the bytes present | WP-020-03 | no (no `ZWS` path) |
-| `SF0110` | warning | undefined character reference | WP-020-07 | **yes — no placeholder (F-07)** |
-| `SF0111` | warning | inverted/degenerate `RECT` while assembling bounds | doc 030 bounds (WP-030) | no |
-| `SF0115` | warning | filter/matrix block out of range | doc 030 filters (WP-030) | no |
-| `SF0118` | warning | `CLIPACTIONRECORD` declared size disagrees with its content | doc 030 clip actions (WP-030) | no |
-| `SF0119` | warning | `CLIPACTIONRECORD` type/flags invalid | doc 030 clip actions | no |
-| `SF0121` | warning | clip-event key code outside its mask width | doc 030 clip actions | no |
-| `SF0122` | warning | clip-action key code exceeds the documented range | doc 030 clip actions | no |
-| `SF0125` | warning | filter count/kind invalid | doc 030 filters | no |
-| `SF0127` | warning | filter parameter outside the documented range | doc 030 filters | no |
-| `SF0166` | info | `SetTabIndex` at a depth with no character | WP-040-08 | **yes — check missing (F-16)** |
-| `SF0183` | info | shape tag newer than the declared SWF version | WP-060-01 | **yes — check missing (F-09)** |
-| `SF0185` | info | shape subpath with no edges (dropped) | WP-060-06/08 | **yes — drop not reported (F-09)** |
-| `SF1000` | error | AVM2 content (DoABC / ActionScript3 flag) | WP-040-06 | no (decoder-side trigger absent; the CLI mapper already exits 3 for it) |
+## 2. Findings F-01–F-24
 
-Twelve of the 17 are candidates for the "not yet due" category and are owned; five codes have a
-reachable defect in shipped code and are filed as findings (F-03, F-07, F-09, F-16). `SF1000` is in the
-owned group (`WP-040-06`) but only the CLI exit mapper mentions it; the decoder-side trigger remains
-absent. The distinction matters for the roadmap: the five reachable defects should not wait for their WP.
+Each original finding remains in `01-findings.md` with its normative rule and original defect evidence.
+The following remediation evidence was exercised by the passing unit/integration suite, full runtime
+probes, or document gate above.
 
-## 3. Documents with no implemented code yet
-
-Listed so a reader does not mistake roadmap for defect. None of these produced a finding beyond the ones
-already in the index.
-
-| Document | Status in code |
+| Finding | Verified resolution evidence |
 | --- | --- |
-| `impl/decompiler/070` (bitmaps, text, fonts) | not started; `Shape4` bitmap fills decoded as styles only |
-| `impl/decompiler/080` (sounds, video) | not started |
-| `impl/decompiler/090` (framing/streaming) | not started |
-| `impl/decompiler/100` (buttons) | not started; `SF0110` shared with doc 030 applies (F-07) |
-| `impl/decompiler/110` (fonts/text edges) | not started |
-| `impl/transpiler/050`, `/120` | not started (`apps/transpiler` absent — roadmap-correct) |
-| `impl/engine-flash/130` | not started |
-| `impl/harness/140` | not started |
-| `impl/code-inspector/150` | not started (model dump exists as its substrate, `INS-D03`) |
-| `impl/engine-clean/160` | not started |
-| `impl/foundation/010` §10, `020` §7 | partially: the numeric test file and `ordering.ts` are missing (F-18, O-01) |
+| F-01 | `packages/swf/test/shape-regressions.test.ts` (`T-MOD-111–118`) and built Shape4 probe: all five meaningful/reserved-byte vectors pass. |
+| F-02 | `shape-regressions.test.ts` (`T-MOD-113`) and built v1 `0xFF` probe: the count is literal 255 and the tag is consumed without an extended-count read. |
+| F-03 | `packages/swf/test/framing.test.ts` (`T-SWF-001`): unavailable ZWS decoding reports `SF0006`. |
+| F-04 | `apps/decompiler/test/inspect.test.ts` (`T-SWF-007`): duplicate definitions remain inspectable and the last definition wins lookup. |
+| F-05 | `packages/swf/test/diagnostics.test.ts` (`T-SWF-024`) checks registry severity rows against implementation §8 tables; call sites agree. |
+| F-06 | `packages/swf/test/fixture.test.ts` (`T-SWF-018`) pins lazy indexing and memoized tag-payload access. |
+| F-07 | `packages/swf/test/model.test.ts` checks missing referenced characters are represented as `kind: 'missing'` and report `SF0110`. |
+| F-08 | `packages/swf/test/io.test.ts` (`T-SWF-015`, `T-SWF-016`) pins soft zero/no-consumption and strict rejection for invalid bit widths. |
+| F-09 | `shape-regressions.test.ts` (`T-MOD-112`, `T-MOD-116`) pins the pre-version diagnostic and dropping empty subpaths. |
+| F-10 | `io.test.ts` (`T-SWF-015`) pins the soft cursor-at-limit post-condition and `subCursor` clamp diagnostic. |
+| F-11 | `diagnostics.test.ts` (`T-SWF-024`) checks the narrowed `SF0009` severity; the overlong-value call site remains `info`. |
+| F-12 | `docs/impl/foundation/020-container-tag-stream-dictionary.md` now agrees with `IMPL-020-R028`; `pnpm spec:verify` passes. |
+| F-13 | `packages/swf/test/model.test.ts` (`T-MOD-601`) pins sprite padding to declared `FrameCount` and preserves the mismatch diagnostic. |
+| F-14 | `model.test.ts` checks `frameOffset` and the scene-relative remap against the assembled model. |
+| F-15 | `shape-regressions.test.ts` (`T-MOD-118`) checks byte-identical duplicates at the named ceiling for fill and line arrays. |
+| F-16 | `model.test.ts` (`T-MOD-025`) checks `SF0166` only when `SetTabIndex` targets an empty depth. |
+| F-17 | `apps/decompiler/test/inspect.test.ts` covers the CLI path; built audit pins verify `--strict` and `--tolerate-length` remain exposed. |
+| F-18 | `packages/swf/test/io.test.ts` adds the `T-SWF-004`, `T-SWF-013`, `T-SWF-015`, and `T-SWF-016` numeric-reader vectors. |
+| F-19 | `diagnostics.test.ts` (`T-SWF-024`) compares every exported registry code against the owning implementation severity table, not a hand-picked range. |
+| F-20 | `fixedFromSigned` is absent from source and the public barrel; the dead identity helper is removed. |
+| F-21 | `apps/decompiler/test/dump.test.ts` (`T-MOD-039`) and the synthetic dump probe verify `SetTabIndexOp.index` in both serialized locations. |
+| F-22 | `dump.test.ts` (`T-MOD-029`) and the synthetic probe preserve same-frame `control.labels` file order while keeping the timeline label map sorted. |
+| F-23 | `packages/swf/test/place-filters.test.ts` (`T-MOD-003`) checks `RemoveObject.characterId` and `null` for `RemoveObject2`; the dump probe checks the serialized field. |
+| F-24 | `place-filters.test.ts` (`T-MOD-009`) checks PlaceObject3 image/class, filters and cache/backing metadata; the built dump probe compares emitted op fields to the normative interfaces. |
 
-## 4. SWF Specification 19 cross-checks made during this audit
+F-01–F-24 are resolved in the current worktree. The checks do not close unrelated phase gates: in
+particular, parsed PlaceObject3 filter metadata does not mean filters are rendered.
 
-The audit revisited the chapter text only where an impl doc's own wording was ambiguous; in every case the
-impl doc was found to agree with the chapter.
+## 3. Systemic observations O-01–O-03
 
-| Chapter text | Re-read because | Outcome |
+### O-01 — Registry diagnostic ownership
+
+The re-runnable collector now classifies every registry code as sink-emitted, strict-exception-reported,
+or deferred to a real roadmap work package. Current coverage is 77 / 1 / 9 / 0 unmapped across 87 codes.
+The nine deferred rows are `SF0025` and `SF0026` → `WP-020-08`; `SF0027` → `WP-020-03`; `SF0111` →
+`WP-030-01`; `SF0115`, `SF0118`, and `SF0119` → `WP-030-06`; `SF0125` → `WP-030-06`; and `SF0127` →
+`WP-030-07`. `SF0016` is separately reported through a strict `SwfReadError` path owned by `WP-010-02`.
+The formerly reachable defects (`SF0006`, `SF0110`, `SF0166`, `SF0183`, `SF0185`, `SF1000`) now have
+production paths. Check 14 emits the per-code `emission_coverage` table in JSON and fails on unmapped,
+stale, or nonexistent work-package ownership.
+
+**Assessment:** the former silent/unowned gap is addressed. Deferred codes remain roadmap work, not
+claimed as implemented.
+
+### O-02 — Test-id traceability
+
+The current numbered specifications declare 383 test ids. The generated `test_coverage` table classifies
+30 as `test-cited`, 1 as `source-only`, and 352 as `scheduled-or-unwired`; every row is attributed to its
+owning work package or, if no work-package row exists, its defining document. Code/test citations with
+no declaration still fail the collector. `pnpm test:audit` covers citation parsing and work-package
+ownership, and CI runs it.
+
+**Assessment:** traceability is now observable and checked on every audit run, but the table is not a
+claim that 383 tests execute. The 352 scheduled/unwired rows remain implementation/test debt owned by the
+roadmap. Future work must add tests at the owning phase gate; attribution alone does not make an
+untested behavior conformant.
+
+### O-03 — Code-aware review gates
+
+`.github/workflows/ci.yml` now runs the document verifier, audit-tool unit tests, typecheck, project
+tests, build, lint/format check, and the full development-integrity audit. The build precedes the audit's
+runtime probes. All equivalent commands passed locally as listed in §1.
+
+**Assessment:** code-aware gates are wired for pushes and pull requests. No hosted GitHub Actions result
+is asserted by this local record; the workflow must still run in GitHub after the PR is opened.
+
+## 4. SWF Specification 19 cross-checks retained
+
+The implementation documents remain normative for repository behavior; the upstream cross-check was
+used only to resolve the two relevant Ch.6 ambiguities:
+
+| SWF Spec 19 text | Finding | Verified interpretation |
 | --- | --- | --- |
-| Ch.6 `DefineShape4` field table (`Reserved UB[5]`, `UsesFillWindingRule UB[1]`, `UsesNonScalingStrokes UB[1]`, `UsesScalingStrokes UB[1]`) | The code's bit offsets were under suspicion | Confirms F-01: the offsets are MSB-first as the impl doc implies; corroborated by `ruffle` `types.rs:655-658` |
-| Ch.6 `FILLSTYLEARRAY`/`LINESTYLEARRAY` pseudo-code (`if FillStyleCount == 0xFF: // DefineShape2 and DefineShape3/4 only`) | F-02 | Confirms `IMPL-060-R006`: no `UI16` for v1 |
-| Ch.6 `DefineShape4` "Minimum file format version is SWF 8" / `UsesFillWindingRule` "Minimum … SWF 10" | F-09 (`SF0183`) | Confirms `IMPL-060-R005` |
-| Ch.2 dictionary rules (duplicates not allowed) | F-04 | The chapter is silent on real-world duplicates, which is why `R028` exists; no change to the finding |
+| Ch.6 `DefineShape4`: reserved `UB[5]` followed by `UsesFillWindingRule`, `UsesNonScalingStrokes`, and `UsesScalingStrokes` | F-01 | Bit fields are consumed MSB-first; the low bits `0x04`, `0x02`, and `0x01` hold the three named flags. |
+| Ch.6 `FILLSTYLEARRAY` / `LINESTYLEARRAY`: `0xFF` extension applies to Shape2/3/4, not `DefineShape` v1 | F-02 | In v1, `0xFF` is the literal count 255 and no `UI16` extension follows. |
+| Ch.6 minimum-version notes for `DefineShape4` and `UsesFillWindingRule` | F-09 | The implementation diagnostic uses the tag's minimum version and the declared SWF version. |
+| Ch.2 duplicate dictionary ids | F-04 | The chapter does not prescribe the repository's tolerant duplicate policy; `IMPL-020-R028` is the repository-level rule and remains authoritative. |
 
-The remaining chapters were not re-extracted: `docs/specs` and `docs/impl` are the encoded copy of
-Ch.1–15 and Appendices A–C, and the audit treated them as normative.
+## 5. Phase and component gates
 
-## 5. Traceability numbers (as measured at `a76f2ea`)
-
-| Metric | Value | Note |
-| --- | --- | --- |
-| Registry codes defined | 87 | `diagnostics/codes.ts` |
-| Registry codes referenced outside `codes.ts` | 71 | §2 lists 17 not emitted: 16 never referenced + `SF1000` mentioned-only |
-| Registry codes actually emitted | 70 | `SF1000` is only in the CLI mapper, not a `DiagnosticSink.emit` site |
-| Codes cited anywhere in `docs/**` | 316 | the remainder are later-document codes |
-| Rule ids defined (`IMPL-NNN-Rnnn`, docs only) | 570 | exact parser handles `IMPL-NNN-Rnnn` definitions; 38 are cited in code comments |
-| Test ids defined (`T-XXX-nnn`, numbered docs only) | 382 | matches `verify_docs.py` check 8b's canonical extraction exactly; errata/STATUS are excluded |
-| Test ids cited in code or tests | 10 | `T-GFX-001/002/015`, `T-TST-101`, `T-MOD-021/037/038/039/040`, `T-SWF-003` |
-| Automated tests executed at HEAD | 56 across 9 files | `pnpm test` |
-| Source lines under `packages`/`apps` | ~8 000 | plus ~900 test lines |
-
-Method notes worth keeping:
-
-- `codes.ts` registry rows wrap across lines for long meanings; parse `\bSF(\d{4}): \{ … \}` blocks
-  rather than the `^ *NAME: 'SF\d{4}'` shape, and exclude `codes.ts` from "is it referenced" scans or all
-  87 codes look used.
-- `tools/verify_docs.py` scans `docs/**`, the root `README.md` and `TECH-SPEC.md` only, so a green doc
-  gate is not evidence about code (O-03). It also carries the deliberate two-entry historical allowlist
-  `{T-MOD-201, T-RT-020}`.
-- The doc-verifier's own traps were avoided: changelog rows ascend, header `Draft X.Y` matches the last
-  row, and no document cites another document's rule id (this audit cites `DOC-§n` style references for
-  that reason).
+`docs/impl/000-roadmap.md` §2.2 remains the progress authority. P0–P2 have local regression coverage for
+the listed reader/container/model slices, but open-corpus and fuzz gates remain outstanding. P3 media
+work remains partial. P4 has Appendix A reference-renderer evidence only; browser integration and the full
+P4 gate remain open. P5 AVM1 work has not started and must not begin before the P4 gate. No finding
+remediation here promotes a work package or component to complete status.

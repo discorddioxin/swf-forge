@@ -86,7 +86,18 @@ export class Cursor {
   /** A bounded window sharing this buffer (zero copy). The parent position is untouched. */
   subCursor(length: number, opts: CursorOptions = {}): Cursor {
     const start = this.#pos;
-    const end = Math.min(this.limit, start + Math.max(0, length));
+    const available = Math.max(0, this.limit - start);
+    const requested = Number.isFinite(length) ? Math.trunc(length) : 0;
+    const clampedLength = Math.min(Math.max(0, requested), available);
+    if (!Number.isFinite(length) || requested !== length || requested < 0 || requested > available) {
+      this.emit(
+        Codes.READ_PAST_BOUNDS,
+        'warning',
+        `subCursor requested ${String(length)} byte(s); clamped to ${clampedLength} byte(s) (${available} remain)`,
+        start,
+      );
+    }
+    const end = start + clampedLength;
     const sub = new Cursor(this.bytes, start, end, {
       mode: opts.mode ?? this.mode,
       sink: opts.sink ?? this.sink,
@@ -119,7 +130,7 @@ export class Cursor {
     severity: Severity,
     message: string,
     offset = this.#pos,
-    extra: Partial<Pick<Diagnostic, 'characterId' | 'tagCode' | 'decision' | 'context'>> = {},
+    extra: Partial<Pick<Diagnostic, 'tagCode' | 'decision' | 'context'>> & { characterId?: number | null } = {},
   ): void {
     this.sink.emit({
       code,
@@ -127,11 +138,13 @@ export class Cursor {
       message,
       offset,
       context: extra.context ?? this.context,
-      ...(extra.characterId !== undefined
-        ? { characterId: extra.characterId }
-        : this.characterId !== undefined
-          ? { characterId: this.characterId }
-          : {}),
+      ...(extra.characterId === null
+        ? {}
+        : extra.characterId !== undefined
+          ? { characterId: extra.characterId }
+          : this.characterId !== undefined
+            ? { characterId: this.characterId }
+            : {}),
       ...(extra.tagCode !== undefined
         ? { tagCode: extra.tagCode }
         : this.tagCode !== undefined
@@ -151,10 +164,23 @@ export class Cursor {
   }
 
   #outOfBounds(message: string): void {
-    this.emit(Codes.READ_PAST_BOUNDS, 'warning', message, this.#pos);
+    const offset = this.#pos;
+    this.emit(Codes.READ_PAST_BOUNDS, 'warning', message, offset);
     if (this.mode === 'strict') {
-      throw new SwfReadError(Codes.READ_PAST_BOUNDS, message, this.#pos, this.context);
+      throw new SwfReadError(Codes.READ_PAST_BOUNDS, message, offset, this.context);
     }
+    this.#pos = this.limit;
+    this.#bit = 0;
+  }
+
+  #validBitWidth(bits: number): boolean {
+    if (Number.isInteger(bits) && bits >= 0 && bits <= 32) return true;
+    const message = `bit field width ${String(bits)} is outside the supported range 0..32`;
+    if (this.mode === 'strict') {
+      throw new SwfReadError(Codes.BIT_WIDTH_TOO_WIDE, message, this.#pos, this.context);
+    }
+    this.emit(Codes.VALUE_OUT_OF_RANGE, 'info', message, this.#pos);
+    return false;
   }
 
   takeBytes(length: number): Uint8Array {
@@ -349,18 +375,15 @@ export class Cursor {
   // ---- bit readers ----------------------------------------------------------------------------
 
   ub(bits: number): number {
-    if (bits === 0) return 0;
-    if (bits > 32) {
-      this.emit(Codes.BIT_WIDTH_TOO_WIDE, 'warning', `bit field width ${bits} > 32 requested`);
-      bits = 32;
+    if (!this.#validBitWidth(bits) || bits === 0) return 0;
+    const bytesNeeded = Math.ceil((this.#bit + bits) / 8);
+    if (this.#pos + bytesNeeded > this.limit) {
+      this.#outOfBounds(`bit read of ${bits} bit(s) at offset ${this.#pos} past limit ${this.limit}`);
+      return 0;
     }
     let value = 0;
     let remaining = bits;
     while (remaining > 0) {
-      if (this.#pos >= this.limit) {
-        this.#outOfBounds(`bit read of ${bits} bit(s) past limit ${this.limit}`);
-        return value;
-      }
       const byte = this.bytes[this.#pos] ?? 0;
       const available = 8 - this.#bit;
       const take = Math.min(available, remaining);
@@ -379,11 +402,13 @@ export class Cursor {
 
   /** Two's-complement bit field (`IMPL-010-R016`). */
   sb(bits: number): number {
-    return signExtend(this.ub(bits), bits === 32 ? 32 : bits);
+    if (!this.#validBitWidth(bits)) return 0;
+    return signExtend(this.ub(bits), bits);
   }
 
   /** Fixed-point bit field with `bits - 16` integer bits (`IMPL-010-R017`). */
   fb(bits: number): number {
+    if (!this.#validBitWidth(bits)) return 0;
     return signExtend(this.ub(bits), bits) / 65536;
   }
 }

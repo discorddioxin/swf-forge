@@ -19,6 +19,8 @@ export interface DumpRequest {
   readonly file: string;
   readonly json: boolean;
   readonly verbose: boolean;
+  readonly strict?: boolean;
+  readonly strictLength?: boolean;
   /** Directory for `model.json`, or null to write nothing. */
   readonly out: string | null;
 }
@@ -37,7 +39,10 @@ function open(request: DumpRequest, io: CliIo): DumpResult | number {
     io.err(`cannot read ${request.file}: ${error instanceof Error ? error.message : String(error)}`);
     return EXIT.unreadable;
   }
-  const unit = openSwfNodeSync(bytes);
+  const unit = openSwfNodeSync(bytes, {
+    mode: request.strict ? 'strict' : 'soft',
+    strictLength: request.strictLength ?? false,
+  });
   const model = buildMovieModel(unit);
   return { dump: buildModelDump(unit, model, sha256Hex(bytes)), model, unit };
 }

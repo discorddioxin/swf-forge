@@ -3,8 +3,8 @@
  *
  * Assembly is a pure function of the tag index: it reads tag bodies through fresh cursors and never
  * mutates the file (`IMPL-030-R032`). `ShowFrame` (1) closes a frame; a trailing group of ops with no
- * `ShowFrame` after it still forms a frame. The declared `FrameCount` pads the main timeline
- * (`IMPL-030-R033`): the header value wins there, the observed count wins inside sprites.
+ * `ShowFrame` after it still forms a frame. The declared `FrameCount` pads the main timeline and
+ * sprite timelines (`IMPL-030-R033`): declared values win; observed extra frames are appended.
  */
 
 import type { SwfFile } from '../container/open.js';
@@ -61,6 +61,8 @@ export function assembleTimeline(
   const frames: FrameModel[] = [];
   const labels = new Map<string, number>();
   const spans: StreamSoundSpan[] = [];
+  const definedCharacterIds = new Set(file.definitions.map((definition) => definition.id));
+  const displayList = new Map<number, number>();
 
   let ops: DisplayOp[] = [];
   let actions: ActionBlockRef[] = [];
@@ -92,22 +94,47 @@ export function assembleTimeline(
         pushFrame();
         break;
       case Tag.PlaceObject:
-        ops.push(decodePlaceObject(c, ops.length, ref.offset));
-        break;
       case Tag.PlaceObject2:
-        ops.push(decodePlaceObject2(c, ops.length, ref.offset));
+      case Tag.PlaceObject3: {
+        const op =
+          ref.code === Tag.PlaceObject
+            ? decodePlaceObject(c, ops.length, ref.offset)
+            : ref.code === Tag.PlaceObject2
+              ? decodePlaceObject2(c, ops.length, ref.offset)
+              : decodePlaceObject3(c, ops.length, ref.offset);
+        if (op.characterId !== null) {
+          if (!definedCharacterIds.has(op.characterId)) {
+            c.emit(
+              Codes.UNDEFINED_CHARACTER_REF,
+              'warning',
+              `placement references undefined character id ${op.characterId}`,
+              ref.headerOffset,
+              { characterId: op.characterId },
+            );
+          }
+          displayList.set(op.depth, op.characterId);
+        }
+        ops.push(op);
         break;
-      case Tag.PlaceObject3:
-        ops.push(decodePlaceObject3(c, ops.length, ref.offset));
-        break;
+      }
       case Tag.RemoveObject:
-        ops.push(decodeRemoveObject(c, ops.length, ref.offset));
+      case Tag.RemoveObject2: {
+        const op =
+          ref.code === Tag.RemoveObject
+            ? decodeRemoveObject(c, ops.length, ref.offset)
+            : decodeRemoveObject2(c, ops.length, ref.offset);
+        const current = displayList.get(op.depth);
+        if (current !== undefined && (op.characterId === null || op.characterId === current)) {
+          displayList.delete(op.depth);
+        }
+        ops.push(op);
         break;
-      case Tag.RemoveObject2:
-        ops.push(decodeRemoveObject2(c, ops.length, ref.offset));
-        break;
+      }
       case Tag.SetTabIndex: {
         const { depth, tabIndex } = decodeSetTabIndex(c);
+        if (!displayList.has(depth)) {
+          c.emit(Codes.SETTABINDEX_NO_CHARACTER, 'info', `SetTabIndex at empty depth ${depth} ignored`);
+        }
         ops.push({ kind: 'tabIndex', index: ops.length, depth, tabIndex, tagOffset: ref.offset });
         break;
       }
@@ -160,6 +187,7 @@ export function assembleTimeline(
     if (last && last.label === null) frames[frames.length - 1] = { ...last, label };
   }
 
+  const observedFrameCount = frames.length;
   const declared = options.declaredFrameCount ?? null;
   if (options.padToDeclared === true && declared !== null) {
     while (frames.length < declared) frames.push(emptyFrame(frames.length));
@@ -172,6 +200,6 @@ export function assembleTimeline(
     sounds: first ? { head: first.headTag, blocks: spans.flatMap((span) => span.blockTags) } : null,
     streamSoundSpans: spans,
     declaredFrameCount: declared,
-    observedFrameCount: frames.length,
+    observedFrameCount,
   };
 }

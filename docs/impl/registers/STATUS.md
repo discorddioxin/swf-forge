@@ -1,6 +1,6 @@
 # IMPL STATUS — implementation-spec coverage
 
-**Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.  
+**Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.
 **Snapshot:** 2026-10-04 · source: `docs/impl/**/*.md`
 
 State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =
@@ -21,12 +21,12 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [110](../decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 | 6 | 16 | 16 | ✅ |
 | [160](../engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 | 0 | 14 | 17 | ✅ |
 | [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 19 | 0 | ✅ |
-| [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 2 | 9 | 30 | ✅ |
+| [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 2 | 10 | 30 | ✅ |
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 4 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 6 | 30 | 26 | ✅ |
 | [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 | 0 | 8 | 2 | ✅ |
-| **Total** | 16 documents | **208** | **≈ 646.5** | **68** | **266** | **256** | |
+| **Total** | 16 documents | **208** | **≈ 646.5** | **68** | **267** | **256** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -71,7 +71,7 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | 110 | `T-MOD-901`, `T-MOD-902`, `T-MOD-903`, `T-MOD-904`, `T-MOD-905`, `T-MOD-906`, `T-MOD-907`, `T-MOD-908`, `T-MOD-909`, `T-MOD-910`, `T-MOD-911`, `T-MOD-912`, `T-MOD-913`, `T-MOD-914`, `T-MOD-915`, `T-MOD-916` |
 | 160 | `T-CLN-101`, `T-CLN-102`, `T-CLN-103`, `T-CLN-104`, `T-CLN-105`, `T-CLN-106`, `T-CLN-107`, `T-CLN-108`, `T-CLN-109`, `T-CLN-110`, `T-CLN-111`, `T-CLN-112`, `T-CLN-113`, `T-CLN-114` |
 | 130 | `T-RT-101`, `T-RT-102`, `T-RT-103`, `T-RT-104`, `T-RT-105`, `T-RT-106`, `T-RT-107`, `T-RT-108`, `T-RT-109`, `T-RT-110`, `T-RT-111`, `T-RT-112`, `T-RT-113`, `T-RT-114`, `T-RT-115`, `T-RT-116`, `T-RT-117`, `T-RT-118`, `T-RT-120` |
-| 010 | `T-SWF-001`, `T-SWF-003`, `T-SWF-004`, `T-SWF-009`, `T-SWF-013`, `T-SWF-014`, `T-SWF-015`, `T-SWF-016`, `T-SWF-017` |
+| 010 | `T-SWF-001`, `T-SWF-003`, `T-SWF-004`, `T-SWF-009`, `T-SWF-013`, `T-SWF-014`, `T-SWF-015`, `T-SWF-016`, `T-SWF-017`, `T-SWF-024` |
 | 020 | `T-SWF-001`, `T-SWF-002`, `T-SWF-003`, `T-SWF-007`, `T-SWF-008`, `T-SWF-010`, `T-SWF-011`, `T-SWF-012`, `T-SWF-018`, `T-SWF-019`, `T-SWF-020`, `T-SWF-021`, `T-SWF-022`, `T-SWF-023` |
 | 140 | `T-TST-101`, `T-TST-102`, `T-TST-103`, `T-TST-104` |
 | 050 | `T-AVM1-001`, `T-AVM1-002`, `T-AVM1-003`, `T-AVM1-004`, `T-AVM1-005`, `T-AVM1-006`, `T-AVM1-007`, `T-AVM1-008`, `T-AVM1-009`, `T-AVM1-010`, `T-AVM1-011`, `T-AVM1-012`, `T-AVM1-013`, `T-AVM1-014`, `T-AVM1-015`, `T-AVM1-016`, `T-AVM1-017`, `T-AVM1-018`, `T-AVM1-019`, `T-AVM1-020`, `T-AVM1-021`, `T-AVM1-022`, `T-AVM1-023`, `T-AVM1-024`, `T-AVM1-025`, `T-AVM1-026`, `T-AVM1-027`, `T-AVM1-028`, `T-AVM1-029`, `T-AVM1-030` |

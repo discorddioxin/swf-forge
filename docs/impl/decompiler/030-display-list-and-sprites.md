@@ -76,7 +76,8 @@ export interface PlacementOp {
   readonly clipDepth: number | null;      // > 0 => this object masks depths (depth, clipDepth]
   readonly filters: readonly FilterSpec[] | null;
   readonly blendMode: BlendMode | null;   // APP-§6; null => absent
-  readonly cacheAsBitmap: boolean;        // flag present
+  readonly cacheAsBitmap: boolean;        // raw nonzero or implied by a non-empty filter list
+  readonly rawCacheValue: number | null;  // original BitmapCache UI8, null when absent
   readonly visible: boolean | null;       // PlaceObject3 HasVisible; null => field absent
   readonly opaqueBackground: Rgba | null; // PlaceObject3 backing colour (E-008)
   readonly className: string | null;      // PlaceObject3 HasClassName (AVM2-era; inert in AVM1)
@@ -264,15 +265,18 @@ file order). Two separate lists would let the runtime apply all removals before 
 place-then-remove pair in one frame must end removed.
 **IMPL-030-R032** Assembly MUST be a pure function of the tag index and MUST NOT mutate tags; `verify`
 recomputes it from the emitted manifest and requires equality.
-**IMPL-030-R033** `ShowFrame` count vs the declared `FrameCount` follows doc 020's policy (`SF0023`;
-declared value wins). Extra `ShowFrame`s are appended as empty frames.
+**IMPL-030-R033** `ShowFrame` count vs the declared `FrameCount` follows doc 020's mismatch policy
+(`SF0023`; the declared count is authoritative for padding, not a reason to discard observed frames).
+`observedFrameCount` is the number of frames assembled from the tag stream before padding. The final
+`frames` array has `max(declaredFrameCount, observedFrameCount)` entries: if the declared count is
+larger, append empty frames; if more frames were observed, retain them all.
 
 ## 8. Sprite model (Ch.13, normative)
 
 ```
 DefineSprite (39, SWF 3+):
   SpriteID   UI16                     // character id, entered into the dictionary
-  FrameCount UI16                     // declared frame count (ShowFrame count wins, doc 020 policy)
+  FrameCount UI16                     // declared frame count (declared value wins, extra observed frames append)
   ControlTags TAG[one or more]        // this sprite's own timeline
   End                                 // the sprite body is End-terminated; the tag length covers it all
 ```

@@ -99,7 +99,7 @@ def main():
 
     o = []
     o.append("# IMPL STATUS — implementation-spec coverage\n")
-    o.append("**Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.  ")
+    o.append("**Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.")
     o.append(f"**Snapshot:** {datetime.date.today().isoformat()} · source: `docs/impl/**/*.md`\n")
     o.append("State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =")
     o.append("chapter-independent · ⏳ partial = open items remain (each listed in that document's §Open items).\n")

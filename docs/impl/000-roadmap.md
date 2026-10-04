@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.8 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.9 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -94,6 +94,32 @@ what can start when.
 | Emitter before runtime polish (P6) | Emitted code is the runtime's test input. Building the runtime against hand-written examples first is a dead end (see `examples/` note in REPO-§2). |
 | Audio after first playable (P8) | Game logic and rendering dominate "is this game playable"; audio is a large subsystem that can follow without blocking C1. |
 | Fidelity hardening late (P9) | Filters/blends/text need the golden harness to be built and trustworthy, which requires P4–P7. |
+
+### 2.2 Implemented so far (code ↔ spec)
+
+This table records which slice of the plan exists as code and where its evidence lives. It is a
+progress note, not a second contract: the work-package tables in each document remain the authority for
+what is open, and a package is only "done" for the phase gate when its gate tests run green.
+
+| Slice | Code | Owning docs | Evidence |
+| --- | --- | --- | --- |
+| P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `packages/swf/test/framing.test.ts` (RECT/string/matrix primitives, `SF0102`/`SF0104`) |
+| P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, empty RECT, missing `End`, registry completeness) |
+| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts` (sprites, exports, scenes, labels, limits, deterministic `MovieModel.id`) |
+| `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (exit codes, `--json`, report framing) |
+| P4 static render | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A golden frame, PNG byte-identity) |
+| P3 media, P5 onward | — | — | not started |
+
+Two notes for whoever picks this up:
+
+- The Appendix-A gate found a style-run defect in the shape decoder (only the `FillStyle0` run was
+  closed, and the final run was flushed before the end record was read): a fill-less, stroke-only shape
+  decoded to four edges and zero runs. `IMPL-060` §6.1 already specifies the correct behaviour; the
+  decoder was fixed and `packages/swf/test/shape-runs.test.ts` pins it (closed runs, `FillStyle1` runs,
+  `SF0186` on an unclosed fill run).
+- The compiler/emitter does not exist yet, so the P4 gate reaches the renderer through a test-local
+  adapter (`packages/gfx/test/adapter.ts`). It is deleted when the production `VectorShape` →
+  `ShapeGeometry` conversion lands (P6), which is also when the renderer stops being test-only.
 
 ## 3. Milestones
 
@@ -402,3 +428,4 @@ art):
 | 1.6 | 2026-10-04 | Appendix pass: §9.1 added (Appendix A golden fixture, Appendix B tag-index authority, Appendix C palette — the upstream document is now fully encoded); `IMPL-140` gains WP-140-10/11 (11 WPs / 48.5 d), totals re-derived to 183 WPs / ≈554.5 d |
 | 1.7 | 2026-10-04 | Tech-spec pass: the five components are mapped in §1.1; phases **P12 (inspector)** and **P13 (clean engine)** added with their doc-map rows and milestones; WP index gains 150 (12/41) and 160 (13/51); totals re-derived to 208 WPs / ≈646.5 d |
 | 1.8 | 2026-10-04 | Folder reorganisation: the document map now points at `foundation/`, `decompiler/`, `transpiler/`, `engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/` and the registers directory; document ids, work packages and totals unchanged; verification moved to `tools/verify_docs.py` + `tools/gen_status.py` |
+| 1.9 | 2026-10-04 | Implementation started (Phase 10): §2.2 added to record the code that exists and where its evidence lives — P0 readers, P1 container/dictionary, P2 model, the `inspect` verb and the P4 reference renderer (`packages/gfx`), with the Appendix-A gate and the shape style-run defect it found; the phase tables and the work-package index are unchanged |

@@ -299,33 +299,55 @@ export function readShapeWithStyle(
   const paths: FillPath[] = [];
   const strokes: StrokePath[] = [];
   const pen: Pen = { x: 0, y: 0 };
-  let fill0 = 0;
-  let fill1 = 0;
-  let line = 0;
-  let runEdges: number[] = [];
-  let runStart: { x: number; y: number } | null = null;
+
+  /** One style run: the edges drawn under one style id, from the point it started at. */
+  interface Run {
+    styleId: number;
+    edgeRefs: number[];
+    start: { x: number; y: number } | null;
+  }
+  const makeRun = (styleId = 0): Run => ({ styleId, edgeRefs: [], start: null });
+
+  // `FillStyle0`, `FillStyle1` and the line style run *concurrently* (`IMPL-060-R030`): the same edge
+  // sequence is appended to every active run, so a figure drawn with a fill on one side and a stroke
+  // on the other yields both, and a shape with no fill style still yields its stroke.
+  const fill0Run = makeRun();
+  const fill1Run = makeRun();
+  const lineRun = makeRun();
   const usedFill = new Set<number>();
   const usedLine = new Set<number>();
 
-  const closeRun = (styleId: number, isStroke: boolean): void => {
-    if (styleId === 0 || runEdges.length === 0) {
-      runEdges = [];
-      runStart = null;
-      return;
-    }
-    const closed = runStart !== null && pen.x === runStart.x && pen.y === runStart.y;
-    if (isStroke) {
-      strokes.push({ styleId, edgeRefs: runEdges, closed });
-      usedLine.add(styleId);
-    } else {
-      paths.push({ styleId, edgeRefs: runEdges, closed, implicitClose: !closed });
-      usedFill.add(styleId);
+  const rewind = (run: Run): void => {
+    run.edgeRefs = [];
+    run.start = { x: pen.x, y: pen.y };
+  };
+
+  const flushFill = (run: Run): void => {
+    if (run.styleId !== 0 && run.edgeRefs.length > 0) {
+      const closed = run.start !== null && pen.x === run.start.x && pen.y === run.start.y;
+      paths.push({ styleId: run.styleId, edgeRefs: run.edgeRefs, closed, implicitClose: !closed });
+      usedFill.add(run.styleId);
       if (!closed) {
         c.emit(Codes.SHAPE_IMPLICIT_CLOSE, 'warning', 'style run not explicitly closed; implicit close applied');
       }
     }
-    runEdges = [];
-    runStart = null;
+    rewind(run);
+  };
+
+  const flushStroke = (run: Run): void => {
+    if (run.styleId !== 0 && run.edgeRefs.length > 0) {
+      const closed = run.start !== null && pen.x === run.start.x && pen.y === run.start.y;
+      strokes.push({ styleId: run.styleId, edgeRefs: run.edgeRefs, closed });
+      usedLine.add(run.styleId);
+    }
+    rewind(run);
+  };
+
+  /** A `MoveTo` ends the current subpath of every run (the IR stores one start point per run). */
+  const flushAll = (): void => {
+    flushFill(fill0Run);
+    flushFill(fill1Run);
+    flushStroke(lineRun);
   };
 
   let guard = 0;
@@ -347,32 +369,33 @@ export function readShapeWithStyle(
       }
       if (moveTo) {
         const moveBits = c.ub(5);
-        closeRun(fill0, false);
-        closeRun(line, true);
+        flushAll();
         pen.x += c.sb(moveBits);
         pen.y += c.sb(moveBits);
-        runStart = { x: pen.x, y: pen.y };
+        for (const run of [fill0Run, fill1Run, lineRun]) run.start = { x: pen.x, y: pen.y };
       }
       if (fillStyle0Bit) {
         const next = c.ub(numFillBits);
-        if (next !== fill0) {
-          closeRun(fill0, false);
-          fill0 = next;
-          runStart = { x: pen.x, y: pen.y };
+        if (next !== fill0Run.styleId) {
+          flushFill(fill0Run);
+          fill0Run.styleId = next;
+          fill0Run.start = { x: pen.x, y: pen.y };
         }
       }
       if (fillStyle1Bit) {
         const next = c.ub(numFillBits);
-        if (next !== fill1) {
-          fill1 = next;
+        if (next !== fill1Run.styleId) {
+          flushFill(fill1Run);
+          fill1Run.styleId = next;
+          fill1Run.start = { x: pen.x, y: pen.y };
         }
       }
       if (lineStyleBit) {
         const next = c.ub(numLineBits);
-        if (next !== line) {
-          closeRun(line, true);
-          line = next;
-          runStart = { x: pen.x, y: pen.y };
+        if (next !== lineRun.styleId) {
+          flushStroke(lineRun);
+          lineRun.styleId = next;
+          lineRun.start = { x: pen.x, y: pen.y };
         }
       }
       if (newStyles) {
@@ -382,6 +405,7 @@ export function readShapeWithStyle(
         if (version === 4) {
           c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'StateNewStyles used by DefineShape4 (chapter-reserved)');
         }
+        flushAll();
         const moreFills = readFillStyleArray(c, version);
         const moreLines = readLineStyleArray(c, version);
         fills.length = 0;
@@ -393,10 +417,10 @@ export function readShapeWithStyle(
         if (numFillBits > 16 || numLineBits > 16) {
           c.emit(Codes.SHAPE_INDEX_WIDTH_INVALID, 'error', 'style index width too large after StateNewStyles');
         }
-        fill0 = 0;
-        fill1 = 0;
-        line = 0;
-        runStart = { x: pen.x, y: pen.y };
+        fill0Run.styleId = 0;
+        fill1Run.styleId = 0;
+        lineRun.styleId = 0;
+        for (const run of [fill0Run, fill1Run, lineRun]) run.start = { x: pen.x, y: pen.y };
       }
       if (!moveTo && !lineStyleBit && !fillStyle0Bit && !fillStyle1Bit && !newStyles) {
         c.emit(Codes.SHAPE_RECORD_DEGENERATE, 'warning', 'degenerate style-change record');
@@ -407,6 +431,7 @@ export function readShapeWithStyle(
     const straight = c.ub(1) === 1;
     let numBits = c.ub(4);
     numBits += 2;
+    let edge: Edge;
     if (straight) {
       const general = c.ub(1) === 1;
       let dx = 0;
@@ -419,11 +444,7 @@ export function readShapeWithStyle(
       } else {
         dx = c.sb(numBits);
       }
-      const edge: Edge = { fromX: pen.x, fromY: pen.y, toX: pen.x + dx, toY: pen.y + dy };
-      edges.push(edge);
-      runEdges.push(edges.length - 1);
-      pen.x = edge.toX;
-      pen.y = edge.toY;
+      edge = { fromX: pen.x, fromY: pen.y, toX: pen.x + dx, toY: pen.y + dy };
     } else {
       const controlDx = c.sb(numBits);
       const controlDy = c.sb(numBits);
@@ -431,7 +452,7 @@ export function readShapeWithStyle(
       const anchorDy = c.sb(numBits);
       const controlX = pen.x + controlDx;
       const controlY = pen.y + controlDy;
-      const edge: Edge = {
+      edge = {
         fromX: pen.x,
         fromY: pen.y,
         toX: controlX + anchorDx,
@@ -439,15 +460,17 @@ export function readShapeWithStyle(
         controlX,
         controlY,
       };
-      edges.push(edge);
-      runEdges.push(edges.length - 1);
-      pen.x = edge.toX;
-      pen.y = edge.toY;
     }
+    edges.push(edge);
+    const edgeIndex = edges.length - 1;
+    for (const run of [fill0Run, fill1Run, lineRun]) {
+      if (run.styleId !== 0) run.edgeRefs.push(edgeIndex);
+    }
+    pen.x = edge.toX;
+    pen.y = edge.toY;
   }
 
-  closeRun(fill0, false);
-  closeRun(line, true);
+  flushAll();
 
   for (const id of usedFill)
     if (id >= fills.length)

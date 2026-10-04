@@ -33,6 +33,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/swf
 
+  packages/gfx:
+    devDependencies:
+      '@swf-forge/swf':
+        specifier: workspace:*
+        version: link:../swf
+
   packages/swf: {}
 
 packages:

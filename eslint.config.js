@@ -9,6 +9,37 @@ export default tseslint.config(
   },
   ...tseslint.configs.recommended,
   {
+    // Architectural edges (`IMPL-130-R001`, `TECH-R004`): the renderer never reads SWF bytes, and the
+    // reader never depends on the renderer.
+    files: ['packages/gfx/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@swf-forge/swf', '@swf-forge/swf/*'],
+              message: 'The renderer consumes Vector IR only (IMPL-130-R001).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['packages/swf/src/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['@swf-forge/gfx', '@swf-forge/gfx/*'], message: 'The reader must not depend on the renderer.' },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['**/*.ts'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',

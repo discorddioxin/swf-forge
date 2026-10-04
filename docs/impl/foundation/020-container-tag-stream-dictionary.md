@@ -484,7 +484,7 @@ const bytes = swf({
 3. All five ordering rules have a fixture that trips exactly one of them.
 4. Memory bound: a 512 MiB decompression bomb is rejected with peak RSS under 256 MiB.
 5. Every diagnostic code in §9 is emitted by at least one test, and none outside the range.
-6. The design-spec correction for E-007 is applied to `docs/specs/030-swf-format-and-io.md`.
+6. The design-spec correction for E-007 is applied to `docs/specs/format/030-swf-format-and-io.md`.
 
 ## 14. Changelog
 

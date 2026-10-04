@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.7 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.8 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -62,20 +62,20 @@ per-area documents. This table is the map between them:
 
 | Phase | Primary doc(s) | Supporting docs |
 | --- | --- | --- |
-| P0 | [010](010-binary-io-and-records.md) | 140 (writer) |
-| P1 | [020](020-container-tag-stream-dictionary.md) | 140 |
-| P2 | [030](030-display-list-and-sprites.md), [040](040-control-tags-and-metadata.md), [100](100-buttons.md) | 140 |
-| P3 | [060](060-shapes-and-gradients.md), [070](070-images-and-morphs.md), [080](080-fonts-and-text.md), [090](090-sounds.md), [110](110-video.md) | 140 |
-| P4 | [130](130-runtime-and-renderer.md) §5 (renderer half) | 060 (Vector IR), 080 (atlases) |
-| P5 | [050](050-actions-and-avm1.md) | 130 §6 (object model) |
-| P6 | [120](120-compiler-and-emitter.md) | 130 §6 |
-| P7 | [130](130-runtime-and-renderer.md) | 120 |
-| P8 | 090 + [130](130-runtime-and-renderer.md) §7 | AUD design spec |
+| P0 | [010](foundation/010-binary-io-and-records.md) | 140 (writer) |
+| P1 | [020](foundation/020-container-tag-stream-dictionary.md) | 140 |
+| P2 | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | 140 |
+| P3 | [060](decompiler/060-shapes-and-gradients.md), [070](decompiler/070-images-and-morphs.md), [080](decompiler/080-fonts-and-text.md), [090](decompiler/090-sounds.md), [110](decompiler/110-video.md) | 140 |
+| P4 | [130](engine-flash/130-runtime-and-renderer.md) §5 (renderer half) | 060 (Vector IR), 080 (atlases) |
+| P5 | [050](transpiler/050-actions-and-avm1.md) | 130 §6 (object model) |
+| P6 | [120](transpiler/120-compiler-and-emitter.md) | 130 §6 |
+| P7 | [130](engine-flash/130-runtime-and-renderer.md) | 120 |
+| P8 | 090 + [130](engine-flash/130-runtime-and-renderer.md) §7 | AUD design spec |
 | P9 | 030, 060, 080, 100 (fidelity paths) | 130, 140 |
 | P10 | 110 | 040 |
-| P11 | [140](140-conformance-harness.md) | 120, 130 |
-| P12 | [150](150-code-inspector.md) | 120 (maps, reports), 020/050 (model, disassembly) |
-| P13 | [160](160-engine-clean.md) | 050 (IR, tiers), 120 (emitter contract), 130 (renderer/audio bridges) |
+| P11 | [140](harness/140-conformance-harness.md) | 120, 130 |
+| P12 | [150](code-inspector/150-code-inspector.md) | 120 (maps, reports), 020/050 (model, disassembly) |
+| P13 | [160](engine-clean/160-engine-clean.md) | 050 (IR, tiers), 120 (emitter contract), 130 (renderer/audio bridges) |
 
 A phase is not a document: several phases draw on the same document, and one document (130) spans two
 phases. The dependency graph in §4 and the work-package tables in each document are the authority for
@@ -316,7 +316,7 @@ chapter is a mechanical, reviewable event:
    register entry that the chapter settles — mark it `[SETTLED: <ref>]`.
 4. **Adjust work packages** if the chapter reveals work that was not scoped (record it; do not silently
    absorb it).
-5. **Fold erratum findings** into `docs/impl/errata.md`: upstream examples that contradict upstream
+5. **Fold erratum findings** into `docs/impl/registers/errata.md`: upstream examples that contradict upstream
    field definitions, with our resolution and the test that encodes it. (The RECT worked example in
    Ch.1 already provides one entry.)
 
@@ -350,25 +350,25 @@ Generated from the per-area documents. Regenerate with `tools/impl-status --inde
 <!-- WP-INDEX:BEGIN -->
 | Doc | Area | WPs | Dev-days |
 | --- | --- | --- | --- |
-| [010](010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 |
-| [020](020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 |
-| [030](030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 |
-| [040](040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 |
-| [050](050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 |
-| [060](060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 |
-| [070](070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 14 | 47 |
-| [080](080-fonts-and-text.md) | Fonts and Text | 13 | 41 |
-| [090](090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 |
-| [100](100-buttons.md) | Buttons and Hit Testing | 10 | 26 |
-| [110](110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 |
-| [120](120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 |
-| [130](130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 |
-| [140](140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 |
-| [150](150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 |
-| [160](160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 |
+| [010](foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 |
+| [020](foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 |
+| [030](decompiler/030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 |
+| [040](decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 |
+| [050](transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 |
+| [060](decompiler/060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 |
+| [070](decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 14 | 47 |
+| [080](decompiler/080-fonts-and-text.md) | Fonts and Text | 13 | 41 |
+| [090](decompiler/090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 |
+| [100](decompiler/100-buttons.md) | Buttons and Hit Testing | 10 | 26 |
+| [110](decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 |
+| [120](transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 |
+| [130](engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 |
+| [140](harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 |
+| [150](code-inspector/150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 |
+| [160](engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 |
 | **Total** | | **208** | **≈ 646.5** |
 
-These 208 work packages are the buildable units. The roadmap's phase table adds integration, conformance, and release-engineering work on top; the total remains inside the class estimate in §7. Test ids referenced by these packages (`T-*`) are counted in `docs/impl/STATUS.md` once `tools/impl-status` lands (WP-140-08).
+These 208 work packages are the buildable units. The roadmap's phase table adds integration, conformance, and release-engineering work on top; the total remains inside the class estimate in §7. Test ids referenced by these packages (`T-*`) are counted in `docs/impl/registers/STATUS.md` once `tools/impl-status` lands (WP-140-08).
 
 **Ordering rule:** a package may start when every `Depends` id is *reviewed*, not necessarily complete; the roadmap's phases (§2) already encode the cross-document ordering.
 <!-- WP-INDEX:END -->
@@ -387,7 +387,7 @@ art):
 | Three-engine browser matrix green with skips documented | TST-§8 |
 | Security suite green; `THIRD_PARTY.md` complete | SEC-§9 |
 | Every design-spec decision entry either settled or explicitly accepted | APP-§12, IMPL-R002 |
-| `docs/impl/errata.md` current | §9.5 |
+| `docs/impl/registers/errata.md` current | §9.5 |
 
 ## 12. Changelog
 
@@ -401,3 +401,4 @@ art):
 | 1.5 | 2026-10-04 | Ch.12–Ch.15 pass folded in — the final chapter batch: 100 re-derived against Ch.12 (10/26), 110 against Ch.14 (11/34), 030 gains the Ch.13 sprite model (12/30), 040 the Ch.15 tag bodies (14/24); totals 181 WPs / ≈551 d; the chapter map is complete for Ch.1–Ch.15 |
 | 1.6 | 2026-10-04 | Appendix pass: §9.1 added (Appendix A golden fixture, Appendix B tag-index authority, Appendix C palette — the upstream document is now fully encoded); `IMPL-140` gains WP-140-10/11 (11 WPs / 48.5 d), totals re-derived to 183 WPs / ≈554.5 d |
 | 1.7 | 2026-10-04 | Tech-spec pass: the five components are mapped in §1.1; phases **P12 (inspector)** and **P13 (clean engine)** added with their doc-map rows and milestones; WP index gains 150 (12/41) and 160 (13/51); totals re-derived to 208 WPs / ≈646.5 d |
+| 1.8 | 2026-10-04 | Folder reorganisation: the document map now points at `foundation/`, `decompiler/`, `transpiler/`, `engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/` and the registers directory; document ids, work packages and totals unchanged; verification moved to `tools/verify_docs.py` + `tools/gen_status.py` |

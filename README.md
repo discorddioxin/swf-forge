@@ -69,51 +69,70 @@ either faithful (`engine-flash`) or restructured (`engine-clean`).
 
 ## Specifications
 
+The document set is organised for **building**: behaviour specs, then build plans grouped by the
+component that owns the work, then the registers. Orientation map: [`docs/README.md`](docs/README.md).
+Working on the code? Start with [`AGENTS.md`](AGENTS.md) — it states the build loop, the
+non-negotiables, and how to keep these documents true.
+
+```
+docs/
+  TECH-SPEC.md     structure, rules, toolset, abilities (the build blueprint)
+  specs/           WHAT to build          foundation · format · language · web · quality · components · reference
+  impl/            HOW and IN WHAT ORDER  000-roadmap · foundation · decompiler · transpiler · engine-flash
+                                          · code-inspector · engine-clean · harness · registers
+tools/             verify_docs.py (consistency gate) · gen_status.py (coverage snapshot)
+```
+
 | Doc | ID | Title |
 | --- | --- | --- |
 | [docs/TECH-SPEC.md](docs/TECH-SPEC.md) | TECH | **Technical and file specification** — components, repo/file layout, toolset, rules, abilities, interfaces |
 | [docs/specs/README.md](docs/specs/README.md) | — | Specification index, conventions, status |
-| [000-architecture.md](docs/specs/000-architecture.md) | ARCH | System architecture, scope, vocabulary, components |
-| [010-repository-and-toolchain.md](docs/specs/010-repository-and-toolchain.md) | REPO | Repository layout, package graph, TypeScript & build rules |
-| [020-compiler-pipeline.md](docs/specs/020-compiler-pipeline.md) | CMP | Compiler pipeline (flash + clean targets), IR, codegen contract, CLI, diagnostics |
-| [030-swf-format-and-io.md](docs/specs/030-swf-format-and-io.md) | SWF | SWF container parsing, tag stream, bit-level IO, validation |
-| [040-avm1-to-typescript.md](docs/specs/040-avm1-to-typescript.md) | AVM1 | AS1/AS2 semantics → TypeScript: execution model, objects, display list, host API |
-| [050-graphics-webgl.md](docs/specs/050-graphics-webgl.md) | GFX | **SWF graphics → WebGL2**: geometry, tessellation, batching, filters, text, caching |
-| [060-audio-web.md](docs/specs/060-audio-web.md) | AUD | **SWF audio → Web Audio**: decode, re-encode, mixer, sync, envelopes, budgets |
-| [070-assets-fonts-bitmaps-video.md](docs/specs/070-assets-fonts-bitmaps-video.md) | AST | Bitmaps, fonts/text, video, asset container & manifest format |
-| [080-runtime-shell.md](docs/specs/080-runtime-shell.md) | RT | Runtime shell: boot, loader, timestep, input, persistence, embedding API |
-| [090-conformance-testing.md](docs/specs/090-conformance-testing.md) | TST | Conformance program, oracle harness, golden tests, perf gates |
-| [100-security-licensing.md](docs/specs/100-security-licensing.md) | SEC | Security model, sandboxing, licenses, clean-room process |
-| [110-appendices-reference-tables.md](docs/specs/110-appendices-reference-tables.md) | APP | Tag/opcode/property/blend/filter/codec reference tables |
-| [120-code-inspector.md](docs/specs/120-code-inspector.md) | INS | Code inspector: project model, navigation, highlighting, panels, run view |
-| [130-engine-clean.md](docs/specs/130-engine-clean.md) | CLN | Clean engine: timeline→scene tiering, game loop, rewrite contract, clean runtime |
+| [000-architecture.md](docs/specs/foundation/000-architecture.md) | ARCH | System architecture, scope, vocabulary, components |
+| [010-repository-and-toolchain.md](docs/specs/foundation/010-repository-and-toolchain.md) | REPO | Repository layout, package graph, TypeScript & build rules |
+| [020-compiler-pipeline.md](docs/specs/foundation/020-compiler-pipeline.md) | CMP | Compiler pipeline (flash + clean targets), IR, codegen contract, CLI, diagnostics |
+| [030-swf-format-and-io.md](docs/specs/format/030-swf-format-and-io.md) | SWF | SWF container parsing, tag stream, bit-level IO, validation |
+| [040-avm1-to-typescript.md](docs/specs/language/040-avm1-to-typescript.md) | AVM1 | AS1/AS2 semantics → TypeScript: execution model, objects, display list, host API |
+| [050-graphics-webgl.md](docs/specs/web/050-graphics-webgl.md) | GFX | **SWF graphics → WebGL2**: geometry, tessellation, batching, filters, text, caching |
+| [060-audio-web.md](docs/specs/web/060-audio-web.md) | AUD | **SWF audio → Web Audio**: decode, re-encode, mixer, sync, envelopes, budgets |
+| [070-assets-fonts-bitmaps-video.md](docs/specs/web/070-assets-fonts-bitmaps-video.md) | AST | Bitmaps, fonts/text, video, asset container & manifest format |
+| [080-runtime-shell.md](docs/specs/web/080-runtime-shell.md) | RT | Runtime shell: boot, loader, timestep, input, persistence, embedding API |
+| [090-conformance-testing.md](docs/specs/quality/090-conformance-testing.md) | TST | Conformance program, oracle harness, golden tests, perf gates |
+| [100-security-licensing.md](docs/specs/quality/100-security-licensing.md) | SEC | Security model, sandboxing, licenses, clean-room process |
+| [110-appendices-reference-tables.md](docs/specs/reference/110-appendices-reference-tables.md) | APP | Tag/opcode/property/blend/filter/codec reference tables |
+| [120-code-inspector.md](docs/specs/components/120-code-inspector.md) | INS | Code inspector: project model, navigation, highlighting, panels, run view |
+| [130-engine-clean.md](docs/specs/components/130-engine-clean.md) | CLN | Clean engine: timeline→scene tiering, game loop, rewrite contract, clean runtime |
 
 Implementation plans (how it gets built, in what order):
 
 | Doc | Title |
 | --- | --- |
 | [docs/impl/000-roadmap.md](docs/impl/000-roadmap.md) | Roadmap: phases P0–P13, milestones, dependencies, work-package index |
-| [010](docs/impl/010-binary-io-and-records.md) … [110](docs/impl/110-video.md) | Per-area build plans (bit IO → video) |
-| [120](docs/impl/120-compiler-and-emitter.md) | Compiler pipeline, emitter, reports |
-| [130](docs/impl/130-runtime-and-renderer.md) | Runtime, renderer, interpreter (engine-flash) |
-| [140](docs/impl/140-conformance-harness.md) | Conformance harness, fixtures, fuzzing |
-| [150](docs/impl/150-code-inspector.md) | Code inspector: indexer, navigation, panels, run view |
-| [160](docs/impl/160-engine-clean.md) | Clean engine: transforms, tiering, rewrite log, clean runtime |
-| [errata.md](docs/impl/errata.md) · [STATUS.md](docs/impl/STATUS.md) | Upstream divergences and our resolutions · generated coverage snapshot |
+| [010](docs/impl/foundation/010-binary-io-and-records.md) … [110](docs/impl/decompiler/110-video.md) | Per-area build plans (bit IO → video) |
+| [120](docs/impl/transpiler/120-compiler-and-emitter.md) | Compiler pipeline, emitter, reports |
+| [130](docs/impl/engine-flash/130-runtime-and-renderer.md) | Runtime, renderer, interpreter (engine-flash) |
+| [140](docs/impl/harness/140-conformance-harness.md) | Conformance harness, fixtures, fuzzing |
+| [150](docs/impl/code-inspector/150-code-inspector.md) | Code inspector: indexer, navigation, panels, run view |
+| [160](docs/impl/engine-clean/160-engine-clean.md) | Clean engine: transforms, tiering, rewrite log, clean runtime |
+| [errata.md](docs/impl/registers/errata.md) · [STATUS.md](docs/impl/registers/STATUS.md) | Upstream divergences and our resolutions · generated coverage snapshot |
 
 ## Reading order
 
+0. **[AGENTS.md](AGENTS.md)** + **[docs/README.md](docs/README.md)** — how to work, where everything is.
 1. **[TECH](docs/TECH-SPEC.md)** — components, files, toolchain, rules (start here if you are building).
-2. **[ARCH](docs/specs/000-architecture.md)** — what the system is and is not.
-3. **[REPO](docs/specs/010-repository-and-toolchain.md)** + **[CMP](docs/specs/020-compiler-pipeline.md)** —
+2. **[ARCH](docs/specs/foundation/000-architecture.md)** — what the system is and is not.
+3. **[REPO](docs/specs/foundation/010-repository-and-toolchain.md)** + **[CMP](docs/specs/foundation/020-compiler-pipeline.md)** —
    package graph and how a SWF becomes TypeScript.
-4. **[SWF](docs/specs/030-swf-format-and-io.md)** + **[AVM1](docs/specs/040-avm1-to-typescript.md)** —
+4. **[SWF](docs/specs/format/030-swf-format-and-io.md)** + **[AVM1](docs/specs/language/040-avm1-to-typescript.md)** —
    the fidelity-critical front half.
-5. **[GFX](docs/specs/050-graphics-webgl.md)** + **[AUD](docs/specs/060-audio-web.md)** — the two large
+5. **[GFX](docs/specs/web/050-graphics-webgl.md)** + **[AUD](docs/specs/web/060-audio-web.md)** — the two large
    media subsystems.
 6. **[impl/000-roadmap.md](docs/impl/000-roadmap.md)** — phases and work packages, then the area docs.
 
 ## Toolchain (planned; authoritative in TECH-SPEC §4)
+
+Verification: `python3 tools/verify_docs.py` must print `ISSUES: 0` before any commit that touches
+the documents; `python3 tools/gen_status.py` regenerates `docs/impl/registers/STATUS.md` after any
+work-package edit.
 
 Node ≥ 20 LTS · pnpm workspaces · TypeScript 5 `strict` with project references (`tsc -b`) · `tsup`
 for libraries, Vite for the inspector · `vitest` (node/jsdom/browser) + Playwright for visual/audio
@@ -133,6 +152,6 @@ this document set internally consistent (citations, id bands, WP totals, appendi
 
 ## License
 
-Specifications in this repository: see [SEC](docs/specs/100-security-licensing.md) — documents are
+Specifications in this repository: see [SEC](docs/specs/quality/100-security-licensing.md) — documents are
 original work under the repository license; referenced third-party specifications retain their own
 terms and are cited, not reproduced verbatim.

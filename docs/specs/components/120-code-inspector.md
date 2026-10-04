@@ -4,7 +4,7 @@
 **Component:** `apps/code-inspector` · `@swf-forge/inspector` (TECH-§2)
 **Depends on:** CMP (emitted contract, source maps), AVM1 (recovered names), SWF/APP (tag model),
 AST (manifest), RT (dev hooks for the run view), SEC (threat model), TST (fixture/oracle policy)
-**Implementation doc:** [impl/150](../impl/150-code-inspector.md)
+**Implementation doc:** [impl/150](../../impl/code-inspector/150-code-inspector.md)
 
 ---
 

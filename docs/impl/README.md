@@ -32,32 +32,38 @@ Rules of engagement:
 
 ## 2. Document map
 
+Documents are grouped by the component that owns the work (`foundation/`, `decompiler/`, `transpiler/`,
+`engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/`), with the roadmap at the top and the
+registers (`errata.md`, generated `STATUS.md`) in `registers/`. **Document numbers are the identity** —
+`impl/060` stays `impl/060` whatever folder it lives in; citations use the number, and the tables below
+are the id→path map.
+
 | Doc | Covers | Format-spec chapters | Design specs | Status |
 | --- | --- | --- | --- | --- |
 | [000-roadmap.md](000-roadmap.md) | Phases, milestones, critical path, staffing, risk order | all | all | ✅ |
-| [010-binary-io-and-records.md](010-binary-io-and-records.md) | Byte/bit readers, all primitive records | Ch.1 | SWF-§4 | ✅ grounded |
-| [020-container-tag-stream-dictionary.md](020-container-tag-stream-dictionary.md) | Header, compression, tag stream, dictionary, ordering, processing | Ch.2 | SWF-§3, CMP-§4 | ✅ grounded (2 sections pending) |
-| [030-display-list-and-sprites.md](030-display-list-and-sprites.md) | Display list, PlaceObject/2/3, filters metadata, clip events, sprites | Ch.3, Ch.13 | GFX-§3, AVM1-§3 | ✅ grounded in Ch.3 + Ch.13 |
-| [040-control-tags-and-metadata.md](040-control-tags-and-metadata.md) | Control tags, exports, scaling grid, scenes, binary data, telemetry | Ch.4, Ch.15 | CMP-§4, AST-§6 | ✅ grounded in Ch.4 + Ch.15 |
-| [050-actions-and-avm1.md](050-actions-and-avm1.md) | Action decoding, IR, tiering, semantics hosts | Ch.5 | AVM1 (whole) | ✅ grounded in Ch.5 |
-| [060-shapes-and-gradients.md](060-shapes-and-gradients.md) | Shape records, fill/line styles, gradients | Ch.6, Ch.7 | GFX-§5, GFX-§6 | ✅ grounded in Ch.6 + Ch.7 |
-| [070-images-and-morphs.md](070-images-and-morphs.md) | JPEG/lossless bitmaps, morph shapes | Ch.8, Ch.9 | AST-§3, GFX-§5.5 | ✅ grounded in Ch.8 + Ch.9 |
-| [080-fonts-and-text.md](080-fonts-and-text.md) | Fonts, glyphs, EM square, static/dynamic text | Ch.10 | AST-§4, GFX-§9 | ✅ grounded in Ch.10 |
-| [090-sounds.md](090-sounds.md) | Event/stream sounds, ADPCM, MP3, Nellymoser, Speex | Ch.11 | AUD (whole) | ✅ grounded in Ch.11 |
-| [100-buttons.md](100-buttons.md) | Button records, states, transitions, button sounds | Ch.12 | AVM1-§10, AUD-§6.1 | ✅ grounded in Ch.12 |
-| [110-video.md](110-video.md) | Video codecs, stream tags, frame tables | Ch.14 | AST-§5, RT-§5 | ✅ grounded in Ch.14 |
-| [120-compiler-and-emitter.md](120-compiler-and-emitter.md) | Pipeline wiring, IR→TS emission, CLI, reports, verify | — | CMP, REPO, AST | ✅ ready |
-| [130-runtime-and-renderer.md](130-runtime-and-renderer.md) | Shell, AVM1 runtime, WebGL2 renderer, audio engine | — | RT, GFX, AUD, AVM1 | ✅ ready |
-| [140-conformance-harness.md](140-conformance-harness.md) | Synthetic SWF writer, oracle harness, goldens, perf gates | App. A–C | TST, SEC | ✅ ready |
-| [150-code-inspector.md](150-code-inspector.md) | Project model, worker indexer, navigation, panels, run view | — | INS, CMP-§7, RT-§10 | ✅ ready |
-| [160-engine-clean.md](160-engine-clean.md) | Clean transforms, tiering, rewrite log, clean runtime | — | CLN, AVM1-§6/§9, CMP | ✅ ready |
+| [`foundation/010-binary-io-and-records.md`](foundation/010-binary-io-and-records.md) | Byte/bit readers, all primitive records | Ch.1 | SWF-§4 | ✅ grounded |
+| [`foundation/020-container-tag-stream-dictionary.md`](foundation/020-container-tag-stream-dictionary.md) | Header, compression, tag stream, dictionary, ordering, processing | Ch.2 | SWF-§3, CMP-§4 | ✅ grounded (2 sections pending) |
+| [`decompiler/030-display-list-and-sprites.md`](decompiler/030-display-list-and-sprites.md) | Display list, PlaceObject/2/3, filters metadata, clip events, sprites | Ch.3, Ch.13 | GFX-§3, AVM1-§3 | ✅ grounded in Ch.3 + Ch.13 |
+| [`decompiler/040-control-tags-and-metadata.md`](decompiler/040-control-tags-and-metadata.md) | Control tags, exports, scaling grid, scenes, binary data, telemetry | Ch.4, Ch.15 | CMP-§4, AST-§6 | ✅ grounded in Ch.4 + Ch.15 |
+| [`transpiler/050-actions-and-avm1.md`](transpiler/050-actions-and-avm1.md) | Action decoding, IR, tiering, semantics hosts | Ch.5 | AVM1 (whole) | ✅ grounded in Ch.5 |
+| [`decompiler/060-shapes-and-gradients.md`](decompiler/060-shapes-and-gradients.md) | Shape records, fill/line styles, gradients | Ch.6, Ch.7 | GFX-§5, GFX-§6 | ✅ grounded in Ch.6 + Ch.7 |
+| [`decompiler/070-images-and-morphs.md`](decompiler/070-images-and-morphs.md) | JPEG/lossless bitmaps, morph shapes | Ch.8, Ch.9 | AST-§3, GFX-§5.5 | ✅ grounded in Ch.8 + Ch.9 |
+| [`decompiler/080-fonts-and-text.md`](decompiler/080-fonts-and-text.md) | Fonts, glyphs, EM square, static/dynamic text | Ch.10 | AST-§4, GFX-§9 | ✅ grounded in Ch.10 |
+| [`decompiler/090-sounds.md`](decompiler/090-sounds.md) | Event/stream sounds, ADPCM, MP3, Nellymoser, Speex | Ch.11 | AUD (whole) | ✅ grounded in Ch.11 |
+| [`decompiler/100-buttons.md`](decompiler/100-buttons.md) | Button records, states, transitions, button sounds | Ch.12 | AVM1-§10, AUD-§6.1 | ✅ grounded in Ch.12 |
+| [`decompiler/110-video.md`](decompiler/110-video.md) | Video codecs, stream tags, frame tables | Ch.14 | AST-§5, RT-§5 | ✅ grounded in Ch.14 |
+| [`transpiler/120-compiler-and-emitter.md`](transpiler/120-compiler-and-emitter.md) | Pipeline wiring, IR→TS emission, CLI, reports, verify | — | CMP, REPO, AST | ✅ ready |
+| [`engine-flash/130-runtime-and-renderer.md`](engine-flash/130-runtime-and-renderer.md) | Shell, AVM1 runtime, WebGL2 renderer, audio engine | — | RT, GFX, AUD, AVM1 | ✅ ready |
+| [`harness/140-conformance-harness.md`](harness/140-conformance-harness.md) | Synthetic SWF writer, oracle harness, goldens, perf gates | App. A–C | TST, SEC | ✅ ready |
+| [`code-inspector/150-code-inspector.md`](code-inspector/150-code-inspector.md) | Project model, worker indexer, navigation, panels, run view | — | INS, CMP-§7, RT-§10 | ✅ ready |
+| [`engine-clean/160-engine-clean.md`](engine-clean/160-engine-clean.md) | Clean transforms, tiering, rewrite log, clean runtime | — | CLN, AVM1-§6/§9, CMP | ✅ ready |
 
 ### Meta documents
 
 | Doc | What it is |
 | --- | --- |
-| [errata.md](errata.md) | Every divergence found between the upstream format spec and our documents (or between our documents), with the resolution and the test that encodes it (`E-001`…). Upstream *examples* that contradict upstream *fields* are recorded here, not silently followed. |
-| [STATUS.md](STATUS.md) | Generated coverage snapshot: per-document state, diagnostics and test registries, chapter/appendix coverage, WP totals. Regenerated by `tools/impl-status` (WP-140-08); never hand-edited. |
+| [errata.md](registers/errata.md) | Every divergence found between the upstream format spec and our documents (or between our documents), with the resolution and the test that encodes it (`E-001`…). Upstream *examples* that contradict upstream *fields* are recorded here, not silently followed. |
+| [STATUS.md](registers/STATUS.md) | Generated coverage snapshot: per-document state, diagnostics and test registries, chapter/appendix coverage, WP totals. Regenerated by `tools/impl-status` (WP-140-08); never hand-edited. |
 
 **Status legend**
 
@@ -112,9 +118,10 @@ A work package is done when **all** of the following hold:
 
 ## 4. Status tracking
 
-`docs/impl/STATUS.md` (generated, not hand-edited) records, per work package: owner, state
+`docs/impl/registers/STATUS.md` (generated, not hand-edited) records, per work package: owner, state
 (`todo`/`doing`/`done`/`blocked`), PR link, and the date of the last state change. The generator is
-`tools/impl-status` and it reads the work-package tables from these documents plus the merged PR list
+`tools/impl-status` (bootstrap today: `python3 tools/gen_status.py`, which writes
+[`registers/STATUS.md`](registers/STATUS.md)) and it reads the work-package tables from these documents plus the merged PR list
 from `gh`. This keeps planning and reality in one place without a project-management tool.
 
 ## 5. Reading order
@@ -147,3 +154,4 @@ completed, so the roadmap's remaining-effort numbers stay honest.
 | 1.5 | 2026-10-04 | Appendix pass: Appendix A's worked example is now a committed golden fixture (`140` §2.1, `T-TST-101`/`102`) with per-doc assertions (`T-SWF-022`/`023`, `T-MOD-123`, `T-MOD-604`), Appendix B is machine-checked against `specs/110` §2 (`T-TST-103`, `E-026`) and Appendix C against `IMPL-110` §6 (`T-TST-104`); every upstream section is now encoded |
 | 1.6 | 2026-10-04 | Tech-spec pass: the five components are mapped to `apps/` + `packages/` (`TECH-SPEC.md`); document map gains 150 (code-inspector) and 160 (clean engine); the tech spec is named as the structural authority |
 | 1.7 | 2026-10-04 | Meta-document section added (errata + generated `STATUS.md` named with their update rules); rule-id hygiene: `IMPL-030-R007` and `IMPL-120-R015` defined where they were cited-but-missing, `IMPL-060-R046`–`R052` split off the duplicated shape/line-style block, and `IMPL-040`'s Ch.15 rules logged |
+| 1.8 | 2026-10-04 | Folder reorganisation: documents grouped by owning component (`foundation/`, `decompiler/`, `transpiler/`, `engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/`), registers moved to `registers/`; ids unchanged, every path reference rewritten and checked by `tools/verify_docs.py`; bootstrap tooling recorded (`tools/verify_docs.py`, `tools/gen_status.py`) |

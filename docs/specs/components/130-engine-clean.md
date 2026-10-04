@@ -5,7 +5,7 @@
 **Depends on:** AVM1 (semantics, tiers, recovery), CMP (model, config, reports), AST (manifest),
 RT (loop and platform rules it replaces), GFX/AUD (rendering and audio behaviour it must preserve),
 TST (conformance gates), TECH (structure and cross-component rules)
-**Implementation doc:** [impl/160](../impl/160-engine-clean.md)
+**Implementation doc:** [impl/160](../../impl/engine-clean/160-engine-clean.md)
 
 ---
 

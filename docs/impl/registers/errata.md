@@ -36,7 +36,7 @@ example's labels.
 `SF0100–0199` for tags/shapes/dictionary.
 **Resolution:** renumbered in place to `SF0101` (tag length exceeds file), `SF0102` (missing `End`),
 `SF0103` (sprite nesting depth), `SF0104` (unknown tag skipped). The authoritative registry is
-`docs/impl/010-binary-io-and-records.md` §7, which also allocates the remaining IO-range codes.
+`docs/impl/foundation/010-binary-io-and-records.md` §7, which also allocates the remaining IO-range codes.
 
 **Encoded by:** `T-SWF-010` asserts that every diagnostic emitted by the parser is inside its
 documented range.
@@ -113,7 +113,7 @@ from the chapter text if the chapter contradicts it.
 
 ## E-007 — Our own design spec: long `RECORDHEADER` length description
 
-**Found in:** `docs/specs/030-swf-format-and-io.md` SWF-§3.3.
+**Found in:** `docs/specs/format/030-swf-format-and-io.md` SWF-§3.3.
 **What it said:** the long-form tag length field "includes the 4 bytes itself".
 **What is wrong:** the body length excludes the tag header in *both* header forms. Independent formal
 grammars of the format state it explicitly ("the size does not count the tag header itself, only the
@@ -148,7 +148,7 @@ never emit the ambiguous form.
 
 ## E-009 — Filter units: blur/distance are 16.16 FIXED **pixels**; `Strength` is FIXED8 with 1.0 = `0x0100`
 
-**Found in:** our own design spec `docs/specs/050-graphics-webgl.md` `GFX-R081`/`GFX-R086`, reconciled
+**Found in:** our own design spec `docs/specs/web/050-graphics-webgl.md` `GFX-R081`/`GFX-R086`, reconciled
 against Ch.3's filter sections (pp. 46–48).
 **What it said:** `GFX-R081` scaled blur as `blurValue / 20` ("SWF stores blur in twips"), and
 `GFX-R086` applied `Strength` as a percentage (`strength/100`).
@@ -185,9 +185,9 @@ from the chapter, not an upstream erratum.
 
 ## E-011 — Our own documents placed diagnostics outside their declared ranges
 
-**Found in:** `docs/specs/020-compiler-pipeline.md` §9.3 (the authoritative range table) versus
-`docs/specs/080-runtime-shell.md` and `docs/impl/060-shapes-and-gradients.md`,
-`docs/impl/110-video.md`.
+**Found in:** `docs/specs/foundation/020-compiler-pipeline.md` §9.3 (the authoritative range table) versus
+`docs/specs/web/080-runtime-shell.md` and `docs/impl/decompiler/060-shapes-and-gradients.md`,
+`docs/impl/decompiler/110-video.md`.
 **What it said:** the range table assigns `SF0200–0299` to bitmaps/fonts/video, `SF0500–0599` to the
 emitter/codegen and `SF0600–0699` to the runtime contract; the shell doc used `SF0201` for a WebGL2
 capability failure (a runtime condition), the shape doc allocated `SF0600–0609` (runtime range) and the
@@ -200,7 +200,7 @@ per-document sub-allocation table for `SF0100–0199` and `SF0200–0299` so the
 against one place.
 
 The same pass found the audio range double-booked: `IMPL-090` had re-used `SF0301`–`SF0309` with
-different meanings than the audio design spec (`docs/specs/060-audio-web.md`) already published for
+different meanings than the audio design spec (`docs/specs/web/060-audio-web.md`) already published for
 those codes. The design spec's meanings were kept (it is the upstream allocation) and the
 implementation-only conditions moved to the next free block, `SF0324`–`SF0329` (`IMPL-090` §7),
 leaving the design spec's runtime conditions in `SF0320`–`SF0323` untouched.
@@ -266,7 +266,7 @@ for the IR with out-of-order/duplicate ratios reported (`SF0194`).
 
 ## E-014 — Ch.8: `DefineBitsLossless2` has no format 4, and premultiplication belongs to `ALPHABITMAPDATA`
 
-**Found in:** Ch.8 (PDF pp. 139–145) and our design spec `docs/specs/070-assets-fonts-bitmaps-video.md`
+**Found in:** Ch.8 (PDF pp. 139–145) and our design spec `docs/specs/web/070-assets-fonts-bitmaps-video.md`
 (`AST-R006`, §3.1 source-format table) plus `IMPL-070` v1.0.
 **What it said:** "`DefineBitsLossless2` … formats: 3 = 8-bit colormapped + alpha, 4 = ARGB4444,
 5 = ARGB8888. Alpha is premultiplied in ARGB4444 (a classic gotcha)."
@@ -513,7 +513,7 @@ present/absent plus a local digest, never reproduced (`SEC-§4`, `SEC-D08`).
 
 **Found in:** our own documents, during the Ch.12–Ch.15 pass — the runtime doc's test obligations.
 
-**What was wrong:** `IMPL-130` §10 defined `T-RT-001`–`T-RT-018`, the same ids `specs/080-runtime-shell.md`
+**What was wrong:** `IMPL-130` §10 defined `T-RT-001`–`T-RT-018`, the same ids `specs/web/080-runtime-shell.md`
 §11 uses for its shell tests (boot ordering, frame-rate fidelity, `SharedObject`, error surface) — two
 different suites wearing the same ids, and the runtime doc also referenced an `T-RT-020` that it never
 defined (`IMPL-130` R021 and `WP-130-01`). The repository convention is that implementation docs own the

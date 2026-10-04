@@ -8,24 +8,40 @@ The **product structure** — the five components (`decompiler`, `transpiler`, `
 cross-component rules — lives in [`docs/TECH-SPEC.md`](../TECH-SPEC.md). The documents below own
 *behaviour*; the tech spec owns *structure*.
 
+## Folders
+
+| Folder | Documents |
+| --- | --- |
+| `foundation/` | `000` architecture · `010` repository and toolchain · `020` compiler pipeline |
+| `format/` | `030` SWF format and I/O |
+| `language/` | `040` AVM1 → TypeScript |
+| `web/` | `050` graphics · `060` audio · `070` assets/fonts/bitmaps/video · `080` runtime shell |
+| `quality/` | `090` conformance testing · `100` security and licensing |
+| `components/` | `120` code-inspector · `130` engine-clean |
+| `reference/` | `110` appendices and reference tables |
+
+A document is cited by its **id** (`specs/030`, `GFX-§5.5`), never by a path that can move; the id
+columns below are stable. Orientation map: [`docs/README.md`](../README.md); how to work:
+[`AGENTS.md`](../../AGENTS.md).
+
 ## Documents
 
 | ID | File | Owns | Primary audience |
 | --- | --- | --- | --- |
-| ARCH | `000-architecture.md` | Scope, system decomposition, data flow, terminology | everyone |
-| REPO | `010-repository-and-toolchain.md` | Package graph, layout, TS/build/lint/test rules | tooling + all authors |
-| CMP | `020-compiler-pipeline.md` | Passes, IR, codegen contract, CLI, diagnostics, determinism | compiler authors |
-| SWF | `030-swf-format-and-io.md` | Container, tags, bit IO, dictionary, validation policy | compiler + runtime authors |
-| AVM1 | `040-avm1-to-typescript.md` | AS1/AS2 semantics, object model, display list, host API binding | VM authors, game porters |
-| GFX | `050-graphics-webgl.md` | Vectors, fills, strokes, gradients, text, filters, batching, caching | graphics authors |
-| AUD | `060-audio-web.md` | Sound extraction, codecs, mixer, sync, envelopes, budgets | audio authors |
-| AST | `070-assets-fonts-bitmaps-video.md` | Bitmap/font/video conversion, manifest & archive format | asset pipeline authors |
-| RT | `080-runtime-shell.md` | Boot, loader, clock, input, persistence, embedding API | runtime authors, integrators |
-| TST | `090-conformance-testing.md` | Oracle harness, golden tests, metrics, perf gates, acceptance | QA + all authors |
-| SEC | `100-security-licensing.md` | Threat model, CSP/no-eval, third-party licences, clean-room rules | security + legal-adjacent review |
-| APP | `110-appendices-reference-tables.md` | Tag, opcode, property, blend, filter, codec tables | reference |
-| INS | `120-code-inspector.md` | Project model, navigation (SWF↔TS), highlighting, panels, run view | inspector authors, porters |
-| CLN | `130-engine-clean.md` | Clean target: timeline→scene tiering, game loop, rewrite contract, clean runtime | clean-engine authors, porters |
+| ARCH | [`foundation/000-architecture.md`](foundation/000-architecture.md) | Scope, system decomposition, data flow, terminology | everyone |
+| REPO | [`foundation/010-repository-and-toolchain.md`](foundation/010-repository-and-toolchain.md) | Package graph, layout, TS/build/lint/test rules | tooling + all authors |
+| CMP | [`foundation/020-compiler-pipeline.md`](foundation/020-compiler-pipeline.md) | Passes, IR, codegen contract, CLI, diagnostics, determinism | compiler authors |
+| SWF | [`format/030-swf-format-and-io.md`](format/030-swf-format-and-io.md) | Container, tags, bit IO, dictionary, validation policy | compiler + runtime authors |
+| AVM1 | [`language/040-avm1-to-typescript.md`](language/040-avm1-to-typescript.md) | AS1/AS2 semantics, object model, display list, host API binding | VM authors, game porters |
+| GFX | [`web/050-graphics-webgl.md`](web/050-graphics-webgl.md) | Vectors, fills, strokes, gradients, text, filters, batching, caching | graphics authors |
+| AUD | [`web/060-audio-web.md`](web/060-audio-web.md) | Sound extraction, codecs, mixer, sync, envelopes, budgets | audio authors |
+| AST | [`web/070-assets-fonts-bitmaps-video.md`](web/070-assets-fonts-bitmaps-video.md) | Bitmap/font/video conversion, manifest & archive format | asset pipeline authors |
+| RT | [`web/080-runtime-shell.md`](web/080-runtime-shell.md) | Boot, loader, clock, input, persistence, embedding API | runtime authors, integrators |
+| TST | [`quality/090-conformance-testing.md`](quality/090-conformance-testing.md) | Oracle harness, golden tests, metrics, perf gates, acceptance | QA + all authors |
+| SEC | [`quality/100-security-licensing.md`](quality/100-security-licensing.md) | Threat model, CSP/no-eval, third-party licences, clean-room rules | security + legal-adjacent review |
+| APP | [`reference/110-appendices-reference-tables.md`](reference/110-appendices-reference-tables.md) | Tag, opcode, property, blend, filter, codec tables | reference |
+| INS | [`components/120-code-inspector.md`](components/120-code-inspector.md) | Project model, navigation (SWF↔TS), highlighting, panels, run view | inspector authors, porters |
+| CLN | [`components/130-engine-clean.md`](components/130-engine-clean.md) | Clean target: timeline→scene tiering, game loop, rewrite contract, clean runtime | clean-engine authors, porters |
 
 ## Conventions used in every document
 
@@ -83,10 +99,11 @@ Documents start at Draft 1.0 and are revised through the SWF-specification chapt
 Ch.1–Ch.15 intake, the Appendix pass and the tech-spec pass (2026-10-04): `000` 1.1, `010` 1.1,
 `020` 1.1, `030` 1.2, `040` 1.3, `050` 1.2, `060` 1.2, `070` 1.3, `080` 1.1, `090` 1.2, `100` 1.1,
 `110` 1.7, and the new `120`/`130` at 1.0 — every section of the upstream v19 document (Ch.1–15 and
-Appendices A–C) is now encoded, and the two new documents open the `INS`/`CLN` areas. Documents are versioned with the repository; a change to
+Appendices A–C) is now encoded, and the two new documents open the `INS`/`CLN` areas. Reorganised into the folders above on 2026-10-04 (ids unchanged; every path reference rewritten and
+machine-checked by `tools/verify_docs.py`). Documents are versioned with the repository; a change to
 a numbered requirement MUST be accompanied by a changelog entry at the bottom of the affected document,
 and — where the change is forced by the upstream specification — a cross-reference to the errata entry
-in `docs/impl/errata.md` that records it.
+in `docs/impl/registers/errata.md` that records it.
 
 ## What is deliberately *not* specified here
 

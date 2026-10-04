@@ -256,7 +256,7 @@ The runtime+renderer is the largest single package; the estimate assumes the emi
 6. Context loss, tab-hide, and input edge cases (IME, paste, blur) all behave per the rules above.
 
 **Id note.** These obligations are banded `T-RT-1xx`; the `T-RT-00x` block belongs to the *design*
-spec (`specs/080-runtime-shell.md` §11, whose ids `T-RT-001`–`018` cover boot, lifecycle, input and
+spec (`specs/web/080-runtime-shell.md` §11, whose ids `T-RT-001`–`018` cover boot, lifecycle, input and
 budgets). The two suites are different tests with different owners, and the band makes that mechanical
 (`E-023`).
 

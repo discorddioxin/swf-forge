@@ -1,6 +1,6 @@
 # TECH — Technical and File Specification
 
-**Doc ID:** TECH · **Status:** Draft 1.0 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
+**Doc ID:** TECH · **Status:** Draft 1.1 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
 **Audience:** everyone who builds or extends swf-forge.
 **Companions:** `docs/specs/` (normative behaviour) · `docs/impl/` (build plans, work packages) · this document (how the parts fit, where files live, what runs them).
 
@@ -20,8 +20,8 @@ Reading order for a new builder:
 | # | Read | Why |
 | --- | --- | --- |
 | 1 | **TECH** §2 (components), §3 (layout), §4 (toolset) | the map |
-| 2 | [ARCH](specs/000-architecture.md) §2–§5 | goals, decomposition, data flow |
-| 3 | [REPO](specs/010-repository-and-toolchain.md), [CMP](specs/020-compiler-pipeline.md) | package graph, pipeline stages, emitted-code contract |
+| 2 | [ARCH](specs/foundation/000-architecture.md) §2–§5 | goals, decomposition, data flow |
+| 3 | [REPO](specs/foundation/010-repository-and-toolchain.md), [CMP](specs/foundation/020-compiler-pipeline.md) | package graph, pipeline stages, emitted-code contract |
 | 4 | [docs/impl/000-roadmap.md](impl/000-roadmap.md) | phases P0–P13, milestones, work-package index |
 | 5 | the area docs for the phase being built (`docs/impl/010…160`) | bit-level and pass-level obligations |
 
@@ -119,7 +119,8 @@ swf-forge/
 │  └─ testing/                   @swf-forge/testing    writer, oracle harness, golden utilities
 ├─ fixtures/                     ← test inputs only (synthetic committed, external by hash)
 ├─ tools/                        ← repo scripts: spec-verify, impl-status, spec-coverage, decisions,
-│                                   table codegen, release helpers
+│                                   table codegen, release helpers. Bootstrap today:
+│                                   verify_docs.py, gen_status.py (Python 3, stdlib only)
 └─ examples/                     ← tiny hand-written projects exercising the engines directly
 ```
 
@@ -295,7 +296,7 @@ paths, host names, or machine identifiers (REPO-R015).
     "lint":         "eslint . && prettier --check .",
     "typecheck":    "tsc -b --force",
     "spec:verify":  "node tools/spec-verify/index.js",      // §8.2
-    "spec:status":  "node tools/impl-status/index.js",      // impl/STATUS.md
+    "spec:status":  "node tools/impl-status/index.js",      // impl/registers/STATUS.md
     "fixtures":     "node tools/fetch-fixtures/index.js",
     "clean":        "pnpm -r exec rm -rf dist node_modules/.cache"
   }
@@ -472,18 +473,26 @@ two engines by construction (TECH-R006).
 | --- | --- | --- |
 | `ARCH` `REPO` `CMP` `SWF` `AVM1` `GFX` `AUD` `AST` `RT` `TST` `SEC` `APP` `INS` `CLN` | `docs/specs/*` | requirements (`-Rnnn`), decisions (`-Dnn`), tests (`T-<PFX>-nnn`) |
 | `IMPL-0nn` | `docs/impl/*` | implementation rules (`IMPL-0nn-Rnnn`), diagnostics (`SF####`), tests (`T-<AREA>-nnn`) |
-| `INS` (area docs) | `docs/specs/120-code-inspector.md` + `docs/impl/150-code-inspector.md` | inspector behaviour, then its build plan |
-| `CLN` (area docs) | `docs/specs/130-engine-clean.md` + `docs/impl/160-engine-clean.md` | clean-engine behaviour, then its build plan |
+| `INS` (area docs) | `docs/specs/components/120-code-inspector.md` + `docs/impl/code-inspector/150-code-inspector.md` | inspector behaviour, then its build plan |
+| `CLN` (area docs) | `docs/specs/components/130-engine-clean.md` + `docs/impl/engine-clean/160-engine-clean.md` | clean-engine behaviour, then its build plan |
 | `TECH` | this document | structure, layout, toolchain, cross-component rules (`TECH-Rnnn`, `TECH-Dnn`) |
 
 ### 8.2 Checks that must stay green
 
-`tools/spec-verify` (the tool this document specifies) MUST implement, at minimum:
+**Bootstrap tooling.** Until the Node toolchain of §4.1 exists, the repository ships two stdlib
+Python scripts that implement the checks below and the STATUS projection:
+`python3 tools/verify_docs.py` (the `spec-verify` checks, plus path/link/id resolution) and
+`python3 tools/gen_status.py` (the `impl-status` projection, writing
+`docs/impl/registers/STATUS.md`). They are the gate from now on — a commit that touches `docs/` MUST
+leave `verify_docs.py` at `ISSUES: 0`. When `tools/spec-verify` lands it must implement at least the
+same checks and may absorb these scripts; the check list below is the contract either way.
+
+`tools/spec-verify` MUST implement, at minimum:
 
 1. every `<DOC>-R/-D` citation resolves to a defined id in the owning document;
 2. every cited test id is defined exactly once, and inside its owner's band;
 3. changelogs are ascending and the header version equals the last changelog row;
-4. `docs/impl/STATUS.md` totals equal the regenerated totals;
+4. `docs/impl/registers/STATUS.md` totals equal the regenerated totals;
 5. the Appendix A fixture bytes in `impl/140` equal the upstream 79 bytes;
 6. the Appendix B/C tables match their `specs/110` copies entry-for-entry;
 7. the registry in `impl/010` §7 has no overlapping ranges;
@@ -555,3 +564,4 @@ blocking pattern (TECH-D08).
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | 2026-10-04 | Initial technical and file specification: the five components (`decompiler`, `transpiler`, `code-inspector`, `engine-flash`, `engine-clean`), repository and file layout (apps/packages/tools, generated artifact trees, `forge.project.json`), toolset (Node 20+, pnpm, tsup/Vite, vitest/Playwright, ESLint/Prettier, API Extractor, CI stages), cross-component rules (`TECH-R001`–`R030`), abilities matrix, interfaces (CLIs, engine contracts, inspector surfaces), governance and the ripple checklist, build order with the reserved P12/P13 phases, and the `TECH-D01`–`D12` register |
+| 1.1 | 2026-10-04 | Document layout reorganised (`docs/specs/<domain>/`, `docs/impl/<component>/`, registers in `docs/impl/registers/`); the tree in §3.1 and the tool note in §8.2 record the bootstrap Python gates `tools/verify_docs.py` and `tools/gen_status.py` that implement the §8.2 checks until `tools/spec-verify`/`tools/impl-status` exist |

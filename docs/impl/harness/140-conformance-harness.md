@@ -190,7 +190,7 @@ tools/conformance waive --metric <m> --reason <text> --scope <frames>
 - **IMPL-140-R020** Every `T-*` test id appearing in an impl doc MUST exist in the test tree, and every
   test MUST reference its `T-*` id in its name; the tool diffs the two directions
   ("documented but not implemented", "implemented but not documented").
-- **IMPL-140-R021** `tools/impl-status` generates `docs/impl/STATUS.md` (per-doc WP counts, done/total,
+- **IMPL-140-R021** `tools/impl-status` generates `docs/impl/registers/STATUS.md` (per-doc WP counts, done/total,
   dev-day totals, open-item counts, ✅/⏳ state, diagnostic codes, and test ids) and MUST be
   deterministic so it can live in review diffs.
 
@@ -221,7 +221,7 @@ tools/conformance waive --metric <m> --reason <text> --scope <frames>
    run in CI and fail on any drift of `APP-§2`, `APP-§10.12` or `IMPL-110` §6.
 4. Fuzzers run clean for their bounded CI budget, with a crasher regression test for every historical
    finding.
-5. `docs/impl/STATUS.md` is generated, deterministic, and up to date at every merge.
+5. `docs/impl/registers/STATUS.md` is generated, deterministic, and up to date at every merge.
 
 ## 11. Changelog
 

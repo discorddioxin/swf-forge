@@ -483,7 +483,7 @@ and recording it here**). Errata `E-011` records the two corrections that produc
 | `SF0250–0269` | 070 | bitmaps, lossless images, morph shapes |
 | `SF0270–0289` | 080 | fonts, glyphs, text (`SF0286`–`SF0288` spare in-block) |
 | `SF0290–0299` | 110 | video extensions (Screen Video v2 and codec additions, Ch.14/`E-021`; `SF0296`/`SF0298` spare) |
-| `SF0300–0309`, `SF0324–0332` | 090 | audio (`SF0301`–`SF0309` meanings shared with `docs/specs/060-audio-web.md`; `SF0320`–`SF0323` are that spec's runtime codes) |
+| `SF0300–0309`, `SF0324–0332` | 090 | audio (`SF0301`–`SF0309` meanings shared with `docs/specs/web/060-audio-web.md`; `SF0320`–`SF0323` are that spec's runtime codes) |
 | `SF0400–0424` | 050 | AVM1 decode/analysis (`SF0411`–`SF0422` added in the Ch.5 pass; `SF0423`/`SF0424` are the design spec's `ToPrimitive` recursion guard and prototype-chain cycle) |
 | `SF0500–0599` | 120 | emitter/codegen (range reserved by CMP-§9.3; `SF0501`/`SF0502` = budget diagnostics) |
 | `SF0600–0699` | 130 | runtime contract, manifest, shell (the emitter writes the manifest but the contract's codes are the runtime doc's) |

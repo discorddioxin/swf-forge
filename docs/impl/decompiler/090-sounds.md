@@ -294,7 +294,7 @@ export interface AudioAsset {
 ## 8. Diagnostics
 
 Codes `SF0300`–`SF0309` keep the meanings the audio design spec
-(`docs/specs/060-audio-web.md`) already gave them (shared, not duplicated); `SF0320`–`SF0323` are
+(`docs/specs/web/060-audio-web.md`) already gave them (shared, not duplicated); `SF0320`–`SF0323` are
 that spec's runtime conditions (peak guard, stream underrun, sync re-anchor, device recreated);
 `SF0324`–`SF0332` are this document's decode-side block (errata `E-011`, `E-019`).
 

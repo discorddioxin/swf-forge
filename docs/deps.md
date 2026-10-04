@@ -1,20 +1,24 @@
 # Dependency review record
 
-**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.0** · **Owner:** `SEC-D04` (specs/100)
+**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.1** · **Owner:** `SEC-D04` (specs/100)
 
 Every third-party dependency that ships in `packages/*` or `apps/*` is recorded here with its
 licence, the review that cleared it, and the obligation it carries. This is the register that
 `SEC-D04` requires; `SEC-R0xx` in [`specs/quality/100-security-licensing.md`](specs/quality/100-security-licensing.md)
 states the rules, this file records the decisions.
 
-The project is **specifications-only** at Draft 1.0 of this register: no dependency has been added
-to a build yet, so the table below is empty by construction, not by omission.
+Draft 1.0 of this register held an empty table (the specification-only phase); Draft 1.1 records the
+first four build tools, all of them dev-only — nothing in this table ships in `packages/*` or
+`apps/*` runtime output.
 
 ## 1. Reviewed dependencies
 
 | Package | Version range | Licence | Used by | Reviewed | Obligations | Verdict |
 | --- | --- | --- | --- | --- | --- | --- |
-| *(none yet)* | — | — | — | — | — | — |
+| `typescript` | `^5.6.3` (5.9.3 installed) | Apache-2.0 | build tooling — `tsc -b` for every package (`TECH-SPEC` §4.1) | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `vitest` | `^2.1.4` (2.1.9 installed) | MIT | unit/fixture test runner (`TECH-R009`) | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `@types/node` | `^22.9.0` (22.20.5 installed) | MIT | Node type declarations for tests and CLI entry points | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `prettier` | `^3.3.3` (3.9.9 installed) | MIT | formatting check in `pnpm lint` (`TECH-R008`) | 2026-10-04 | none; dev-only, not shipped | cleared |
 
 ## 2. Rules this register enforces
 
@@ -37,3 +41,4 @@ to a build yet, so the table below is empty by construction, not by omission.
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | 2026-10-04 | Register created (empty): provides the target `SEC-D04` requires and makes the `docs/deps.md` references in `specs/100` and `specs/110` resolvable |
+| 1.1 | 2026-10-04 | First build tools reviewed: `typescript`, `vitest`, `@types/node`, `prettier` — all dev-only, permissive licences, no shipped-code obligation |

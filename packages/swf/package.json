@@ -1,0 +1,20 @@
+{
+  "name": "@swf-forge/swf",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./test-support": {
+      "types": "./dist/test-support/index.d.ts",
+      "import": "./dist/test-support/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

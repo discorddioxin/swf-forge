@@ -1,0 +1,5 @@
+{
+  "files": [],
+  // apps/* join the build when their first source file lands (TECH-SPEC §3.1).
+  "references": [{ "path": "packages/swf" }]
+}

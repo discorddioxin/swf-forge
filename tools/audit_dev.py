@@ -8,8 +8,9 @@ Usage:
 consistent with the specification set.  It is the mechanised form of the audit in `audits/dev/`:
 every finding that can be decided mechanically is checked here on every run, the recorded baseline in
 `audits/dev/baseline.json` lists the findings that are known and accepted for now, and the exit code is
-non-zero only when a **new** finding appears.  Fixing a finding removes it from the run and prints it as
-`fixed`, so the file is a live ledger rather than a report.
+non-zero for a valid run only when a **new** finding appears; exit 2 also signals an invalid invocation
+or missing checkout input. Fixing a finding removes it from the run and prints it as `fixed`, so the file
+is a live ledger rather than a report.
 
 Checks:
     1  registry     codes.ts parses; name/code agree; severities are in vocabulary
@@ -22,14 +23,16 @@ Checks:
     8  imports      comment-stripped cross-package import restrictions (eslint's intent)
     9  determinism  forbidden sources of nondeterminism on output paths
    10  version      version-gated diagnostics the owning module cannot reach
-   11  dump         the model dump against `IMPL-040` §3.6 (static; runtime with the probe)
+   11  dump         the model dump against `IMPL-040` §3.6 plus normative op interfaces (probe)
    12  pins         behavioural pins for the two audit blockers (runtime probe)
+   13  sources      errata/status registers cannot become definition sources
 
-Exit codes: 0 = no new findings · 1 = new findings · 2 = inputs missing (not a swf-forge checkout).
+Exit codes: 0 = no new findings · 1 = new findings · 2 = invalid invocation or required inputs missing.
 
 Stdlib only, no network, deterministic output, repo-relative paths (`TECH-R010` spirit).
 """
 import argparse
+import ast
 import collections
 import glob
 import json
@@ -45,6 +48,8 @@ REGISTRY_PATH = os.path.join(ROOT, "packages", "swf", "src", "diagnostics", "cod
 ESLINT_PATH = os.path.join(ROOT, "eslint.config.js")
 DUMP_SOURCE = os.path.join(ROOT, "apps", "decompiler", "src", "dump", "model-dump.ts")
 DUMP_BIN = os.path.join(ROOT, "apps", "decompiler", "dist", "main.js")
+DISPLAY_SPEC = os.path.join(ROOT, "docs", "impl", "decompiler", "030-display-list-and-sprites.md")
+CONTROL_SPEC = os.path.join(ROOT, "docs", "impl", "decompiler", "040-control-tags-and-metadata.md")
 SWF_DIST = os.path.join(ROOT, "packages", "swf", "dist", "index.js")
 FIXTURE = os.path.join(ROOT, "fixtures", "appendix-a.swf")
 
@@ -171,8 +176,33 @@ def code_files():
 
 
 def impl_docs():
+    """Numbered implementation specifications, matching `verify_docs.py`'s definition scope.
+
+    The numbered-document glob intentionally excludes `registers/errata.md` (a defect/correction
+    history) and `registers/STATUS.md` (generated coverage output). Neither may define a requirement,
+    rule, diagnostic or test id. `check_sources()` guards against definition-shaped rows being added to
+    either register, so widening this source set cannot happen silently.
+    """
     return sorted(glob.glob(os.path.join(ROOT, "docs", "impl", "**", "[0-9][0-9][0-9]-*.md"),
                             recursive=True))
+
+
+def registers_docs():
+    return sorted(glob.glob(os.path.join(ROOT, "docs", "impl", "registers", "*.md")))
+
+
+DEF_ROW = re.compile(r"^\|\s*`?(?:SF\d{4}|T-[A-Za-z0-9]+-\d+|IMPL-\d{3}-R\d{3})`?\s*\|")
+
+
+def check_sources():
+    """Errata and generated status registers must not become definition sources."""
+    for path in registers_docs():
+        for lineno, line in enumerate(read(path).splitlines(), 1):
+            if DEF_ROW.match(line):
+                report("sources", f"sources.register-definition:{rel(path)}:{lineno}", "error",
+                       f"{rel(path)}:{lineno} is shaped like a definition row in a register; "
+                       f"the ledger excludes registers, so move the definition to its owning document "
+                       f"or teach `impl_docs()` about it")
 
 
 def spec_docs():
@@ -293,53 +323,127 @@ def check_doc_severity(rows):
 
 
 # --------------------------------------------------------- 4. ownership and registry coverage
-RANGE_ROW = re.compile(r"^\|\s*`?((?:SF\d{4}\s*[–-]\s*(?:SF)?\d{4})|(?:SF\d{4}))`?\s*\|\s*([A-Za-z0-9]+)\s*\|", re.M)
 PROSE_RANGE = re.compile(
-    r"(IO|container|tag-level)-range[^\n]*?`SF(\d{4})\s*[–-]\s*(\d{4})`", re.I)
+    r"(IO|container|tag-level)[ -]range[^`]*?`SF(\d{4})\s*[–-]\s*(\d{4})`", re.I)
 PROSE_OWNER = {"io": "010", "container": "020", "tag-level": "020"}
 CODE_TOKEN = re.compile(r"SF(\d{4})")
+RESERVED_OWNERS = {"spare", "reserved", "—", "-", "design specs", "design", "specs", "sec"}
+
+
+def allocation_claims():
+    """Specific table allocations as `(lo, hi, owner, source)`.
+
+    A claim is a table row whose **first cell is a range** (`SF0100–0109`, `SF0300–0309, SF0324–0332`,
+    `SF0295`–`SF0299`). The separate prose allocations in doc 010 §7 are broader parent ranges; table
+    rows refine them (e.g. 010's `SF0100–0199` belongs to 020, with sub-blocks assigned to 030/040/060).
+    Requiring a range is what keeps §8 severity rows out of this map: an earlier version matched bare
+    `| SF0110 | warning |` rows and stored severities as owners, which made every code look allocated.
+    """
+    claims = []
+    for path in impl_docs():
+        for lineno, line in enumerate(read(path).splitlines(), 1):
+            if not line.startswith("|"):
+                continue
+            cells = [c.strip() for c in line.strip().strip("|").split("|")]
+            if len(cells) < 3:
+                continue
+            head = cells[0].replace("`", "")
+            if not head.startswith("SF") or ("–" not in head and "-" not in head and "+" not in head):
+                continue
+            tokens = [int(t) for t in re.findall(r"(\d{4})", head)]
+            if head.endswith("+") and len(tokens) == 1:
+                # Open-ended row (`SF1000+` — fatal band): claim the code it names, since the band
+                # has no stated upper bound and only the codes that exist are registered.
+                tokens.append(tokens[0])
+            if len(tokens) < 2 or len(tokens) % 2:
+                continue
+            owner = cells[1].replace("`", "").strip()
+            for i in range(0, len(tokens), 2):
+                claims.append((tokens[i], tokens[i + 1], owner, f"{rel(path)}:{lineno}"))
+    return claims
+
+
+def prose_allocation_claims():
+    """Broader ownership blocks stated in prose; direct table allocations take precedence."""
+    claims = []
+    for path in impl_docs():
+        for label, lo, hi in PROSE_RANGE.findall(read(path)):
+            claims.append((int(lo), int(hi), PROSE_OWNER[label.lower()], rel(path)))
+    return claims
 
 
 def check_coverage(rows):
-    owner = {}
-    # Ranges stated in prose (doc 010 §7 allocates the IO and container ranges in a sentence).
-    for path in impl_docs():
-        for label, lo, hi in PROSE_RANGE.findall(read(path)):
-            for n in range(int(lo), int(hi) + 1):
-                owner.setdefault(n, PROSE_OWNER[label.lower()])
-    for path in impl_docs():
-        for m in RANGE_ROW.finditer(read(path)):
-            code_run, who = m.group(1), m.group(2)
-            tokens = CODE_TOKEN.findall(code_run)
-            if not tokens:
+    owner, reserved, overlaps = {}, set(), []
+    for lo, hi, who, source in allocation_claims():
+        for n in range(lo, hi + 1):
+            if who in RESERVED_OWNERS:
+                reserved.add(n)
                 continue
-            if "spare" in who or who in ("design", "specs"):
-                lo = hi = int(tokens[0])
-                owner.setdefault(lo, None)  # explicit spare row: intentionally unowned
-                continue
-            lo, hi = int(tokens[0]), int(tokens[-1])
-            for n in range(lo, hi + 1):
-                owner.setdefault(n, who)
-    registered = {int(c[2:]) for c in rows}
-    for n in sorted(registered):
-        if n not in owner:
-            report("coverage", f"coverage.no-owner:SF{n:04d}", "warning",
-                   f"SF{n:04d} is in the registry but no document's range table owns it")
-        elif owner[n] is None:
-            report("coverage", f"coverage.spare:SF{n:04d}", "info",
-                   f"SF{n:04d} is registered but its range row marks it spare")
+            if n in owner and owner[n][0] != who:
+                overlaps.append((n, owner[n], (who, source)))
+            else:
+                owner.setdefault(n, (who, source))
+    # Prose blocks are parent ranges. They fill gaps only; an explicit table sub-allocation wins.
+    for lo, hi, who, source in prose_allocation_claims():
+        for n in range(lo, hi + 1):
+            if n not in reserved:
+                owner.setdefault(n, (who, source))
+    for n, (before, after) in sorted({o[0]: (o[1], o[2]) for o in overlaps}.items()):
+        report("coverage", f"coverage.overlap:SF{n:04d}", "error",
+               f"SF{n:04d} is claimed by doc {before[0]} ({before[1]}) and by doc {after[0]} "
+               f"({after[1]}); allocation ranges must not overlap")
+
     documented = {}
     for path in impl_docs():
         for m in DOC_ROW.finditer(read(path)):
-            documented.setdefault(m.group(1), doc_num(path))
+            documented.setdefault(m.group(1), set()).add(doc_num(path))
     for code in sorted(rows):
+        n = int(code[2:])
+        if n in reserved:
+            report("coverage", f"coverage.reserved:{code}", "warning",
+                   f"{code} is registered but a specific allocation row marks it spare/reserved")
+            continue
+        if n not in owner:
+            report("coverage", f"coverage.no-owner:{code}", "warning",
+                   f"{code} is in the registry but no allocation row or prose range owns it")
+            continue
+        # Docs 010 and 020 restate each other's ranges: 010 §8 lists the container codes and 020
+        # lists the IO ones, and `verify_docs.py` check 4 explicitly allows that pair.
+        allowed = {owner[n][0]}
+        if owner[n][0] in {"010", "020"}:
+            allowed |= {"010", "020"}
+        for doc in sorted(documented.get(code, set()) - allowed):
+            report("coverage", f"coverage.owner-mismatch:{code}", "error",
+                   f"{code} is allocated to doc {owner[n][0]} ({owner[n][1]}) but documented by "
+                   f"doc {doc}")
         if code not in documented:
             report("coverage", f"coverage.undocumented:{code}", "error",
                    f"{code} is registered but no document's \u00a78 table documents it")
+
+    # The registry's own header comment states ranges with owners; anything it claims that no
+    # allocation covers is a paperwork gap the range tables should close (currently `SF1000+`).
+    header = read(REGISTRY_PATH)
+    head = re.search(r"Ranges \(owner in brackets\):(.*?)\*/", header, re.S)
+    if head:
+        for segment in head.group(1).split("·"):
+            tokens = [int(t) for t in re.findall(r"SF(\d{4})\s*\+?", segment)]
+            claim = re.search(r"\((\d{3})\)", segment)
+            if not tokens or not claim:
+                continue
+            label = re.sub(r"\s+", " ", segment.replace("*", "").strip()).strip("`")
+            for n in tokens:
+                # Only a *contradiction* is a header finding; an unallocated claim is already
+                # reported once as `coverage.no-owner`.
+                if n in owner and owner[n][0] != claim.group(1):
+                    report("coverage", f"coverage.header-unallocated:SF{n:04d}", "warning",
+                           f"the registry header claims \"{label}\" but no allocation row covers "
+                           f"SF{n:04d}; doc {claim.group(1)} should own it")
+                    break
+
     unregistered = collections.Counter(
-        doc for code, doc in documented.items() if code not in rows)
+        doc for code, docs in documented.items() if code not in rows for doc in docs)
     for doc, count in sorted(unregistered.items()):
-        codes = sorted(c for c, d in documented.items() if d == doc and c not in rows)
+        codes = sorted(c for c, docs in documented.items() if doc in docs and c not in rows)
         report("coverage", f"coverage.unregistered:{doc}", "info",
                f"doc {doc} documents {count} codes that have no registry row yet, starting at "
                f"{codes[0]}")
@@ -436,32 +540,59 @@ def check_rules():
 
 
 # ------------------------------------------------------------------------------ 7. test ids
-TEST_DECL = re.compile(r"^\|\s*`?(T-[A-Za-z0-9]+-\d+)`?\s*\|", re.M)
+# Same shape as verify_docs.py check 8b: design-spec tables may leave ids unquoted, while
+# implementation tables normally use code spans.
+TEST_DECL = re.compile(r"^\| `?(T-[A-Za-z0-9]+-\d+)`? \|", re.M)
 TEST_ANY = re.compile(r"\bT-[A-Za-z0-9]+-\d+\b")
-HISTORICAL = {"T-MOD-201", "T-RT-020"}
+
+
+def historical_test_ids():
+    """Read the verifier's actual allowlist instead of maintaining a stale second copy."""
+    path = os.path.join(ROOT, "tools", "verify_docs.py")
+    if not os.path.exists(path):
+        report("tests", "tests.allowlist-missing", "error",
+               "tools/verify_docs.py is missing; cannot establish its historical test-id allowlist")
+        return set()
+    try:
+        tree = ast.parse(read(path), filename=rel(path))
+    except SyntaxError as exc:
+        report("tests", "tests.allowlist-invalid", "error",
+               f"tools/verify_docs.py cannot be parsed to read HISTORICAL_TEST_IDS: {exc}")
+        return set()
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target] \
+            if isinstance(node, ast.AnnAssign) else []
+        if any(isinstance(target, ast.Name) and target.id == "HISTORICAL_TEST_IDS"
+               for target in targets):
+            try:
+                return set(ast.literal_eval(node.value))
+            except (ValueError, TypeError, SyntaxError):
+                report("tests", "tests.allowlist-invalid", "error",
+                       "verify_docs.py's HISTORICAL_TEST_IDS must be a literal collection of ids")
+                return set()
+    report("tests", "tests.allowlist-missing", "warning",
+           "verify_docs.py no longer declares HISTORICAL_TEST_IDS")
+    return set()
 
 
 def check_tests():
+    # This is the same definition surface as verify_docs.py check 8b: test rows from numbered
+    # design/implementation specs only. Errata occurrences and generated STATUS snapshots are
+    # citations/evidence, not definitions; check_sources() prevents them from becoming one accidentally.
     declared = set()
     for path in impl_docs() + spec_docs():
         declared |= set(TEST_DECL.findall(read(path)))
     cited = set()
     for path in code_files():
         cited |= set(TEST_ANY.findall(read(path)))
-    for tid in sorted(cited - declared):
-        if tid in HISTORICAL:
-            continue
+    historical = historical_test_ids()
+    for tid in sorted(cited - declared - historical):
         report("tests", f"tests.citation-undeclared:{tid}", "error",
-               f"code cites {tid}, which no document declares")
-    verifier = read(os.path.join(ROOT, "tools", "verify_docs.py"))
-    for tid in sorted(HISTORICAL):
-        if tid in declared:
-            report("tests", f"tests.allowlist-stale:{tid}", "warning",
-                   f"{tid} is declared in the documents but still on verify_docs.py's "
-                   f"HISTORICAL_TEST_IDS allowlist")
-    if "HISTORICAL_TEST_IDS" not in verifier:
-        report("tests", "tests.allowlist-missing", "warning",
-               "verify_docs.py no longer declares HISTORICAL_TEST_IDS; update this check")
+               f"code cites {tid}, which no numbered specification document declares")
+    for tid in sorted(historical & declared):
+        report("tests", f"tests.allowlist-stale:{tid}", "warning",
+               f"{tid} is declared in the numbered docs but still on verify_docs.py's "
+               f"HISTORICAL_TEST_IDS allowlist")
     return declared, cited
 
 
@@ -639,6 +770,45 @@ def check_static_pins():
                    f"{flag} is documented (specs/format/030 SWF-D03) but no decompiler CLI accepts it")
 
 
+def check_op_field_sets():
+    """Compare serialized op interfaces to the normative implementation-spec interfaces.
+
+    Comparing only `Dump*` to the current TS model is circular: the model itself can have dropped a
+    normative field. The authoritative shapes live in IMPL-030 §3 and IMPL-040-R024; `origin` is
+    intentionally projected to `tagOffset` by the dump contract (R047), and the dump also records a
+    removal tag name so its two tag forms remain distinguishable.
+    """
+    dump = read(DUMP_SOURCE) if os.path.exists(DUMP_SOURCE) else ""
+
+    def fields(src, iface):
+        m = re.search(rf"(?:export )?interface {iface} \{{(.*?)^\s*\}}", src, re.S | re.M)
+        return None if m is None else re.findall(r"^\s*readonly (\w+)\s*:", m.group(1), re.M)
+
+    contracts = (
+        ("DumpPlacement", "PlacementOp", DISPLAY_SPEC, "IMPL-030 §3", "error"),
+        ("DumpRemoval", "RemovalOp", DISPLAY_SPEC, "IMPL-030 §3", "error"),
+        ("DumpTabIndex", "SetTabIndexOp", CONTROL_SPEC, "IMPL-040-R024/R047", "error"),
+    )
+    for dump_iface, spec_iface, spec_path, rule, severity in contracts:
+        dumped = fields(dump, dump_iface)
+        specified = fields(read(spec_path), spec_iface) if os.path.exists(spec_path) else None
+        if dumped is None or specified is None:
+            report("dump", f"dump.op-interface:{dump_iface}", "error",
+                   f"could not find `{dump_iface}` in {rel(DUMP_SOURCE)} or `{spec_iface}` in "
+                   f"{rel(spec_path)}; the serialized op shape can no longer be checked")
+            continue
+        # Dump R047 replaces the model's TagRef origin with the stable body offset; removals also
+        # carry their tag name so RemoveObject and RemoveObject2 remain distinguishable.
+        required = set(specified) - {"origin"}
+        required.add("tagOffset")
+        if dump_iface == "DumpRemoval":
+            required.add("tag")
+        missing = sorted(required - set(dumped))
+        for field in missing:
+            report("dump", f"dump.op-field-dropped:{dump_iface}:{field}", severity,
+                   f"`{dump_iface}` ({rel(DUMP_SOURCE)}) omits `{field}` required by "
+                   f"`{spec_iface}` in {rel(spec_path)} ({rule}); `origin` is projected to `tagOffset`")
+
 def check_pins(probe):
     check_static_pins()
     if probe.get("status") != "ok":
@@ -656,6 +826,17 @@ def check_pins(probe):
                f"(IMPL-060-R006)")
 
 
+# Findings only a runtime probe (built `dist/`) can produce.  Their static siblings in the same
+# family (`dump.format-id`/`dump.format-version`) keep being reported under `--no-probe`; these are
+# reported as *skipped* rather than fixed, so a probe-less run never looks like progress.
+PROBE_ONLY_KEY_PREFIXES = (
+    "pins.shape4-flags", "pins.v1-style-count", "dump.json-", "dump.determinism:",
+    "dump.absolute-or-timestamp", "dump.newline", "dump.indent", "dump.json-shape",
+    "dump.format-value", "dump.version-value", "dump.top-level-order", "dump.source-keys",
+    "dump.timeline-keys",
+    "dump.frame-keys", "dump.label-keys", "dump.op-shape", "dump.out-", "dump.synth:",
+)
+
 DUMP_KEYS = ["format", "formatVersion", "source", "model", "dictionary", "timeline",
              "initActions", "control", "diagnostics"]
 SOURCE_KEYS = ["bytes", "sha256", "compression", "version", "fileLength", "frameRate", "stage"]
@@ -665,7 +846,7 @@ FORBIDDEN_IN_JSON = [r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", r"/(home|Users|tmp)/", r"
                      r"[A-Za-z]:\\\\"]
 
 
-def check_dump(probe_enabled):
+def check_dump(probe_enabled, rows):
     """`IMPL-040-R044`-`R048`: the dump object's shape, ordering and byte-determinism."""
     src = read(DUMP_SOURCE) if os.path.exists(DUMP_SOURCE) else ""
     if "'swf-forge/model-dump'" not in src:
@@ -688,34 +869,60 @@ def check_dump(probe_enabled):
         return {"status": "skipped", "reason": f"{rel(DUMP_BIN)} or fixture missing"}
 
     def run(args):
-        return subprocess.run(["node", DUMP_BIN, *args], capture_output=True, text=True,
+        # Keep stdout/stderr as bytes: the contract is byte-level (LF, trailing newline, --out equality).
+        return subprocess.run(["node", DUMP_BIN, *args], capture_output=True,
                               timeout=120, cwd=ROOT)
 
     out = run(["dump", str(FIXTURE), "--json"])
     if out.returncode != 0:
         report("dump", "dump.json-exit", "error",
-               f"dump --json exited {out.returncode}: {out.stderr.strip()[-200:]}")
+               f"dump --json exited {out.returncode}: "
+               f"{out.stderr.decode('utf-8', errors='replace').strip()[-200:]}")
         return {"status": "error"}
     second = run(["dump", str(FIXTURE), "--json"])
     if second.stdout != out.stdout:
         report("dump", "dump.determinism", "error",
                "two dump --json runs over the same input produced different bytes (IMPL-040-R045)")
+    output_text = out.stdout.decode("utf-8", errors="replace")
     for pattern in FORBIDDEN_IN_JSON:
-        if re.search(pattern, out.stdout):
+        if re.search(pattern, output_text):
             report("dump", "dump.absolute-or-timestamp", "error",
                    f"the JSON dump matches {pattern!r} (IMPL-040-R045)")
+    if (not out.stdout.endswith(b"\n") or out.stdout.endswith(b"\n\n")
+            or b"\r" in out.stdout):
+        report("dump", "dump.newline", "error",
+               "dump --json must use LF and exactly one trailing newline (IMPL-040-R048)")
+    if not re.search(r'^  "format": ', output_text, re.M) or not re.search(r'^    "bytes": ', output_text, re.M):
+        report("dump", "dump.indent", "error",
+               "dump --json is not emitted with the documented two-space indentation (IMPL-040-R048)")
     try:
-        doc = json.loads(out.stdout)
+        doc = json.loads(output_text)
     except json.JSONDecodeError as exc:
         report("dump", "dump.json-parse", "error", f"dump --json is not valid JSON: {exc}")
         return {"status": "error"}
+    if not isinstance(doc, dict):
+        report("dump", "dump.json-shape", "error",
+               f"dump --json parsed as {type(doc).__name__}, not an object")
+        return {"status": "error"}
+    if doc.get("format") != "swf-forge/model-dump":
+        report("dump", "dump.format-value", "error",
+               f"dump.format is {doc.get('format')!r}, expected 'swf-forge/model-dump'")
+    if doc.get("formatVersion") != 1:
+        report("dump", "dump.version-value", "error",
+               f"dump.formatVersion is {doc.get('formatVersion')!r}, expected 1")
     if list(doc.keys()) != DUMP_KEYS:
         report("dump", "dump.top-level-order", "error",
                f"top-level keys {list(doc.keys())} do not match the documented order {DUMP_KEYS}")
-    if list(doc.get("source", {}).keys()) != SOURCE_KEYS:
+    source = doc.get("source", {})
+    if not isinstance(source, dict) or list(source.keys()) != SOURCE_KEYS:
+        keys = list(source.keys()) if isinstance(source, dict) else type(source).__name__
         report("dump", "dump.source-keys", "error",
-               f"source keys {list(doc.get('source', {}).keys())} != {SOURCE_KEYS}")
+               f"source keys {keys} != {SOURCE_KEYS}")
     tl = doc.get("timeline", {})
+    if not isinstance(tl, dict):
+        report("dump", "dump.timeline-keys", "error",
+               f"timeline is {type(tl).__name__}, not an object")
+        return {"status": "error"}
     if list(tl.keys()) != TIMELINE_KEYS:
         report("dump", "dump.timeline-keys", "error",
                f"timeline keys {list(tl.keys())} != {TIMELINE_KEYS}")
@@ -733,29 +940,370 @@ def check_dump(probe_enabled):
             report("dump", "dump.op-shape", "error", f"frame op {op.get('kind')!r} is not documented")
             break
     with tempfile.TemporaryDirectory() as tmp:
-        out_dir = run(["dump", str(FIXTURE), "--out", tmp])
+        output_dir = os.path.join(tmp, "created-by-dump")
+        out_dir = run(["dump", str(FIXTURE), "--out", output_dir])
         if out_dir.returncode != 0:
             report("dump", "dump.out-exit", "error", f"dump --out exited {out_dir.returncode}")
-        else:
-            files = sorted(os.listdir(tmp))
-            if files != ["model.json"]:
-                report("dump", "dump.out-files", "error",
-                       f"--out wrote {files}; exactly ['model.json'] is documented (IMPL-040-R048)")
-            elif open(os.path.join(tmp, "model.json"), encoding="utf-8").read() != out.stdout:
-                report("dump", "dump.out-bytes", "error",
-                       "--out bytes differ from --json (IMPL-040-R048)")
-    return {"status": "ok", "bytes": len(out.stdout.encode("utf-8")),
-            "keys": len(doc.keys()), "frames": len(tl.get("frames", []))}
+        elif out_dir.stdout.lstrip().startswith(b"{"):
+            report("dump", "dump.out-rendering", "error",
+                   "dump --out must print its human summary, not the JSON payload (IMPL-040-R044)")
+        elif sorted(os.listdir(tmp)) != ["created-by-dump"]:
+            report("dump", "dump.out-parent", "error",
+                   f"--out did not create exactly its requested directory: {os.listdir(tmp)}")
+        elif sorted(os.listdir(output_dir)) != ["model.json"]:
+            report("dump", "dump.out-files", "error",
+                   f"--out wrote {os.listdir(output_dir)}; exactly ['model.json'] is documented "
+                   f"(IMPL-040-R048)")
+        elif open(os.path.join(output_dir, "model.json"), "rb").read() != out.stdout:
+            report("dump", "dump.out-bytes", "error",
+                   "--out bytes differ from --json (IMPL-040-R048)")
+    synth = check_dump_synth(run, rows)
+    return {"status": "ok", "bytes": len(out.stdout),
+            "keys": len(doc.keys()), "frames": len(tl.get("frames", [])), "synth": synth}
+
+
+# --------------------------------------------------------------- dump: its own fixtures
+# `fixtures/appendix-a.swf` has a single frame and empty control maps, so it cannot exercise
+# `IMPL-040-R046`'s sort rules, the sprite timeline of `R047`, or the double emission of
+# `SetTabIndex`.  The audit therefore *builds* two purpose-made files in a temp directory instead of
+# committing more fixtures: `clean`, which MUST produce no diagnostics at all, and `dirty`, which
+# carries a duplicated label and a sprite declaring more frames than it contains.
+PLACE_OP_KEYS = ["kind", "tag", "index", "depth", "move", "characterId", "name", "matrix",
+                 "cxform", "ratio", "clipDepth", "className", "blendMode", "bitmapCache",
+                 "visible", "opaqueBackground", "clipActions", "tagOffset"]
+REMOVE_OP_KEYS = ["kind", "tag", "index", "depth", "characterId", "tagOffset"]
+TABINDEX_OP_KEYS = ["kind", "index", "depth", "tabIndex", "tagOffset"]
+DICTIONARY_KEYS = ["id", "tag", "tagCode", "tagOffset", "length", "sprite"]
+SPRITE_KEYS = ["characterName", "declaredFrameCount", "observedFrameCount", "tagCount", "timeline"]
+CONTROL_KEYS = ["background", "backgroundSource", "backgroundChanges", "scenes", "labels",
+                "exports", "rootClassName", "imports", "scalingGrids", "tabIndexOps",
+                "scriptLimits", "attributes", "metadata"]
+DIAGNOSTIC_FIELDS = {"code", "severity", "offset", "count", "message"}
+SYNTH_DIAGNOSTICS = {"dirty": {"SF0023", "SF0116", "SF0124", "SF0153"}}
+
+
+class SwfBytes:
+    """Audit-local little-endian writer (SWF tags) for the synthetic dump fixtures."""
+
+    def __init__(self):
+        self._b = bytearray()
+
+    def u8(self, value):
+        self._b.append(value & 0xFF)
+        return self
+
+    def u16(self, value):
+        self._b += bytes((value & 0xFF, (value >> 8) & 0xFF))
+        return self
+
+    def u32(self, value):
+        self._b += int(value).to_bytes(4, "little")
+        return self
+
+    def raw(self, data):
+        self._b += data
+        return self
+
+    def string(self, text):
+        self._b += text.encode("utf-8") + b"\x00"
+        return self
+
+    def tag(self, code, body=b""):
+        if isinstance(body, SwfBytes):
+            body = body.bytes()
+        if len(body) < 0x3F:
+            return self.u16((code << 6) | len(body)).raw(body)
+        return self.u16((code << 6) | 0x3F).u32(len(body)).raw(body)
+
+    def bytes(self):
+        return bytes(self._b)
+
+
+def rect_bits(x_min=0, x_max=100, y_min=0, y_max=100):
+    """A `RECT`: 5-bit `Nbits`, then that many bits per edge, MSB-first, zero-padded to a byte."""
+    values = (x_min, x_max, y_min, y_max)
+    if min(values) < 0:
+        raise ValueError("the audit fixture only uses non-negative RECT edges")
+    nbits = max(1, max(v.bit_length() + 1 for v in values))
+    bits = [(nbits >> i) & 1 for i in range(4, -1, -1)]
+    for value in values:
+        bits += [(value >> i) & 1 for i in range(nbits - 1, -1, -1)]
+    bits += [0] * ((8 - len(bits) % 8) % 8)
+    out = bytearray()
+    for i in range(0, len(bits), 8):
+        byte = 0
+        for bit in bits[i:i + 8]:
+            byte = (byte << 1) | bit
+        out.append(byte)
+    return bytes(out)
+
+
+def synth_swf(dirty=False):
+    """Definitions in descending id order, two sprites, two exports, two grids, one metadata tag."""
+    body = SwfBytes()
+    empty_shape = lambda cid: SwfBytes().u16(cid).raw(rect_bits()).u8(0).u8(0).u8(0).u8(0).bytes()
+    body.tag(69, SwfBytes().u32(0x10).bytes())          # FileAttributes: HasMetadata only
+    body.tag(2, empty_shape(5))                         # DefineShape 5 — before shape 2
+    body.tag(2, empty_shape(2))                         # DefineShape 2
+    for sprite_id in (7, 3):                            # DefineSprite 7 — before sprite 3
+        declared = 2 if (dirty and sprite_id == 7) else 1
+        body.tag(39, SwfBytes().u16(sprite_id).u16(declared).tag(1).tag(0).bytes())
+    body.tag(56, SwfBytes().u16(2).u16(5).string("Zeta")
+             .u16(2).string("Alpha").bytes())           # ExportAssets: Zeta before Alpha
+    for grid_id in (7, 3):                              # DefineScalingGrid 7 before 3
+        body.tag(78, SwfBytes().u16(grid_id).raw(rect_bits()).bytes())
+    body.tag(77, SwfBytes().string("<xmp>audit</xmp>"))
+    body.tag(26, SwfBytes().u8(0x02).u16(1).u16(5).bytes())  # PlaceObject2 depth 1 → char 5
+    if dirty:
+        # HasImage + HasCharacter implies a class-name string; CacheAsBitmap's raw byte follows.
+        body.tag(70, SwfBytes().u8(0x02).u8(0x14).u16(2).string("BitmapClass")
+                 .u16(2).u8(1).bytes())                      # PlaceObject3 depth 2 → char 2
+    body.tag(66, SwfBytes().u16(1).u16(3).bytes())           # SetTabIndex depth 1 → 3
+    body.tag(5, SwfBytes().u16(5).u16(1).bytes())            # RemoveObject id 5 at depth 1
+    body.tag(43, SwfBytes().string("z").bytes())
+    body.tag(43, SwfBytes().string("a").bytes())        # same-frame labels deliberately not name-sorted
+    body.tag(1)
+    body.tag(9, bytes((0x11, 0x22, 0x33)))              # SetBackgroundColor: frame 1's lead-in
+    body.tag(43, SwfBytes().string("b").bytes())
+    body.tag(1)
+    if dirty:
+        body.tag(43, SwfBytes().string("a").bytes())    # duplicate label at frame 2
+    body.tag(1)
+    body.tag(0)
+    data = SwfBytes().raw(b"FWS").u8(8).u32(0).raw(rect_bits(0, 11000, 0, 8000)) \
+        .u16(12 * 256).u16(3).raw(body.bytes()).bytes()
+    return data[:4] + len(data).to_bytes(4, "little") + data[8:]
+
+
+def check_dump_synth(run, rows):
+    """`IMPL-040-R046`/`R047`: emitted order for maps, file order for sequences, op field sets."""
+    result = {}
+    reported = set()
+    for name, dirty in (("clean", False), ("dirty", True)):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, f"audit-{name}.swf")
+            with open(path, "wb") as fh:
+                fh.write(synth_swf(dirty=dirty))
+
+            def fail(suffix, message, severity="error"):
+                key = f"dump.synth:{suffix}"
+                if key not in reported:
+                    reported.add(key)
+                    report("dump", key, severity, f"{name}: {message}")
+
+            proc = run(["dump", path, "--json"])
+            human = run(["dump", path])
+            if proc.returncode != 0:
+                fail("exit", f"dump --json on the synthetic {name} file exited "
+                             f"{proc.returncode}: "
+                             f"{proc.stderr.decode('utf-8', errors='replace').strip()[-200:]}")
+                continue
+            if human.returncode != 0:
+                fail("human-exit", f"the human summary exited {human.returncode} "
+                                   f"({rel(DUMP_BIN)}; IMPL-040-R044)")
+            if path.encode() in proc.stdout or human.stdout.lstrip().startswith(b"{"):
+                fail("human-vs-json", "the JSON dump names the input path or the human summary "
+                                      "printed JSON (IMPL-040-R044/R045)")
+            try:
+                doc = json.loads(proc.stdout.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                fail("json-parse", f"the synthetic {name} dump is not UTF-8 JSON: {exc}")
+                continue
+            if not isinstance(doc, dict):
+                fail("json-shape", f"the synthetic {name} dump is {type(doc).__name__}, not an object")
+                continue
+            if list(doc.keys()) != DUMP_KEYS:
+                fail("top-level-order", f"top-level keys {list(doc.keys())} != {DUMP_KEYS}")
+            control = doc.get("control")
+            model = doc.get("model")
+            timeline = doc.get("timeline")
+            dictionary = doc.get("dictionary")
+            if not isinstance(control, dict) or not set(CONTROL_KEYS) <= set(control):
+                fail("control-shape", f"control is not an object with fields {CONTROL_KEYS}")
+                continue
+            if not isinstance(model, dict) or not isinstance(timeline, dict):
+                fail("model-timeline-shape", "model/timeline is not an object")
+                continue
+            if not isinstance(dictionary, list) or any(not isinstance(entry, dict) for entry in dictionary):
+                fail("dictionary-shape", "dictionary is not an array of objects")
+                continue
+            if list(control.keys()) != CONTROL_KEYS:
+                fail("control-order", f"control keys {list(control.keys())} != {CONTROL_KEYS}")
+            control_arrays = ("exports", "scalingGrids", "metadata", "backgroundChanges", "labels",
+                              "tabIndexOps")
+            if any(not isinstance(control.get(key), list) for key in control_arrays):
+                fail("control-array-shape", f"one or more control arrays are malformed: "
+                     f"{[(key, type(control.get(key)).__name__) for key in control_arrays]}")
+                continue
+            timeline_arrays = ("frames", "labels", "streamSoundSpans")
+            if any(not isinstance(timeline.get(key), list) for key in timeline_arrays):
+                fail("timeline-array-shape", "one or more timeline fields are not arrays")
+                continue
+            frames = timeline["frames"]
+            if any(not isinstance(frame, dict) for frame in frames):
+                fail("frame-shape", "timeline.frames contains a non-object")
+                continue
+            if not frames or not isinstance(frames[0].get("ops"), list):
+                fail("frame-ops-shape", "timeline frame 0 has no ops array")
+                continue
+
+            # R046: maps are emitted sorted by key …
+            if [entry["id"] for entry in dictionary] != [2, 3, 5, 7]:
+                fail("dictionary-order", f"dictionary ids {[e['id'] for e in dictionary]} are not "
+                                         f"sorted ascending (IMPL-040-R046)")
+            if any(list(entry.keys()) != DICTIONARY_KEYS for entry in dictionary):
+                fail("dictionary-keys", f"a dictionary entry's keys are not {DICTIONARY_KEYS}")
+            if [e["name"] for e in control["exports"]] != ["Alpha", "Zeta"]:
+                fail("exports-order", f"exports {doc['control']['exports']} are not sorted by name")
+            if [g["id"] for g in control["scalingGrids"]] != [3, 7]:
+                fail("grids-order", f"scalingGrids {doc['control']['scalingGrids']} are not sorted "
+                                    f"by id")
+            if [m["key"] for m in control["metadata"]] != ["xmp"]:
+                fail("metadata-key", f"metadata {doc['control']['metadata']} is not keyed 'xmp'")
+            if list(model.keys()) != ["id", "background", "backgroundSource", "metadata"]:
+                fail("model-keys", f"model keys {list(doc['model'].keys())} != the R045 field list")
+            if model["metadata"] != [{"key": "xmp", "value": "<xmp>audit</xmp>"}]:
+                fail("metadata-model", f"model.metadata {doc['model']['metadata']} != the fixture's "
+                                       f"XMP string as a sorted-by-key array (IMPL-040-R046)")
+
+            # … and sequences keep file order (R046) while the label map is first-occurrence (R047).
+            labels = [(entry["name"], entry["frame"], entry["namedAnchor"])
+                      for entry in control["labels"]]
+            expected_labels = [("z", 0, False), ("a", 0, False), ("b", 1, False)]
+            if dirty:
+                expected_labels.append(("a", 2, False))
+            if labels != expected_labels:
+                fail("control-labels", f"control.labels {labels} != the file order "
+                                       f"{expected_labels} (duplicates kept, IMPL-040-R046)")
+            expected_timeline_labels = [("a", 0), ("b", 1), ("z", 0)]
+            if [(e["name"], e["frame"]) for e in timeline["labels"]] != expected_timeline_labels:
+                fail("timeline-labels", f"timeline.labels {doc['timeline']['labels']} != "
+                                        f"the first-occurrence name-sorted rows {expected_timeline_labels}")
+            frames = timeline["frames"]
+            if [f["index"] for f in frames] != [0, 1, 2]:
+                fail("frame-index", f"frame indices {[f['index'] for f in frames]} != [0, 1, 2]")
+            if [f["label"] for f in frames] != ["z", "b", "a" if dirty else None]:
+                fail("frame-label", f"frame labels {[f['label'] for f in frames]} do not follow "
+                                    f"the FrameLabel tags")
+            expected_changes = [{"frame": 1, "rgb": 0x112233}]
+            if control["backgroundChanges"] != expected_changes:
+                fail("background-changes", f"backgroundChanges "
+                                           f"{doc['control']['backgroundChanges']} != "
+                                           f"{expected_changes} (file order, IMPL-040-R046)")
+
+            # R047: the op field sets, the double emission of SetTabIndex and the sprite timeline.
+            ops = frames[0]["ops"]
+            expected_op_kinds = ["place", "place", "tabIndex", "remove"] if dirty else [
+                "place", "tabIndex", "remove"]
+            if [op["kind"] for op in ops] != expected_op_kinds:
+                fail("op-kinds", f"frame 0 ops {[op['kind'] for op in ops]} != "
+                                 f"{expected_op_kinds}")
+            elif dirty and (ops[1].get("tag") != "PlaceObject3" or ops[1].get("characterId") != 2
+                            or ops[1].get("className") != "BitmapClass" or ops[1].get("bitmapCache") != 1):
+                fail("place3-values", f"PlaceObject3's class/character/cache values were not retained: "
+                                       f"{ops[1]}")
+            else:
+                want_keys = {"place": PLACE_OP_KEYS, "tabIndex": TABINDEX_OP_KEYS,
+                             "remove": REMOVE_OP_KEYS}
+                for op in ops:
+                    actual = set(op.keys())
+                    required = set(want_keys[op["kind"]])
+                    for field in sorted(required - actual):
+                        fail(f"op-field:{op['kind']}:{field}",
+                             f"a {op['kind']} op omits required field `{field}` "
+                             f"(IMPL-040-R024/R047)")
+                if any(op.get("tagOffset") is None for op in ops):
+                    fail("op-tag-offset", f"an op in frame 0 has no tagOffset: {ops}")
+                offsets = [op["tagOffset"] for op in ops]
+                if offsets != sorted(offsets) or len(set(offsets)) != len(offsets):
+                    fail("op-order", f"frame 0 op offsets {offsets} are not strictly ascending")
+            tab_index_ops = control["tabIndexOps"]
+            tab_position = 2 if dirty else 1
+            if len(tab_index_ops) != 1 or tab_index_ops != ops[tab_position:tab_position + 1]:
+                fail("tabindex-twice", f"SetTabIndex must appear identically in control.tabIndexOps "
+                                       f"and in the owning frame's ops (IMPL-040-R047); got "
+                                       f"{tab_index_ops} and {ops[tab_position:tab_position + 1]}")
+            else:
+                missing = set(TABINDEX_OP_KEYS) - set(tab_index_ops[0].keys())
+                for field in sorted(missing):
+                    fail(f"control-tabindex-field:{field}",
+                         f"control.tabIndexOps omits required field `{field}` "
+                         f"(IMPL-040-R024/R047)")
+            sprites = {entry["id"]: entry["sprite"] for entry in dictionary if entry["sprite"]}
+            if sorted(sprites) != [3, 7] or set(sprites[3]) != set(SPRITE_KEYS):
+                fail("sprite-keys", f"sprite blocks { {k: sorted(v) for k, v in sprites.items()} } "
+                                    f"do not match {SPRITE_KEYS}")
+            else:
+                if list(sprites[7].keys()) != SPRITE_KEYS:
+                    fail("sprite-order", f"sprite keys {list(sprites[7].keys())} != {SPRITE_KEYS}")
+                if list(sprites[7]["timeline"].keys()) != TIMELINE_KEYS:
+                    fail("sprite-timeline", f"sprite timeline keys "
+                                            f"{list(sprites[7]['timeline'].keys())} != "
+                                            f"{TIMELINE_KEYS}")
+                sprite_frames = sprites[7]["timeline"].get("frames", [])
+                if not isinstance(sprite_frames, list) or any(
+                        not isinstance(frame, dict) or list(frame.keys()) != FRAME_KEYS
+                        for frame in sprite_frames):
+                    fail("sprite-frame-keys", "sprite timeline frames do not use FRAME_KEYS")
+                if sprites[7]["declaredFrameCount"] != (2 if dirty else 1):
+                    fail("sprite-declared", f"sprite 7 declares {sprites[7]['declaredFrameCount']} "
+                                            f"frame(s), the fixture writes {2 if dirty else 1}")
+                if sprites[3]["characterName"] != "sprite_3" or sprites[3]["tagCount"] != 1:
+                    fail("sprite-name", f"sprite 3 block {sprites[3]} != name 'sprite_3', 1 tag")
+                if len(sprites[7]["timeline"]["frames"]) != sprites[7]["observedFrameCount"]:
+                    fail("sprite-frames", "the sprite timeline's frames do not match its "
+                                          "observedFrameCount")
+
+            # The `clean` fixture is the audit's own conformance baseline: it MUST be diagnostic-free.
+            diagnostics = doc.get("diagnostics")
+            if not isinstance(diagnostics, dict) or not isinstance(diagnostics.get("items"), list):
+                fail("diagnostics-shape", "diagnostics is not an object with an items array")
+                continue
+            if set(diagnostics.keys()) != {"total", "errors", "warnings", "infos", "items"}:
+                fail("diagnostics-keys", f"diagnostics keys {list(diagnostics.keys())} unexpected")
+            items = diagnostics["items"]
+            if any(not isinstance(item, dict) for item in items):
+                fail("diagnostic-item-shape", "diagnostics.items contains a non-object")
+                continue
+            codes = [item.get("code") for item in items]
+            sev_counts = collections.Counter(item.get("severity") for item in items)
+            expected_counts = {"total": len(codes), "errors": sev_counts["error"],
+                               "warnings": sev_counts["warning"], "infos": sev_counts["info"]}
+            for field, want in expected_counts.items():
+                if diagnostics.get(field) != want:
+                    fail(f"diagnostics-count:{field}",
+                         f"diagnostics.{field}={diagnostics.get(field)!r}, expected {want}")
+            for item in items:
+                if not DIAGNOSTIC_FIELDS <= set(item.keys()):
+                    fail("diagnostic-fields", f"diagnostic {item} is missing {DIAGNOSTIC_FIELDS}")
+                if item["code"] not in rows:
+                    fail("diagnostic-registry", f"{item['code']} is emitted by dump but has no "
+                                                f"registry row")
+                elif item["severity"] != rows[item["code"]]["severity"]:
+                    fail("diagnostic-severity", f"{item['code']} is emitted as "
+                                                f"{item['severity']!r} but the registry says "
+                                                f"{rows[item['code']]['severity']!r}")
+            if name == "clean" and codes:
+                fail("clean-diagnostics", f"the clean synthetic file produced {codes}; the audit "
+                                          f"fixture is meant to be diagnostic-free")
+            if dirty and set(codes) != SYNTH_DIAGNOSTICS["dirty"]:
+                fail("dirty-diagnostics", f"the dirty fixture produced {sorted(set(codes))} != "
+                                          f"{sorted(SYNTH_DIAGNOSTICS['dirty'])}")
+            result[name] = {"bytes": len(proc.stdout), "diagnostics": codes}
+    return result
 
 
 # --------------------------------------------------------------------------------- driver
 def main():
     ap = argparse.ArgumentParser(description="development-integrity checks (see audits/dev/)")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
-    ap.add_argument("--update-baseline", action="store_true", help="record current findings as known")
+    ap.add_argument("--update-baseline", action="store_true",
+                    help="record all findings as known (requires runtime probes)")
     ap.add_argument("--no-probe", action="store_true", help="skip the runtime probes")
     ap.add_argument("--verbose", action="store_true", help="print every finding, including known ones")
     args = ap.parse_args()
+    if args.update_baseline and args.no_probe:
+        ap.error("--update-baseline requires the runtime probes; remove --no-probe")
 
     for required in (REGISTRY_PATH, os.path.dirname(BASELINE_PATH)):
         if not os.path.exists(required):
@@ -771,11 +1319,13 @@ def main():
     declared, cited_tests = check_tests()
     check_imports()
     check_determinism()
+    check_op_field_sets()
     gated = check_version_gates(rows, unemitted)
-    dump_result = check_dump(probe_enabled=not args.no_probe)
+    dump_result = check_dump(probe_enabled=not args.no_probe, rows=rows)
 
     probe = {"status": "skipped", "reason": "--no-probe"} if args.no_probe else run_probe()
     check_pins(probe)
+    check_sources()
 
     findings.sort(key=lambda f: (f["key"], f["message"]))
     checked = [f["key"] for f in findings]
@@ -792,7 +1342,13 @@ def main():
     counts = collections.Counter(checked)
     # The ledger counts occurrences: a new site for a known drift is also a regression.
     new = [f for f in findings if counts[f["key"]] > known.get(f["key"], 0)]
-    fixed = sorted(k for k, n in known.items() if counts[k] < n)
+    skipped = set()
+    if args.no_probe:
+        # Probe-only keys cannot be judged when the probes did not run; report them as skipped
+        # rather than fixed so `--no-probe` never looks like progress.
+        skipped = {k for k in known
+                   if k.startswith(PROBE_ONLY_KEY_PREFIXES) and counts[k] < known[k]}
+    fixed = sorted(k for k, n in known.items() if counts[k] < n and k not in skipped)
 
     if args.update_baseline:
         payload = {
@@ -814,11 +1370,12 @@ def main():
 
     if args.json:
         print(json.dumps({
-            "checks": 12,
+            "checks": 13,
             "findings": findings,
             "known": len(known),
             "new": [f["key"] for f in new],
             "fixed": fixed,
+            "skipped": sorted(skipped),
             "probe": probe,
             "dump": dump_result,
             "summary": {"registry": len(rows), "unemitted": len(unemitted),
@@ -839,6 +1396,8 @@ def main():
                 continue
             prefix = "[known]" if shown[f["key"]] <= known_n else "[NEW]  "
             print(f"  {prefix} [{f['severity']}] {f['key']}: {f['message']}")
+        for key in sorted(skipped):
+            print(f"  [skipped] {key} (probes disabled)")
         for key in fixed:
             print(f"  [fixed] {key} ({known[key]} -> {counts.get(key, 0)})")
         print(f"SUMMARY findings={len(findings)} known={sum(known.values())} "
@@ -851,7 +1410,8 @@ def main():
             print(f"PROBE {probe.get('status')}: {probe.get('reason', '')}")
         if dump_result.get("status") == "ok":
             print(f"DUMP keys={dump_result.get('keys')} frames={dump_result.get('frames')} "
-                  f"bytes={dump_result.get('bytes')}")
+                  f"bytes={dump_result.get('bytes')} "
+                  f"synth={ {k: v['diagnostics'] for k, v in dump_result.get('synth', {}).items()} }")
         else:
             print(f"DUMP {dump_result.get('status')}: {dump_result.get('reason', '')}")
         print(f"NEW FINDINGS: {len(new)}")

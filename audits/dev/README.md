@@ -1,9 +1,10 @@
 # Development integrity audit — `packages/*` and `apps/*` against the specification set
 
-**Date:** 2026-10-04 · **Branch:** `arena/01a107c6-swf-forge` · **Tree at audit:** clean, HEAD `a76f2ea`
-(one commit after the slice-6 `dump` commit `1c97217`) · **Auditor:** the same AI agent that authored the
-slices, re-reading the code as an adversarial reviewer · **Mode:** read-only for the repository; the only
-write in this audit is this folder.
+**Date:** 2026-10-04 · **Branch:** `arena/01a107c6-swf-forge` · **Initial audit tree:** clean, HEAD
+`a76f2ea` (one commit after the slice-6 `dump` commit `1c97217`) · **Continuation base:** HEAD `73483d5`
+· **Auditor:** the same AI agent that authored the slices, re-reading the code as an adversarial reviewer
+· **Mode:** the original source review was read-only; the continuation added the re-runnable checker and
+updated audit evidence under `tools/` and `audits/dev/`.
 
 This folder is **audit evidence, not specification**. Where an audit finding conflicts with
 `docs/specs` or `docs/impl`, the specification wins and the code is what must change — except where the
@@ -35,7 +36,7 @@ written, then SWF Specification 19 chapter text where an impl spec quotes it (§
 
 ## 2. Method and evidence
 
-The audit was evidence-driven, not checklist-driven. Three passes:
+The audit was evidence-driven, not checklist-driven. Four passes:
 
 1. **Rule inventory.** Every `IMPL-NNN-Rnnn` rule in `docs/impl/*/*.md` was enumerated per document, and
    every requirement was either located in code or recorded as unimplemented. Test-id definitions were
@@ -43,13 +44,18 @@ The audit was evidence-driven, not checklist-driven. Three passes:
 2. **Diagnostic registry conformance.** All 87 codes in `packages/swf/src/diagnostics/codes.ts` were
    parsed (registry rows wrap across lines — a line regex mis-parses them; parse
    `\bSF(\d{4}): \{ … \}` blocks instead) and compared against (a) every `emit`/`case` site outside
-   `codes.ts` and (b) the §8 severity tables of the owning impl doc. 17 codes are never emitted or
-   matched anywhere; 3 codes disagree with their call site on severity.
+   `codes.ts` and (b) the §8 severity tables of the owning impl doc. 16 codes are never referenced;
+   `SF1000` is mentioned only by the CLI mapper and is not emitted. Three codes disagree with their
+   call-site severity.
 3. **Behavioural probes.** Where a rule is decidable by execution, a throwaway script was run against
    the built `dist/` to decide it. Every probe is listed in §6 with its exact result.
+4. **Continuation hardening.** `tools/audit_dev.py` turned the one-off registry/rule scans into a
+   ledger, then gained range-table semantics, declaration-source boundaries and spec-driven dump probes.
+   The generated SWFs live only in a temp directory; the checker source and its baseline are committed.
 
-Commands (all run at HEAD `a76f2ea`; `pnpm install` was required first because `node_modules` was absent
-in this sandbox):
+Original review commands ran at `a76f2ea`; the mechanical continuation was re-run from `73483d5` with
+its audit-only source changes applied (`pnpm install` was required initially because `node_modules` was
+absent in this sandbox):
 
 ```bash
 pnpm install && pnpm build            # dist/ for the probes
@@ -59,32 +65,34 @@ python3 tools/verify_docs.py          # docs-only gate               -> ISSUES: 
 pnpm typecheck && pnpm test && pnpm lint   # baseline: green at HEAD
 ```
 
-Reproduction scripts for the two probes are in §6; they are deliberately not committed as tests because
-they are evidence for findings that the fix will invalidate. Both probes, plus ten static checks, now
-live in `tools/audit_dev.py` and re-run on every `pnpm audit:dev` — see `03-mechanical-checks.md`.
+The two original probes remain as raw evidence in §6. Both, plus the registry/rule checks and synthetic
+dump-contract fixtures, now re-run from `tools/audit_dev.py` on every `pnpm audit:dev` — see
+`03-mechanical-checks.md`.
 
 ## 3. Verdict
 
 **The implemented slice is broadly sound but not yet specification-conformant.** The layering, the
 determinism discipline, the diagnostics funnel and the container/framing core all hold up under
-inspection — 40 checks listed in `02-conformance.md` §1 passed with no change needed. Against that:
+inspection — 48 checks listed in `02-conformance.md` §1 pass with no change needed; two are partial
+(F-21, F-24) and two fail (F-22, F-23). The continuation added those four dump-side findings. Against that:
 
 - **2 blocker findings** (`F-01`, `F-02`) are silent wrong-output defects on legal input. `F-01` is the
   most serious: the `DefineShape4` hinting/winding flag bits are read at the wrong offsets, so
   `UsesFillWindingRule` is *never* honoured and a shape that should tessellate with the non-zero rule is
   rendered with even-odd — and a spurious `SF0188` warning is emitted for legal flag bytes.
-- **10 major findings** are documented `MUST` requirements that are absent, inverted or wired to the
+- **12 major findings** are documented `MUST` requirements that are absent, inverted or wired to the
   wrong diagnostic: the duplicate-character-id policy is inverted, `SF0006` is never used for a `ZWS`
   file with no decoder, the shape style-array escape is decoded for `DefineShape` v1 (the doc's named
   "shapes explode into noise" failure), `bits > 32` takes neither the strict nor the soft branch the doc
   mandates, the `kind: 'missing'` placeholder and `SF0110` do not exist, sprite timelines ignore the
-  declared `FrameCount`, the lazy/decode `readTag()` contract is a stub, and `SF0183`/`SF0185` are dead
-  codes.
-- **8 minor findings** are single-code, single-flag or single-field divergences, all listed with the
-  exact edit needed.
-- **3 observations** record systemic process risk rather than defects: 17 registry codes are never
-  emitted, only 10 of the 382 defined test ids are cited anywhere, and the green document gate cannot
-  detect any of the above.
+  declared `FrameCount`, the lazy/decode `readTag()` contract is a stub, `SF0183`/`SF0185` are dead
+  codes, `RemoveObject.CharacterId` is discarded, and required placement fields are absent from the
+  model/dump (F-23/F-24).
+- **10 minor findings** are single-code, single-flag, ordering or field-shape divergences, all listed
+  with the exact edit needed (F-10, F-11, F-15–F-22).
+- **3 observations** record systemic process risk rather than defects: 16 codes have no reference and
+  `SF1000` is mentioned but not emitted, only 10 of the 382 defined test ids are cited anywhere, and the
+  green document gate cannot detect the original findings.
 
 Severity definition used throughout: **blocker** = wrong output for input the specification covers;
 **major** = a `MUST` requirement missing, inverted or mis-wired, with user-visible effect;
@@ -94,8 +102,8 @@ Severity definition used throughout: **blocker** = wrong output for input the sp
 | Severity | Count | Ids |
 | --- | --- | --- |
 | blocker | 2 | F-01, F-02 |
-| major | 10 | F-03 … F-09, F-12 … F-14 |
-| minor | 8 | F-10, F-11, F-15 … F-20 |
+| major | 12 | F-03 … F-09, F-12 … F-14, F-23, F-24 |
+| minor | 10 | F-10, F-11, F-15 … F-22 |
 | observation | 3 | O-01 … O-03 |
 
 No finding is a security issue, a determinism violation (`TECH-R010`) or an architecture violation
@@ -126,7 +134,11 @@ broken toolchain.
 | F-18 | tests | `IMPL-010` §10 | `packages/swf/test/` | minor | No number-IO test file; `T-SWF-004/013/015/016` have no implementation |
 | F-19 | tests | `TECH-R009` | `packages/swf/test/diagnostics.test.ts:27` | minor | Severity regression test pins only `SF0001`–`SF0020`, which is why F-05 shipped |
 | F-20 | io | — | `packages/swf/src/io/bits.ts:19` | minor | `fixedFromSigned()` is an exported helper with no caller |
-| O-01 | coverage | — | `packages/swf/src/diagnostics/codes.ts` | observation | 17 registry codes are never emitted or matched; 9 have no owning WP |
+| F-21 | dump | `IMPL-040-R024/R047` | `apps/decompiler/src/dump/model-dump.ts:106` | minor | `SetTabIndexOp.index` is absent from both JSON emissions |
+| F-22 | dump | `IMPL-040-R046` | `apps/decompiler/src/dump/model-dump.ts:395` | minor | same-frame `control.labels` are name-sorted, not in file order |
+| F-23 | display list | `IMPL-030` §3/§4.5 | `packages/swf/src/tags/place.ts:286` | major | `RemoveObject.CharacterId` is read, then discarded from model and dump |
+| F-24 | display list/dump | `IMPL-030` §3, `IMPL-040-R047` | `packages/swf/src/tags/place.ts:26`, `apps/decompiler/src/dump/model-dump.ts:77` | major | `filters`, `cacheAsBitmap`, and `image` fields are missing from the required placement record |
+| O-01 | coverage | — | `packages/swf/src/diagnostics/codes.ts` | observation | 16 registry codes have no reference; `SF1000` is mentioned-only; 9 lack an owning WP |
 | O-02 | process | `TECH-R009` | `docs/**` | observation | 382 test ids are defined, 10 are cited in code or tests |
 | O-03 | process | — | `tools/verify_docs.py` | observation | The green doc gate audits documents only; it cannot detect any finding here |
 
@@ -146,8 +158,8 @@ broken toolchain.
 
 ## 6. Probe scripts (evidence for F-01 and the clean AA result)
 
-Both scripts import built `dist/` output. They are kept here as the audit's raw evidence; the two
-probes are now embedded in `tools/audit_dev.py` (check 12) so they are re-runnable rather than
+Both original scripts imported built `dist/` output and remain the audit's raw evidence. Their decoder
+probes are now embedded in `tools/audit_dev.py` (check 12), so those results are re-runnable rather than
 one-off.
 
 `probe-shape4.mjs` — builds a minimal `DefineShape4` body with a chosen flag byte and prints the decoded
@@ -178,9 +190,9 @@ anti-aliased content), so the analytic coverage model is **not** a finding.
 
 ## 7. Reading order
 
-1. `01-findings.md` — the 20 findings in detail, each with the doc sentence it violates and the exact fix.
+1. `01-findings.md` — the 24 findings in detail, each with the doc sentence it violates and the exact fix.
 2. `02-conformance.md` — what was checked and passed (§1), the never-emitted code table (§2), unimplemented
    document coverage (§3), the SWF-Spec-19 cross-checks (§4) and the traceability numbers (§5).
-3. `03-mechanical-checks.md` — the twelve re-runnable checks (`tools/audit_dev.py`), the recorded run,
+3. `03-mechanical-checks.md` — the thirteen re-runnable checks (`tools/audit_dev.py`), the recorded run,
    the reconciliation of every finding with its mechanical key, and the checker blind spots found while
    hardening it. `baseline.json` is the ledger the tool compares against.

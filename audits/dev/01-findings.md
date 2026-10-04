@@ -1,8 +1,10 @@
 # Findings — development integrity audit
 
-Twenty findings, ordered by severity then by package. Line numbers are at HEAD `a76f2ea`. Each finding
-names the specification sentence it violates and the exact change that closes it. Where a finding is a
-*defect in the documents* rather than in the code, it says so explicitly and the fix belongs in `docs/`.
+Twenty-four findings, ordered by severity then by package. Line numbers for F-01–F-20 refer to the
+original audit at `a76f2ea`; F-21–F-24 were filed by the continuation pass against the implementation at
+`73483d5`. Each finding names the specification sentence it violates and the exact change that closes it.
+Where a finding is a *defect in the documents* rather than in the code, it says so explicitly and the fix
+belongs in `docs/`.
 
 Severity legend: **blocker** wrong output for legal input · **major** a `MUST` missing, inverted or
 mis-wired with user-visible effect · **minor** one diagnostic, flag, field name or dead-code divergence.
@@ -543,9 +545,116 @@ package's API surface for no reason.
 
 ---
 
+## F-21 — The dump drops `SetTabIndexOp.index` (minor)
+
+**Rule:** `IMPL-040-R024` (explicit `index`) and `IMPL-040-R047` (op serialization) ·
+**Files:** `apps/decompiler/src/dump/model-dump.ts:106`–`111`, `:413`–`418` ·
+**Model:** `packages/swf/src/model/types.ts:19`–`24`
+
+`IMPL-040-R024` defines the `SetTabIndexOp` ordinal directly:
+
+> `readonly index: number; // file order within the frame; stamped by doc 030's assembler`
+
+`IMPL-040-R047` then requires that op in the frame timeline and in `control.tabIndexOps`. The model
+contains `index`, but `DumpTabIndex` and both mapping expressions omit it. The mechanical check compares
+the emitted interface to the normative doc interface, not just to the current code model, and the
+synthetic fixture confirms both JSON copies lose it:
+
+- `dump.op-field-dropped:DumpTabIndex:index` — static contract comparison;
+- `dump.synth:op-field:tabIndex:index` — missing from the frame op;
+- `dump.synth:control-tabindex-field:index` — missing from `control.tabIndexOps`.
+
+The adjacent `place` and `remove` ops carry ordinals, so the consumer can reconstruct the missing value
+from sequence position, but the serialized shape is incomplete and not uniform.
+
+**Fix.** Add `index` to `DumpTabIndex`, `opDump()` and the `control.tabIndexOps` mapping; assert it in the
+synthetic dump test. The audit checker reports the finding as `[fixed]` when the normative field is
+present in both emitted copies.
+
+## F-22 — The control-label array is sorted by name within a frame, not kept in file order (minor)
+
+**Rule:** `IMPL-040-R046` · **File:** `apps/decompiler/src/dump/model-dump.ts:395`–`399`
+
+The rule explicitly distinguishes the sorted label *map* from the control-label *sequence*:
+
+> `timeline.labels` by name … Sequences that exist in file order keep file order: … `control.labels`
+> (duplicates kept) …
+
+The dumper flattens the control label map and sorts by `(frame, name)`. A legal frame can contain more
+than one `FrameLabel` tag before its `ShowFrame`, so frame order alone is not enough. The mechanical
+fixture writes `z`, then `a`, at frame 0; the dump emits `a`, then `z`:
+
+```text
+expected control.labels: z@0, a@0, b@1
+actual control.labels:   a@0, z@0, b@1
+```
+
+Key: `dump.synth:control-labels`. `timeline.labels` remains correctly name-sorted and keeps the first
+occurrence; the issue is only `control.labels`' explicitly file-ordered array.
+
+**Impact.** Consumers that replay the control records cannot recover tag order when two labels share a
+frame; duplicate rows are kept, but their relative order is not.
+
+**Fix.** Preserve an ordered `control.labels` sequence in the model when decoding `FrameLabel` (or retain a
+file-order ordinal), emit it directly, and keep the separate `timeline.labels` name-sorted projection.
+Add the same-frame reversed-name fixture as a regression test.
+
+## F-23 — `RemoveObject.CharacterId` is consumed, then discarded (major)
+
+**Rule:** `IMPL-030` §3 `RemovalOp` and §4.5 ·
+**Files:** `packages/swf/src/tags/place.ts:51`–`57`, `:284`–`299`; `apps/decompiler/src/dump/model-dump.ts:98`–`104`, `:314`–`317`
+
+The implementation spec's `RemovalOp` includes `characterId: number | null`; its Ch.3 behavior is
+explicit:
+
+> `RemoveObject` removes the character **with the matching character id at the given depth**; both
+> fields are present. `RemoveObject2` carries only the depth.
+
+`decodeRemoveObject()` reads `const characterId = c.u16()` at line 286 but returns
+`{ kind: 'remove', index, tag, depth, tagOffset }` without it. The current `RemovalOp` type and dump
+interface have no `characterId`, and `opDump()` cannot serialize a value that the decoder threw away.
+The synthetic tag `RemoveObject(CharacterId=5, Depth=1)` therefore produces a remove op with no id.
+Mechanical keys: `dump.op-field-dropped:DumpRemoval:characterId` and
+`dump.synth:op-field:remove:characterId`.
+
+**Impact.** The MovieModel cannot state which character is being removed. A downstream consumer cannot
+validate the depth/character match or distinguish the tag's authored target; this is semantic data loss,
+not just a report-field omission.
+
+**Fix.** Add `characterId: number | null` to `RemovalOp`; preserve the UI16 for `RemoveObject`, use `null`
+for `RemoveObject2`, include it in `DumpRemoval`/`opDump()`, and test both tag forms.
+
+## F-24 — The placement dump omits required `PlacementOp` fields (major; WPs 030-04/05 incomplete)
+
+**Rule:** `IMPL-030` §3 data model and `IMPL-040-R047` ·
+**Files:** `packages/swf/src/tags/place.ts:26`–`48`, `:216`–`280`; `apps/decompiler/src/dump/model-dump.ts:77`–`96`, `:290`–`312`
+
+The normative `PlacementOp` includes `filters`, `cacheAsBitmap`, and `image` in addition to its other
+fields. R047 requires every `PlacementOp` field in a dumped `place` op. But the current runtime type and
+`DumpPlacement` omit all three; instead the JSON contains `bitmapCache: number | null`, not the documented
+`cacheAsBitmap: boolean`. `HasImage` is treated as an AVM2-era flag for the class-name read, but no
+`image` value survives to the model/dump. When `HasFilterList` is set, `decodePlaceObject3()` returns
+before the later fields are read and explicitly marks filter decoding as pending WP-030-04/05.
+
+The new check parses the normative interfaces rather than comparing two code types that could share the
+same omission. It reports `dump.op-field-dropped:DumpPlacement:cacheAsBitmap`, `:filters` and `:image`.
+The dirty synthetic fixture also exercises a PlaceObject3 with `HasImage | HasCharacter` and a cache byte;
+the class name and raw byte survive, but the documented fields do not.
+
+**Impact.** The model/dump is not a complete placement record. P2/M1 must not be called complete while
+those fields are absent: filters, the image discriminator and cache hint are unavailable to later stages
+and to `forge-decompile dump` consumers. The filter decoder is an acknowledged work-package gap, but the
+specification contract makes the omission visible rather than exempting it.
+
+**Fix.** Complete WP-030-04/05: represent and decode filter lists, image/class-vs-character semantics and
+the cache flag per IMPL-030 §3/§4; make the dump serialize those fields (retaining any raw cache value
+separately if required by the Ch.3 byte contract). Add a PlaceObject3 fixture that asserts the full
+field set and values before P5/P6 consume the model.
+
 ## O-01 — Seventeen registry codes are never emitted or matched (observation)
 
-Excluding `codes.ts` itself, 70 of the 87 codes are referenced; the following 17 are not:
+Excluding `codes.ts` itself, 71 of the 87 codes are referenced or mentioned; 16 are never referenced
+and `SF1000` is mentioned only in the CLI exit mapper. The 17 not emitted as diagnostics are:
 `SF0006`, `SF0025`, `SF0026`, `SF0027`, `SF0110`, `SF0111`, `SF0115`, `SF0118`, `SF0119`, `SF0121`,
 `SF0122`, `SF0125`, `SF0127`, `SF0166`, `SF0183`, `SF0185`, `SF1000`.
 
@@ -556,6 +665,11 @@ the 17 have no `WP-` item at all, which is how a code drifts from "planned" to "
 recommends a generated coverage table (the `docs/impl/registers/STATUS.md` generator already knows how
 to walk the docs) so the set is reported on every build rather than discovered by audit.
 
+**Re-measured in the continuation pass:** 16 codes are never referenced at all and one (`SF1000`) is
+*mentioned* rather than emitted — it exists only in the CLI's exit-code mapper, so the decoder-side
+trigger the audit asks for (F-03's shape) is still absent. `tools/audit_dev.py` reports the split as
+`unemitted:*` ×16 and `unemitted.mentioned:SF1000` ×1, so the two cases can no longer be conflated.
+
 ## O-02 — Test-id traceability is 10 of 382 (observation)
 
 382 distinct `T-XXX-nnn` ids are defined across `docs/specs` and `docs/impl`; **10** are cited in code or
@@ -565,10 +679,16 @@ rule id **and** a test id, so the mechanism exists but is not being applied as t
 slices that were written with ids (`dump`, some gfx oracles) are the exception. This is the process cause
 behind F-18/F-19 and should be treated as a standing requirement for the P5 AVM1 slice onward.
 
+The rule side of the same mechanism is measured too: **570** `IMPL-NNN-Rnnn` definitions exist and **38**
+are cited from code comments (`tools/audit_dev.py` check 6, `rules.uncited:*` ×16 documents). The
+continuation pass re-derived both counts instead of copying them forward: 570 supersedes the narrative
+audit's "~500 across 16 documents", which came from a per-document parse that dropped two-part ids
+(checker blind spot 1 in `03-mechanical-checks.md` §4).
+
 ## O-03 — The review gates cannot see code (observation)
 
 `tools/verify_docs.py` scans `docs/**`, the root `README.md` and `TECH-SPEC.md`; `eslint` (non-type-aware)
-and `prettier` are the only code gates, and `pnpm typecheck && pnpm test` are green while all 20 findings
+and `prettier` are the only code gates, and `pnpm typecheck && pnpm test` are green while all 24 findings
 are live. The doc gate even carries a two-entry historical allowlist (`T-MOD-201`, `T-RT-020`), which is
 correct for the doc set but reinforces the same point: a green gate is not conformance evidence. The
 audit's evidence is the probe scripts and the registry scan in this folder, not the CI status.

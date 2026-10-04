@@ -7,8 +7,9 @@ Specification 19 cross-checks made during the audit (§4) and the traceability n
 
 ## 1. Checks that passed
 
-Each row was verified by reading the cited code against the cited rule. "✓" means the code is conformant
-as written; no change is requested for any row in this table.
+The original rows were verified against the cited rules during the audit at `a76f2ea`. "✓" means the
+code is conformant as written; rows marked `△` are partial and rows marked `✗` are the new dump-side
+non-conformances found by the continuation pass at base `73483d5`.
 
 | # | Rule / requirement | Evidence | Result |
 | --- | --- | --- | --- |
@@ -52,11 +53,24 @@ as written; no change is requested for any row in this table.
 | 38 | `ARCH-R001` no player mode / no AVM2 execution surface in `gfx` or `swf` | import rules in `eslint.config.js` + source scan | ✓ |
 | 39 | Diagnostics sink folds repeats by `(code, context, characterId)` with a count | `diagnostics/sink.ts:5-30` | ✓ |
 | 40 | `SF0186` alone for an unclosed fill, `SF0189` only for unused styles | `test/shape-runs.test.ts` fixtures | ✓ |
+| 41 | `IMPL-040-R044` the verb's three modes write nothing else: human summary on stdout, `--json` the dump object, `--out` the same bytes, no extraction | `commands/dump.ts`; probe: human exit 0 and no JSON on stdout, `--json` never names the input path | ✓ |
+| 42 | `IMPL-040-R045`/`R048` byte-determinism and `--out` equality | probe: two `--json` runs byte-identical, `model.json` identical to stdout, exactly one file written, no timestamp/absolute path in the bytes | ✓ |
+| 43 | `IMPL-040-R046` every map-derived field is an array sorted by key | `synth` probe: definitions written 5, 2 → dictionary ids `[2, 3, 5, 7]`; exports `Zeta, Alpha` → `[Alpha, Zeta]`; grids 7, 3 → `[3, 7]`; the singleton XMP metadata has the documented keyed-array shape (not a multi-key sort proof) | ✓ |
+| 44 | `IMPL-040-R046` sequences keep file order | `synth` probe: `backgroundChanges` reports frame 1 and ops keep tag order; two same-frame `FrameLabel`s `z,a` are emitted as `a,z` by frame/name sorting | ✗ F-22 |
+| 45 | `IMPL-040-R047` the label map is first-occurrence per name, sorted by name | `synth` probe: `timeline.labels` = `a@0, b@1, z@0` while `control.labels` keeps all occurrences | ✓ |
+| 46 | `IMPL-040-R047` timeline/frame key sets, frame indices, and op shapes | probe: 9 top-level keys, `TIMELINE_KEYS`, `FRAME_KEYS`; the `place` op's current 18-field shape is present, but the normative spec interface has 3 other fields missing (F-24) | △ F-24 |
+| 47 | `IMPL-040-R047` `SetTabIndex` appears twice, with the ordinal required by `IMPL-040-R024` | both copies are present and byte-identical, but each omits `SetTabIndexOp.index` (`dump.synth:op-field:tabIndex:index`, `dump.synth:control-tabindex-field:index`) | △ F-21 |
+| 48 | `IMPL-040-R047` a sprite's `dictionary[].sprite` carries the same timeline object plus the character name and tag count | `synth` probe: sprite blocks for ids 3 and 7, `frames.length === observedFrameCount`, declared count from the sprite header | ✓ |
+| 49 | A file with no diagnostics decodes with none; diagnostic aggregates match the item severities | clean/dirty `synth` probes: clean has 0; dirty totals/severity buckets match the item list and codes resolve in registry | ✓ |
+| 50 | The dirty fixture produces exactly the expected warnings | duplicate label → `SF0153`, sprite frame mismatch → `SF0023`, PlaceObject3 image/class field → `SF0124`, cache hint → `SF0116`; no other code | ✓ |
+| 51 | `IMPL-030` §3/§4.5 preserves `RemoveObject.CharacterId` (and represents `RemoveObject2` without one) | dirty SWF writes `RemoveObject(CharacterId=5, Depth=1)`; decoder reads then discards 5, and dump op lacks the required field | ✗ F-23 |
+| 52 | `IMPL-040-R048` `--out` creates its directory and writes exactly the canonical bytes | `synth`/Appendix probe writes into a non-existent temp subdirectory, checks its only file is `model.json`, exact bytes, LF and trailing newline | ✓ |
 
 ## 2. Registry codes that are never emitted or matched
 
-Scan: every `codes.ts` key, searched across `packages/**` and `apps/**` excluding `codes.ts` itself.
-An "owning WP" of `—` means the code is not reachable from any implemented or scheduled work item.
+Scan: every `codes.ts` key, searched across `packages/**` and `apps/**` excluding `codes.ts` itself;
+`audit_dev.py` distinguishes an actual `emit(...)` from a mere reference. An "owning WP" of `—` means
+the code is not reachable from any implemented or scheduled work item.
 
 | Code | Severity | Meaning (registry) | Owning work item | Reachable today? |
 | --- | --- | --- | --- | --- |
@@ -78,9 +92,10 @@ An "owning WP" of `—` means the code is not reachable from any implemented or 
 | `SF0185` | info | shape subpath with no edges (dropped) | WP-060-06/08 | **yes — drop not reported (F-09)** |
 | `SF1000` | error | AVM2 content (DoABC / ActionScript3 flag) | WP-040-06 | no (decoder-side trigger absent; the CLI mapper already exits 3 for it) |
 
-Twelve of the seventeen are candidates for the "not yet due" category and are owned; five are reachable
-in shipped code and are filed as findings (F-03, F-07, F-09, F-16). The distinction matters for the
-roadmap: the five should not wait for their WP.
+Twelve of the 17 are candidates for the "not yet due" category and are owned; five codes have a
+reachable defect in shipped code and are filed as findings (F-03, F-07, F-09, F-16). `SF1000` is in the
+owned group (`WP-040-06`) but only the CLI exit mapper mentions it; the decoder-side trigger remains
+absent. The distinction matters for the roadmap: the five reachable defects should not wait for their WP.
 
 ## 3. Documents with no implemented code yet
 
@@ -121,10 +136,11 @@ Ch.1–15 and Appendices A–C, and the audit treated them as normative.
 | Metric | Value | Note |
 | --- | --- | --- |
 | Registry codes defined | 87 | `diagnostics/codes.ts` |
-| Registry codes referenced outside `codes.ts` | 70 | §2 lists the 17 that are not |
+| Registry codes referenced outside `codes.ts` | 71 | §2 lists 17 not emitted: 16 never referenced + `SF1000` mentioned-only |
+| Registry codes actually emitted | 70 | `SF1000` is only in the CLI mapper, not a `DiagnosticSink.emit` site |
 | Codes cited anywhere in `docs/**` | 316 | the remainder are later-document codes |
-| Rule ids defined (`IMPL-NNN-Rnnn`, docs only) | ~500 across 16 documents | per-document counts: transpiler/050 63, decompiler/060 52, 040 48, foundation/010 42, 080 44, 020 37, 070 35, 030 34, 090 33, engine-flash/130 32, engine-clean/160 29, decompiler/110 29, 100 26, transpiler/120 24, harness/140 21, code-inspector/150 21 |
-| Test ids defined (`T-XXX-nnn`, docs only) | 382 | |
+| Rule ids defined (`IMPL-NNN-Rnnn`, docs only) | 570 | exact parser handles `IMPL-NNN-Rnnn` definitions; 38 are cited in code comments |
+| Test ids defined (`T-XXX-nnn`, numbered docs only) | 382 | matches `verify_docs.py` check 8b's canonical extraction exactly; errata/STATUS are excluded |
 | Test ids cited in code or tests | 10 | `T-GFX-001/002/015`, `T-TST-101`, `T-MOD-021/037/038/039/040`, `T-SWF-003` |
 | Automated tests executed at HEAD | 56 across 9 files | `pnpm test` |
 | Source lines under `packages`/`apps` | ~8 000 | plus ~900 test lines |

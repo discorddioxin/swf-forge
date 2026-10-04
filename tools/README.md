@@ -51,8 +51,9 @@ python3 tools/audit_dev.py --no-probe         # skip the Node probes (no build n
 ```
 
 `audits/dev/baseline.json` is the ledger of findings that are known and accepted for now; keys are
-`check:subject` and values count occurrences, so a new *site* of a known drift is a regression. Exit code
-0 = nothing new, 1 = a finding appeared that the ledger does not record, 2 = not a swf-forge checkout.
+`check:subject` and values count occurrences, so a new *site* of a known drift is a regression. Do not
+combine `--update-baseline` with `--no-probe`: an incomplete run cannot rewrite the full ledger. Exit code
+0 = nothing new, 1 = a finding appeared that the ledger does not record, 2 = invalid invocation or required checkout inputs missing.
 The two probe checks (11, 12) need `pnpm build`; without it they report `skipped`, not failure. Output is
 deterministic and every path it prints is repository-relative (`REPO-R015`).
 
@@ -64,12 +65,13 @@ deterministic and every path it prints is repository-relative (`REPO-R015`).
 | 4 | `coverage` — range allocation and documentation for every code | `docs/impl/**` |
 | 5 | `unemitted` — codes no path can emit (dead diagnostics) | all `*.ts` |
 | 6 | `rules` — `IMPL-NNN-Rnnn` definitions vs citations, two-part aware | docs + comments |
-| 7 | `tests` — `T-*` citations are declared; historical allowlist still needed | docs + tests |
+| 7 | `tests` — code citations resolve to canonical test rows in numbered spec docs; the historical allowlist is parsed from `verify_docs.py`; errata/STATUS are not declaration sources | numbered docs + source/tests |
 | 8 | `imports` — cross-package restrictions, comment-stripped | `eslint.config.js`, sources |
 | 9 | `determinism` — no clock/random/cwd/env on output paths | output modules |
 | 10 | `version` — unreachable version-gated diagnostics | docs + modules |
-| 11 | `dump` — the model dump against `IMPL-040` §3.6 (probe) | built CLI + fixture |
+| 11 | `dump` — R044–R048 run modes/bytes/order plus synthetic maps, labels, op fields and sprites, compared to IMPL-030/040 types | built CLI + temporary SWFs |
 | 12 | `pins` — behavioural pins for the audit's blockers (probe) | built `swf` + fixture |
+| 13 | `sources` — errata/STATUS rows cannot become definition sources and silently affect the audit | `docs/impl/registers/**` |
 
 The check list and its current results are recorded in `audits/dev/03-mechanical-checks.md`; that
 document also lists the blind spots found while building the script, which is the reason it does not

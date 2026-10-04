@@ -28,3 +28,7 @@ goldens/private/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Python bytecode from the tools/ scripts
+__pycache__/
+*.pyc

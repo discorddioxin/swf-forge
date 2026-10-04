@@ -1,10 +1,11 @@
 # tools/ — document tooling
 
-Two stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
+Three stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
 
 ```bash
-python3 tools/verify_docs.py            # consistency gate — prints "ISSUES: 0" when clean
+python3 tools/verify_docs.py            # document consistency gate — prints "ISSUES: 0" when clean
 python3 tools/gen_status.py             # regenerates docs/impl/registers/STATUS.md
+python3 tools/audit_dev.py              # code-vs-spec integrity ledger (pnpm audit:dev)
 ```
 
 ## `verify_docs.py`
@@ -35,6 +36,44 @@ Repository-wide checks that keep the specification set internally consistent. Ex
 | 18 | `docs/README.md` maps every document |
 
 Add a check here whenever a new "the documents must agree" rule is introduced.
+
+## `audit_dev.py`
+
+The code-side companion to `verify_docs.py`: it keeps the *implementation* consistent with the
+specification set and is the mechanised form of the audit in `audits/dev/`. Run it before a commit that
+touches `packages/` or `apps/`.
+
+```bash
+python3 tools/audit_dev.py                    # human summary; exit 0 = no new findings
+python3 tools/audit_dev.py --json             # machine-readable, for CI
+python3 tools/audit_dev.py --update-baseline  # accept the current findings after a review
+python3 tools/audit_dev.py --no-probe         # skip the Node probes (no build needed)
+```
+
+`audits/dev/baseline.json` is the ledger of findings that are known and accepted for now; keys are
+`check:subject` and values count occurrences, so a new *site* of a known drift is a regression. Exit code
+0 = nothing new, 1 = a finding appeared that the ledger does not record, 2 = not a swf-forge checkout.
+The two probe checks (11, 12) need `pnpm build`; without it they report `skipped`, not failure. Output is
+deterministic and every path it prints is repository-relative (`REPO-R015`).
+
+| # | Check | Reads |
+| --- | --- | --- |
+| 1 | `registry` — constants, rows, severities, name/code agreement | `diagnostics/codes.ts` |
+| 2 | `callsite` — every `emit(...)` severity equals the registry's | all `*.ts` |
+| 3 | `doc` — the `§8` severity tables equal the registry | `docs/impl/**` |
+| 4 | `coverage` — range allocation and documentation for every code | `docs/impl/**` |
+| 5 | `unemitted` — codes no path can emit (dead diagnostics) | all `*.ts` |
+| 6 | `rules` — `IMPL-NNN-Rnnn` definitions vs citations, two-part aware | docs + comments |
+| 7 | `tests` — `T-*` citations are declared; historical allowlist still needed | docs + tests |
+| 8 | `imports` — cross-package restrictions, comment-stripped | `eslint.config.js`, sources |
+| 9 | `determinism` — no clock/random/cwd/env on output paths | output modules |
+| 10 | `version` — unreachable version-gated diagnostics | docs + modules |
+| 11 | `dump` — the model dump against `IMPL-040` §3.6 (probe) | built CLI + fixture |
+| 12 | `pins` — behavioural pins for the audit's blockers (probe) | built `swf` + fixture |
+
+The check list and its current results are recorded in `audits/dev/03-mechanical-checks.md`; that
+document also lists the blind spots found while building the script, which is the reason it does not
+consist of greps.
 
 ## `gen_status.py`
 

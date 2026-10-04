@@ -80,7 +80,8 @@ docs/
   specs/           WHAT to build          foundation · format · language · web · quality · components · reference
   impl/            HOW and IN WHAT ORDER  000-roadmap · foundation · decompiler · transpiler · engine-flash
                                           · code-inspector · engine-clean · harness · registers
-tools/             verify_docs.py (consistency gate) · gen_status.py (coverage snapshot)
+tools/             verify_docs.py (document gate) · gen_status.py (coverage snapshot)
+                   audit_dev.py (code-vs-spec ledger)
 ```
 
 | Doc | ID | Title |
@@ -132,7 +133,9 @@ Implementation plans (how it gets built, in what order):
 
 Verification: `python3 tools/verify_docs.py` must print `ISSUES: 0` before any commit that touches
 the documents; `python3 tools/gen_status.py` regenerates `docs/impl/registers/STATUS.md` after any
-work-package edit.
+work-package edit. `python3 tools/audit_dev.py` (`pnpm audit:dev`) is the code-side ledger: it must
+print `NEW FINDINGS: 0`, which means no drift has appeared beyond the findings recorded in
+`audits/dev/` (see `audits/dev/03-mechanical-checks.md`).
 
 Node ≥ 20 LTS · pnpm workspaces · TypeScript 5 `strict` with project references (`tsc -b`) · `tsup`
 for libraries, Vite for the inspector · `vitest` (node/jsdom/browser) + Playwright for visual/audio

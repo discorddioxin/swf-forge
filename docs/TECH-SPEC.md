@@ -1,6 +1,6 @@
 # TECH — Technical and File Specification
 
-**Doc ID:** TECH · **Status:** Draft 1.1 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
+**Doc ID:** TECH · **Status:** Draft 1.2 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
 **Audience:** everyone who builds or extends swf-forge.
 **Companions:** `docs/specs/` (normative behaviour) · `docs/impl/` (build plans, work packages) · this document (how the parts fit, where files live, what runs them).
 
@@ -120,7 +120,7 @@ swf-forge/
 ├─ fixtures/                     ← test inputs only (synthetic committed, external by hash)
 ├─ tools/                        ← repo scripts: spec-verify, impl-status, spec-coverage, decisions,
 │                                   table codegen, release helpers. Bootstrap today:
-│                                   verify_docs.py, gen_status.py (Python 3, stdlib only)
+│                                   verify_docs.py, gen_status.py, audit_dev.py (Python 3, stdlib)
 └─ examples/                     ← tiny hand-written projects exercising the engines directly
 ```
 
@@ -479,13 +479,19 @@ two engines by construction (TECH-R006).
 
 ### 8.2 Checks that must stay green
 
-**Bootstrap tooling.** Until the Node toolchain of §4.1 exists, the repository ships two stdlib
-Python scripts that implement the checks below and the STATUS projection:
-`python3 tools/verify_docs.py` (the `spec-verify` checks, plus path/link/id resolution) and
+**Bootstrap tooling.** Until the Node toolchain of §4.1 exists, the repository ships three stdlib
+Python scripts that implement the checks below, the STATUS projection and the code-side integrity
+ledger: `python3 tools/verify_docs.py` (the `spec-verify` checks, plus path/link/id resolution),
 `python3 tools/gen_status.py` (the `impl-status` projection, writing
-`docs/impl/registers/STATUS.md`). They are the gate from now on — a commit that touches `docs/` MUST
-leave `verify_docs.py` at `ISSUES: 0`. When `tools/spec-verify` lands it must implement at least the
-same checks and may absorb these scripts; the check list below is the contract either way.
+`docs/impl/registers/STATUS.md`) and `python3 tools/audit_dev.py` (`pnpm audit:dev`), which applies the
+same spirit to the *code*: registry and severity agreement, emission coverage, rule/test citation
+coverage, cross-package import restrictions, output determinism, version-gated diagnostics and the
+model dump's documented contract. Its baseline ledger lives in `audits/dev/baseline.json` and its
+recorded results in `audits/dev/03-mechanical-checks.md`. They are the gate from now on — a commit that
+touches `docs/` MUST leave `verify_docs.py` at `ISSUES: 0`, and a commit that touches `packages/` or
+`apps/` MUST leave `audit_dev.py` reporting no new findings. When `tools/spec-verify` and the harness
+land they must implement at least the same checks and may absorb these scripts; the check list below is
+the contract either way.
 
 `tools/spec-verify` MUST implement, at minimum:
 
@@ -564,4 +570,5 @@ blocking pattern (TECH-D08).
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | 2026-10-04 | Initial technical and file specification: the five components (`decompiler`, `transpiler`, `code-inspector`, `engine-flash`, `engine-clean`), repository and file layout (apps/packages/tools, generated artifact trees, `forge.project.json`), toolset (Node 20+, pnpm, tsup/Vite, vitest/Playwright, ESLint/Prettier, API Extractor, CI stages), cross-component rules (`TECH-R001`–`R030`), abilities matrix, interfaces (CLIs, engine contracts, inspector surfaces), governance and the ripple checklist, build order with the reserved P12/P13 phases, and the `TECH-D01`–`D12` register |
+| 1.2 | 2026-10-04 | Bootstrap tooling extended with the code-side integrity ledger (`tools/audit_dev.py`, `pnpm audit:dev`, baseline `audits/dev/baseline.json`, results `audits/dev/03-mechanical-checks.md`): registry/severity agreement, emission coverage, rule and test citation coverage, comment-stripped import restrictions, output determinism, version-gated diagnostics, the model-dump contract and behavioural pins, with a no-new-findings gate for commits under `packages/`/`apps/` |
 | 1.1 | 2026-10-04 | Document layout reorganised (`docs/specs/<domain>/`, `docs/impl/<component>/`, registers in `docs/impl/registers/`); the tree in §3.1 and the tool note in §8.2 record the bootstrap Python gates `tools/verify_docs.py` and `tools/gen_status.py` that implement the §8.2 checks until `tools/spec-verify`/`tools/impl-status` exist |

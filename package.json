@@ -16,6 +16,7 @@
     "format": "prettier --write .",
     "spec:verify": "python3 tools/verify_docs.py",
     "spec:status": "python3 tools/gen_status.py",
+    "audit:dev": "python3 tools/audit_dev.py",
     "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo"
   },
   "devDependencies": {

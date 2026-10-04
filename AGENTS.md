@@ -54,6 +54,7 @@ docs/
 tools/
   verify_docs.py              repository-wide consistency checks (run before every commit)
   gen_status.py               regenerates docs/impl/registers/STATUS.md
+  audit_dev.py                code-vs-spec integrity ledger (pnpm audit:dev; new findings fail)
 ```
 
 **Document references.** `specs/030` and `impl/060` are *document ids* (the number is the identity),
@@ -85,7 +86,14 @@ tests are `T-MOD-123`; work packages are `WP-060-02`.
 ```bash
 python3 tools/gen_status.py      # regenerate the coverage snapshot after work-package edits
 python3 tools/verify_docs.py     # must print: ISSUES: 0
+python3 tools/audit_dev.py       # must print: NEW FINDINGS: 0 (code-side ledger, audits/dev/)
 ```
+
+`audit_dev.py` compares the code against the specification set and against the audit ledger in
+`audits/dev/baseline.json`. A finding that appears there but is not in the ledger fails the run; read
+`audits/dev/03-mechanical-checks.md` before deciding whether to fix it or to record it with
+`--update-baseline`. `pnpm build` first if you want the two probe checks (11, 12) to run instead of
+reporting `skipped`.
 
 ## 4. Non-negotiables (they are checkable)
 

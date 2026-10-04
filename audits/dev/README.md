@@ -60,7 +60,8 @@ pnpm typecheck && pnpm test && pnpm lint   # baseline: green at HEAD
 ```
 
 Reproduction scripts for the two probes are in §6; they are deliberately not committed as tests because
-they are evidence for findings that the fix will invalidate.
+they are evidence for findings that the fix will invalidate. Both probes, plus ten static checks, now
+live in `tools/audit_dev.py` and re-run on every `pnpm audit:dev` — see `03-mechanical-checks.md`.
 
 ## 3. Verdict
 
@@ -145,7 +146,9 @@ broken toolchain.
 
 ## 6. Probe scripts (evidence for F-01 and the clean AA result)
 
-Both scripts import built `dist/` output and were deleted after running.
+Both scripts import built `dist/` output. They are kept here as the audit's raw evidence; the two
+probes are now embedded in `tools/audit_dev.py` (check 12) so they are re-runnable rather than
+one-off.
 
 `probe-shape4.mjs` — builds a minimal `DefineShape4` body with a chosen flag byte and prints the decoded
 flags plus emitted codes. Used for F-01:
@@ -178,3 +181,6 @@ anti-aliased content), so the analytic coverage model is **not** a finding.
 1. `01-findings.md` — the 20 findings in detail, each with the doc sentence it violates and the exact fix.
 2. `02-conformance.md` — what was checked and passed (§1), the never-emitted code table (§2), unimplemented
    document coverage (§3), the SWF-Spec-19 cross-checks (§4) and the traceability numbers (§5).
+3. `03-mechanical-checks.md` — the twelve re-runnable checks (`tools/audit_dev.py`), the recorded run,
+   the reconciliation of every finding with its mechanical key, and the checker blind spots found while
+   hardening it. `baseline.json` is the ledger the tool compares against.

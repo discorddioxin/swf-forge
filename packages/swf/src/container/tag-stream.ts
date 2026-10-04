@@ -86,6 +86,8 @@ interface Level {
   limit: number;
   readonly declaredFrames: number;
   showFrames: number;
+  /** Tag codes already reported as not-in-sprite for this level (`SF0129`, once per kind). */
+  readonly reported: Set<number>;
 }
 
 export interface TagStreamOptions {
@@ -117,6 +119,7 @@ export function buildTagIndex(
     limit: body.length,
     declaredFrames: opts.declaredFrames ?? 0,
     showFrames: 0,
+    reported: new Set<number>(),
   };
   const stack: Level[] = [top];
   let pos = 0;
@@ -193,7 +196,25 @@ export function buildTagIndex(
         );
       } else {
         const info = tagInfo(code);
-        if (info?.definition) {
+        if (level.inSprite !== null && info !== undefined && !info.inSprite && !level.reported.has(code)) {
+          level.reported.add(code);
+          cursor.emit(
+            Codes.SPRITE_TAG_UNLISTED,
+            'info',
+            `tag ${code} (${tagName(code)}) is outside the chapter's sprite list (decoded normally)`,
+            headerOffset,
+            { tagCode: code },
+          );
+        }
+        if (info?.definition && level.inSprite !== null) {
+          cursor.emit(
+            Codes.SPRITE_DEFINITION_TAG,
+            'warning',
+            `${info.name} inside sprite ${level.inSprite} does not enter the dictionary`,
+            headerOffset,
+            { tagCode: code },
+          );
+        } else if (info?.definition) {
           const id = length >= 2 ? ((body[bodyOffset] ?? 0) | ((body[bodyOffset + 1] ?? 0) << 8)) : 0;
           const prior = definitionsById.get(id);
           if (definitions.length + 1 > maxEntries) {
@@ -274,6 +295,7 @@ export function buildTagIndex(
           limit: Math.min(bodyEnd, level.limit),
           declaredFrames: declared,
           showFrames: 0,
+          reported: new Set<number>(),
         };
         pos = bodyOffset + 4;
         descend = child;

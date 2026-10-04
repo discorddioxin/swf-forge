@@ -69,6 +69,28 @@ export type {
   VectorShape,
 } from './tags/shape.js';
 
+// ---- model (`CMP` §3, `IMPL-030` §7/§8, `IMPL-040` §5) ------------------------------------------
+export { assembleTimeline, buildMovieModel, fallbackId, openTagCursor } from './model/index.js';
+export type {
+  CharacterModel,
+  DisplayOp,
+  FileAttributesModel,
+  Fixed8_8,
+  FrameModel,
+  ImportEntry,
+  InitActionBlock,
+  MovieControlModel,
+  MovieModel,
+  SetTabIndexOp,
+  SpriteModel,
+  StageModel,
+  StreamSoundModel,
+  StreamSoundSpan,
+  TimelineModel,
+} from './model/index.js';
+export type { AssembleTimelineOptions } from './model/index.js';
+export type { BuildMovieOptions } from './model/index.js';
+
 // ---- placement and control tags (`IMPL-030`, `IMPL-040`) ----------------------------------------
 export {
   BLEND_MODES,
@@ -78,6 +100,20 @@ export {
   decodeRemoveObject,
   decodeRemoveObject2,
 } from './tags/place.js';
-export { decodeFileAttributes, decodeFrameLabel, decodeSetBackgroundColor } from './tags/control.js';
+export {
+  decodeDefineScalingGrid,
+  decodeDoInitAction,
+  decodeExportAssets,
+  decodeFileAttributes,
+  decodeFrameLabel,
+  decodeImportAssets,
+  decodeMetadata,
+  decodeProtect,
+  decodeSceneAndFrameLabelData,
+  decodeScriptLimits,
+  decodeSetBackgroundColor,
+  decodeSetTabIndex,
+  decodeSymbolClass,
+} from './tags/control.js';
 export type { ActionBlockRef, PlacementOp, PlacementTag, RemovalOp, TimelineOp } from './tags/place.js';
-export type { FileAttributesInfo } from './tags/control.js';
+export type { AssetPair, ExportAssetsResult, FileAttributesInfo } from './tags/control.js';

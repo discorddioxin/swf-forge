@@ -4,7 +4,7 @@
  *
  * Ranges (owner in brackets): `SF0001`–`SF0019` IO (010) · `SF0020`–`SF0049` container (020) ·
  * `SF0100`–`SF0199` tag stream/dictionary (020) · `SF0110`–`SF0129` placements (030) ·
- * `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
+ * `SF0150`–`SF0179` control/metadata (040) · `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
  * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF1000+` fatal (050).
  */
 
@@ -77,6 +77,21 @@ export const Codes = {
   REMOVAL_EMPTY_DEPTH: 'SF0127',
   SPRITE_DEFINITION_TAG: 'SF0128',
   SPRITE_TAG_UNLISTED: 'SF0129',
+  // ---- control tags (040) ---------------------------------------------------------------------
+  FRAME_LABEL_DUPLICATE: 'SF0153',
+  EXPORT_NAME_INVALID: 'SF0154',
+  EXPORT_ID_DUPLICATE: 'SF0159',
+  EXPORT_NAME_DUPLICATE: 'SF0160',
+  IMPORTASSETS_DEPRECATED: 'SF0161',
+  IMPORTASSETS2_RESERVED: 'SF0162',
+  METADATA_ATTRIBUTES_MISMATCH: 'SF0163',
+  METADATA_DUPLICATE: 'SF0164',
+  NAMED_ANCHOR_BYTE_INVALID: 'SF0165',
+  SETTABINDEX_NO_CHARACTER: 'SF0166',
+  SCALING_GRID_BELOW_MIN: 'SF0167',
+  SCALING_GRID_TARGET: 'SF0168',
+  SCENE_DATA_INCONSISTENT: 'SF0169',
+  SCRIPT_LIMITS_IMPLAUSIBLE: 'SF0170',
   // ---- shapes (060) ---------------------------------------------------------------------------
   SHAPE_FILL_TYPE_UNKNOWN: 'SF0180',
   SHAPE_STYLE_INDEX_RANGE: 'SF0181',
@@ -158,6 +173,20 @@ const REGISTRY: Record<string, CodeInfo> = {
   SF0127: { code: 'SF0127', severity: 'info', meaning: 'removal at a depth that is empty (strict-timeline mode)' },
   SF0128: { code: 'SF0128', severity: 'warning', meaning: 'definition tag inside a sprite (ignored for the dictionary)' },
   SF0129: { code: 'SF0129', severity: 'info', meaning: 'tag inside a sprite outside the chapter list (decoded normally)' },
+  SF0153: { code: 'SF0153', severity: 'warning', meaning: 'duplicate frame label (first wins for lookups)' },
+  SF0154: { code: 'SF0154', severity: 'warning', meaning: 'export/SymbolClass name empty or invalid (sanitised for the manifest)' },
+  SF0159: { code: 'SF0159', severity: 'warning', meaning: 'duplicate export character id (later name wins, per Ch.4)' },
+  SF0160: { code: 'SF0160', severity: 'warning', meaning: 'duplicate export name (first id wins, our policy)' },
+  SF0161: { code: 'SF0161', severity: 'warning', meaning: 'ImportAssets (57) in a SWF 8+ file: deprecated and ignored by FP 8+' },
+  SF0162: { code: 'SF0162', severity: 'warning', meaning: 'ImportAssets2 reserved bytes are not 1, 0' },
+  SF0163: { code: 'SF0163', severity: 'warning', meaning: 'Metadata tag and FileAttributes.HasMetadata disagree' },
+  SF0164: { code: 'SF0164', severity: 'warning', meaning: 'more than one Metadata tag (first kept)' },
+  SF0165: { code: 'SF0165', severity: 'warning', meaning: 'FrameLabel named-anchor byte present with a value other than 1' },
+  SF0166: { code: 'SF0166', severity: 'info', meaning: 'SetTabIndex at a depth with no character (ignored, per Ch.4)' },
+  SF0167: { code: 'SF0167', severity: 'warning', meaning: 'DefineScalingGrid splitter below one twip per side (ignored)' },
+  SF0168: { code: 'SF0168', severity: 'warning', meaning: 'DefineScalingGrid target is not a sprite/button or is unknown (dropped)' },
+  SF0169: { code: 'SF0169', severity: 'warning', meaning: 'scene data inconsistent (offsets out of order or beyond the frame count)' },
+  SF0170: { code: 'SF0170', severity: 'warning', meaning: 'ScriptLimits value outside the supported window (clamped/recorded)' },
   SF0180: { code: 'SF0180', severity: 'error', meaning: 'unknown FillStyleType (shape quarantined)' },
   SF0181: { code: 'SF0181', severity: 'error', meaning: 'style index beyond the array (clamped to 0)' },
   SF0182: { code: 'SF0182', severity: 'error', meaning: 'shape style index width greater than 16' },

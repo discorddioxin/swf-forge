@@ -29,6 +29,10 @@ export interface CursorOptions {
   version?: number;
   /** Fallback encoding for legacy strings (`IMPL-010-R023`). */
   legacyEncoding?: 'windows-1252' | 'latin1' | 'shift-jis';
+  /** Tag being decoded: attached to every diagnostic this cursor emits. */
+  tagCode?: number;
+  /** Character (or sprite) owning the bytes, for per-character report grouping. */
+  characterId?: number;
 }
 
 export class Cursor {
@@ -42,6 +46,8 @@ export class Cursor {
   readonly reportPaddingBits: boolean;
   version: number;
   legacyEncoding: 'windows-1252' | 'latin1' | 'shift-jis';
+  readonly tagCode: number | undefined;
+  readonly characterId: number | undefined;
 
   constructor(bytes: Uint8Array, offset = 0, limit = bytes.length, opts: CursorOptions = {}) {
     this.bytes = bytes;
@@ -53,6 +59,8 @@ export class Cursor {
     this.reportPaddingBits = opts.reportPaddingBits ?? false;
     this.version = opts.version ?? 6;
     this.legacyEncoding = opts.legacyEncoding ?? 'windows-1252';
+    this.tagCode = opts.tagCode;
+    this.characterId = opts.characterId;
   }
 
   get offset(): number {
@@ -86,6 +94,12 @@ export class Cursor {
       reportPaddingBits: opts.reportPaddingBits ?? this.reportPaddingBits,
       version: opts.version ?? this.version,
       legacyEncoding: opts.legacyEncoding ?? this.legacyEncoding,
+      ...(opts.tagCode !== undefined ? { tagCode: opts.tagCode } : this.tagCode !== undefined ? { tagCode: this.tagCode } : {}),
+      ...(opts.characterId !== undefined
+        ? { characterId: opts.characterId }
+        : this.characterId !== undefined
+          ? { characterId: this.characterId }
+          : {}),
     });
     return sub;
   }
@@ -103,8 +117,12 @@ export class Cursor {
       message,
       offset,
       context: extra.context ?? this.context,
-      ...(extra.characterId !== undefined ? { characterId: extra.characterId } : {}),
-      ...(extra.tagCode !== undefined ? { tagCode: extra.tagCode } : {}),
+      ...(extra.characterId !== undefined
+        ? { characterId: extra.characterId }
+        : this.characterId !== undefined
+          ? { characterId: this.characterId }
+          : {}),
+      ...(extra.tagCode !== undefined ? { tagCode: extra.tagCode } : this.tagCode !== undefined ? { tagCode: this.tagCode } : {}),
       ...(extra.decision !== undefined ? { decision: extra.decision } : {}),
     });
   }

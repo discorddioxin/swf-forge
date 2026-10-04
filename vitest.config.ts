@@ -7,7 +7,9 @@ export default defineConfig({
   resolve: {
     alias: {
       '@swf-forge/swf/test-support': r('packages/swf/src/test-support/index.ts'),
+      '@swf-forge/swf/node': r('packages/swf/src/node/index.ts'),
       '@swf-forge/swf': r('packages/swf/src/index.ts'),
+      '@swf-forge/decompiler': r('apps/decompiler/src/cli.ts'),
     },
   },
   test: {

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "tsc -b && pnpm -r --filter \"./apps/**\" build",
-    "typecheck": "tsc -b --force && tsc -p packages/swf/tsconfig.test.json",
+    "typecheck": "tsc -b --force && tsc -p packages/swf/tsconfig.test.json && tsc -p apps/decompiler/tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint . && prettier --check .",

@@ -11,9 +11,15 @@
     "./test-support": {
       "types": "./dist/test-support/index.d.ts",
       "import": "./dist/test-support/index.js"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.ts",
+      "import": "./dist/node/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -b"
   }

@@ -1,0 +1,17 @@
+{
+  "name": "@swf-forge/decompiler",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/main.js",
+  "bin": {
+    "forge-decompile": "./dist/main.js"
+  },
+  "dependencies": {
+    "@swf-forge/swf": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

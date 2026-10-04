@@ -84,7 +84,12 @@ export function parseHeader(
     });
   }
 
-  const c = new Cursor(payload, 0, payload.length, { mode: opts.mode ?? 'soft', sink, context: 'header', ...(opts.reportPaddingBits !== undefined ? { reportPaddingBits: opts.reportPaddingBits } : {}) });
+  const c = new Cursor(payload, 0, payload.length, {
+    mode: opts.mode ?? 'soft',
+    sink,
+    context: 'header',
+    ...(opts.reportPaddingBits !== undefined ? { reportPaddingBits: opts.reportPaddingBits } : {}),
+  });
   const frameSize = readRect(c);
   const frameRateRaw = c.u16();
   const frameCount = c.u16();

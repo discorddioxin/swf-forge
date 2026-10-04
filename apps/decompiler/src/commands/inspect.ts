@@ -123,9 +123,13 @@ function summarize(file: SwfFile, model: MovieModel, path: string, sha256: strin
 function render(summary: InspectSummary, verbose: boolean): string[] {
   const s = summary;
   const lines: string[] = [];
-  lines.push(`${s.file.path} — ${s.compression === 'none' ? 'FWS' : s.compression === 'zlib' ? 'CWS' : 'ZWS'}, version ${s.version}`);
+  lines.push(
+    `${s.file.path} — ${s.compression === 'none' ? 'FWS' : s.compression === 'zlib' ? 'CWS' : 'ZWS'}, version ${s.version}`,
+  );
   lines.push(`  file size      ${s.file.bytes} byte(s) (declared ${s.fileLength})`);
-  lines.push(`  stage          ${s.stage.widthPx} x ${s.stage.heightPx} px (${s.stage.widthTwips} x ${s.stage.heightTwips} twips), ${s.frameRate} fps`);
+  lines.push(
+    `  stage          ${s.stage.widthPx} x ${s.stage.heightPx} px (${s.stage.widthTwips} x ${s.stage.heightTwips} twips), ${s.frameRate} fps`,
+  );
   lines.push(`  frames         ${s.frameCount} declared, ${s.counts.frames} observed`);
   lines.push(`  background     ${hex(s.background)}`);
   lines.push(`  id             ${s.id}`);

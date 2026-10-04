@@ -63,7 +63,10 @@ export function fallbackId(body: Uint8Array, prefix: unknown): string {
     hash ^= BigInt(value & 0xff);
     hash = (hash * prime) & 0xffffffffffffffffn;
   };
-  for (const value of JSON.stringify(prefix).split('').map((ch) => ch.charCodeAt(0))) mix(value);
+  for (const value of JSON.stringify(prefix)
+    .split('')
+    .map((ch) => ch.charCodeAt(0)))
+    mix(value);
   for (let i = 0; i < body.length && i < sample; i += 1) mix(body[i] ?? 0);
   for (let i = Math.max(0, body.length - sample); i < body.length; i += 1) mix(body[i] ?? 0);
   for (let shift = 0; shift < 4; shift += 1) mix((body.length >>> (shift * 8)) & 0xff);
@@ -298,7 +301,10 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
 
   // `IMPL-040-R043`: the tab-index ops live in the frame op lists; the control model mirrors them.
   const tabIndexOps: SetTabIndexOp[] = [];
-  for (const timeline of [mainTimeline, ...[...characters.values()].flatMap((ch) => (ch.sprite ? [ch.sprite.timeline] : []))]) {
+  for (const timeline of [
+    mainTimeline,
+    ...[...characters.values()].flatMap((ch) => (ch.sprite ? [ch.sprite.timeline] : [])),
+  ]) {
     for (const frameModel of timeline.frames) {
       for (const op of frameModel.ops) if (op.kind === 'tabIndex') tabIndexOps.push(op);
     }

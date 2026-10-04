@@ -1,0 +1,10 @@
+# Documentation is authored for a 100-column reading flow and is checked by tools/verify_docs.py.
+**/*.md
+docs/**
+fixtures/**
+tools/**
+coverage/**
+dist/**
+node_modules/**
+pnpm-lock.yaml
+*.tsbuildinfo

@@ -80,8 +80,7 @@ export class ByteWriter {
   }
 
   toUint8Array(): Uint8Array {
-    const aligned =
-      this.#bitCount > 0 ? this.#out.concat((this.#partial << (8 - this.#bitCount)) & 0xff) : this.#out;
+    const aligned = this.#bitCount > 0 ? this.#out.concat((this.#partial << (8 - this.#bitCount)) & 0xff) : this.#out;
     return Uint8Array.from(aligned);
   }
 }
@@ -106,7 +105,11 @@ export function writeRect(w: ByteWriter, rect: Rect): ByteWriter {
  * A tag: `UI16` little-endian (`code << 6 | length`), with the long form when the body does not fit
  * in the six-bit length field (`IMPL-020` §4.1).
  */
-export function tag(code: number, body: Uint8Array = new Uint8Array(0), options: { forceLong?: boolean } = {}): Uint8Array {
+export function tag(
+  code: number,
+  body: Uint8Array = new Uint8Array(0),
+  options: { forceLong?: boolean } = {},
+): Uint8Array {
   const w = new ByteWriter();
   const long = options.forceLong === true || body.length >= 0x3f;
   if (long) {

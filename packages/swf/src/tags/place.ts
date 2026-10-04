@@ -59,8 +59,21 @@ export interface RemovalOp {
 export type TimelineOp = PlacementOp | RemovalOp;
 
 export const BLEND_MODES = [
-  'normal', 'normal', 'layer', 'multiply', 'screen', 'lighten', 'darken', 'difference', 'add',
-  'subtract', 'invert', 'alpha', 'erase', 'overlay', 'hardlight',
+  'normal',
+  'normal',
+  'layer',
+  'multiply',
+  'screen',
+  'lighten',
+  'darken',
+  'difference',
+  'add',
+  'subtract',
+  'invert',
+  'alpha',
+  'erase',
+  'overlay',
+  'hardlight',
 ] as const;
 
 interface DecodeContext {
@@ -138,7 +151,11 @@ export function decodePlaceObject2(c: Cursor, index: number, tagOffset: number):
   const clipDepth = hasClipDepth ? c.u16() : null;
 
   if (clipDepth !== null && clipDepth !== 0 && clipDepth <= depth) {
-    c.emit(Codes.CLIP_DEPTH_EMPTY, 'warning', `ClipDepth ${clipDepth} does not exceed Depth ${depth}; the mask range is empty`);
+    c.emit(
+      Codes.CLIP_DEPTH_EMPTY,
+      'warning',
+      `ClipDepth ${clipDepth} does not exceed Depth ${depth}; the mask range is empty`,
+    );
   }
   if (depth >= 16384) {
     c.emit(Codes.PLACEMENT_DEPTH_DYNAMIC, 'info', `placement depth ${depth} is in the conventionally dynamic range`);
@@ -148,7 +165,9 @@ export function decodePlaceObject2(c: Cursor, index: number, tagOffset: number):
   }
 
   const start = c.offset;
-  const clipActions: ActionBlockRef | null = hasClipActions ? { offset: start, length: Math.max(0, c.limit - start) } : null;
+  const clipActions: ActionBlockRef | null = hasClipActions
+    ? { offset: start, length: Math.max(0, c.limit - start) }
+    : null;
   return { ...base, depth, move, characterId, matrix, cxform, ratio, name, clipDepth, clipActions };
 }
 
@@ -183,7 +202,11 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
   const depth = c.u16();
   const className = hasClassName || (hasImage && hasCharacter) ? c.string() : null;
   if (className !== null) {
-    c.emit(Codes.PLACEOBJECT3_CLASS, 'warning', 'PlaceObject3 class-name/image fields are AVM2-era; decoded and inert in AVM1 content');
+    c.emit(
+      Codes.PLACEOBJECT3_CLASS,
+      'warning',
+      'PlaceObject3 class-name/image fields are AVM2-era; decoded and inert in AVM1 content',
+    );
   }
   const characterId = hasCharacter ? c.u16() : null;
   const matrix = hasMatrix ? readMatrix(c) : null;
@@ -235,7 +258,9 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
     c.emit(Codes.PLACEOBJECT3_BACKING, 'info', 'PlaceObject3 backing fields present (visible/opaque background)');
   }
   const start = c.offset;
-  const clipActions: ActionBlockRef | null = hasClipActions ? { offset: start, length: Math.max(0, c.limit - start) } : null;
+  const clipActions: ActionBlockRef | null = hasClipActions
+    ? { offset: start, length: Math.max(0, c.limit - start) }
+    : null;
 
   return {
     ...placementBase(ctx, 'PlaceObject3'),

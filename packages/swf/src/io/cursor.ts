@@ -94,7 +94,11 @@ export class Cursor {
       reportPaddingBits: opts.reportPaddingBits ?? this.reportPaddingBits,
       version: opts.version ?? this.version,
       legacyEncoding: opts.legacyEncoding ?? this.legacyEncoding,
-      ...(opts.tagCode !== undefined ? { tagCode: opts.tagCode } : this.tagCode !== undefined ? { tagCode: this.tagCode } : {}),
+      ...(opts.tagCode !== undefined
+        ? { tagCode: opts.tagCode }
+        : this.tagCode !== undefined
+          ? { tagCode: this.tagCode }
+          : {}),
       ...(opts.characterId !== undefined
         ? { characterId: opts.characterId }
         : this.characterId !== undefined
@@ -110,7 +114,13 @@ export class Cursor {
     this.#bit = cursor.bitOffset;
   }
 
-  emit(code: Code, severity: Severity, message: string, offset = this.#pos, extra: Partial<Pick<Diagnostic, 'characterId' | 'tagCode' | 'decision' | 'context'>> = {}): void {
+  emit(
+    code: Code,
+    severity: Severity,
+    message: string,
+    offset = this.#pos,
+    extra: Partial<Pick<Diagnostic, 'characterId' | 'tagCode' | 'decision' | 'context'>> = {},
+  ): void {
     this.sink.emit({
       code,
       severity,
@@ -122,7 +132,11 @@ export class Cursor {
         : this.characterId !== undefined
           ? { characterId: this.characterId }
           : {}),
-      ...(extra.tagCode !== undefined ? { tagCode: extra.tagCode } : this.tagCode !== undefined ? { tagCode: this.tagCode } : {}),
+      ...(extra.tagCode !== undefined
+        ? { tagCode: extra.tagCode }
+        : this.tagCode !== undefined
+          ? { tagCode: this.tagCode }
+          : {}),
       ...(extra.decision !== undefined ? { decision: extra.decision } : {}),
     });
   }
@@ -314,7 +328,9 @@ export class Cursor {
 
     const { decoded, truncated } = decodeString(raw, {
       version: opts.version ?? this.version,
-      ...(opts.legacyEncoding ?? this.legacyEncoding ? { legacyEncoding: opts.legacyEncoding ?? this.legacyEncoding } : {}),
+      ...((opts.legacyEncoding ?? this.legacyEncoding)
+        ? { legacyEncoding: opts.legacyEncoding ?? this.legacyEncoding }
+        : {}),
       ...(opts.maxBytes !== undefined ? { maxBytes: opts.maxBytes } : {}),
     });
 

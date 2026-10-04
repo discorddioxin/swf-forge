@@ -1,15 +1,15 @@
 # Dependency review record
 
-**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.1** · **Owner:** `SEC-D04` (specs/100)
+**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.2** · **Owner:** `SEC-D04` (specs/100)
 
 Every third-party dependency that ships in `packages/*` or `apps/*` is recorded here with its
 licence, the review that cleared it, and the obligation it carries. This is the register that
 `SEC-D04` requires; `SEC-R0xx` in [`specs/quality/100-security-licensing.md`](specs/quality/100-security-licensing.md)
 states the rules, this file records the decisions.
 
-Draft 1.0 of this register held an empty table (the specification-only phase); Draft 1.1 records the
-first four build tools, all of them dev-only — nothing in this table ships in `packages/*` or
-`apps/*` runtime output.
+Draft 1.0 of this register held an empty table (the specification-only phase); Drafts 1.1–1.2 record
+the build tooling, all of it dev-only — nothing in this table ships in `packages/*` or `apps/*`
+runtime output.
 
 ## 1. Reviewed dependencies
 
@@ -19,6 +19,8 @@ first four build tools, all of them dev-only — nothing in this table ships in 
 | `vitest` | `^2.1.4` (2.1.9 installed) | MIT | unit/fixture test runner (`TECH-R009`) | 2026-10-04 | none; dev-only, not shipped | cleared |
 | `@types/node` | `^22.9.0` (22.20.5 installed) | MIT | Node type declarations for tests and CLI entry points | 2026-10-04 | none; dev-only, not shipped | cleared |
 | `prettier` | `^3.3.3` (3.9.9 installed) | MIT | formatting check in `pnpm lint` (`TECH-R008`) | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `eslint` | `^10.12.0` | MIT | lint gate in `pnpm lint` (`TECH-R008`); flat config bans `eval`/`with`/`Proxy`/`Function` | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `typescript-eslint` | `^8.71.0` | MIT | TypeScript parser + rules for the ESLint flat config (non-type-aware) | 2026-10-04 | none; dev-only, not shipped | cleared |
 
 ## 2. Rules this register enforces
 
@@ -42,3 +44,4 @@ first four build tools, all of them dev-only — nothing in this table ships in 
 | --- | --- | --- |
 | 1.0 | 2026-10-04 | Register created (empty): provides the target `SEC-D04` requires and makes the `docs/deps.md` references in `specs/100` and `specs/110` resolvable |
 | 1.1 | 2026-10-04 | First build tools reviewed: `typescript`, `vitest`, `@types/node`, `prettier` — all dev-only, permissive licences, no shipped-code obligation |
+| 1.2 | 2026-10-04 | `eslint` + `typescript-eslint` reviewed for the lint gate; the config's banned-construct rules implement the "no `eval`/`with`/`Proxy`/`Function`" non-negotiable |

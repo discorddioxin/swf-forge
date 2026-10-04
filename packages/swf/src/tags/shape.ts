@@ -32,7 +32,13 @@ export interface Gradient {
 export type FillStyle =
   | { readonly kind: 'solid'; readonly color: Rgba }
   | { readonly kind: 'gradient'; readonly linear: boolean; readonly gradient: Gradient; readonly matrix: Mat2D }
-  | { readonly kind: 'bitmap'; readonly bitmapId: number; readonly repeat: boolean; readonly smoothed: boolean; readonly matrix: Mat2D };
+  | {
+      readonly kind: 'bitmap';
+      readonly bitmapId: number;
+      readonly repeat: boolean;
+      readonly smoothed: boolean;
+      readonly matrix: Mat2D;
+    };
 
 export interface LineStyle {
   readonly width: number;
@@ -136,7 +142,11 @@ function readFillStyle(c: Cursor, version: ShapeVersion): FillStyle | null {
       };
     }
     default:
-      c.emit(Codes.SHAPE_FILL_TYPE_UNKNOWN, 'error', `unknown FillStyleType 0x${type.toString(16).padStart(2, '0')}; shape quarantined`);
+      c.emit(
+        Codes.SHAPE_FILL_TYPE_UNKNOWN,
+        'error',
+        `unknown FillStyleType 0x${type.toString(16).padStart(2, '0')}; shape quarantined`,
+      );
       return null;
   }
 }
@@ -152,7 +162,11 @@ function readGradient(c: Cursor, version: ShapeVersion, focal: boolean): Gradien
     numGradients = c.u8();
   }
   if (spreadMode === 3 || interpolationMode >= 2) {
-    c.emit(Codes.SHAPE_GRADIENT_MODE_INVALID, 'warning', `reserved gradient mode (spread ${spreadMode}, interpolation ${interpolationMode}); value honoured`);
+    c.emit(
+      Codes.SHAPE_GRADIENT_MODE_INVALID,
+      'warning',
+      `reserved gradient mode (spread ${spreadMode}, interpolation ${interpolationMode}); value honoured`,
+    );
   }
   const withAlpha = version >= 3;
   const stops: GradientStop[] = [];
@@ -160,7 +174,11 @@ function readGradient(c: Cursor, version: ShapeVersion, focal: boolean): Gradien
   for (let i = 0; i < numGradients; i += 1) {
     const ratio = c.u8();
     if (ratio <= previous && previous >= 0) {
-      c.emit(Codes.SHAPE_GRADIENT_STOP_ORDER, 'warning', 'gradient control points out of ratio order or duplicated; normalised in the IR only');
+      c.emit(
+        Codes.SHAPE_GRADIENT_STOP_ORDER,
+        'warning',
+        'gradient control points out of ratio order or duplicated; normalised in the IR only',
+      );
     }
     previous = ratio;
     const color = withAlpha ? readRgba(c) : readRgb(c);
@@ -181,7 +199,11 @@ function readFillStyleArray(c: Cursor, version: ShapeVersion): (FillStyle | null
       c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended FillStyleCount used by DefineShape (v1)');
     }
     if (version === 4) {
-      c.emit(Codes.SHAPE_RESERVED_FLAG_BITS, 'info', 'extended FillStyleCount in DefineShape4 (the chapter reserves 0xFF for older tags)');
+      c.emit(
+        Codes.SHAPE_RESERVED_FLAG_BITS,
+        'info',
+        'extended FillStyleCount in DefineShape4 (the chapter reserves 0xFF for older tags)',
+      );
     }
     count = c.u16();
   }
@@ -192,7 +214,11 @@ function readFillStyleArray(c: Cursor, version: ShapeVersion): (FillStyle | null
     if (style === null) break; // unknown type: the array length is unknowable, stop cleanly
   }
   if (count >= 250) {
-    c.emit(Codes.SHAPE_STYLE_DEDUPE_CEILING, 'warning', `style array has ${count} entries at the dedupe ceiling; kept verbatim`);
+    c.emit(
+      Codes.SHAPE_STYLE_DEDUPE_CEILING,
+      'warning',
+      `style array has ${count} entries at the dedupe ceiling; kept verbatim`,
+    );
   }
   return fills;
 }
@@ -260,7 +286,11 @@ export function readShapeWithStyle(
   let numFillBits = c.ub(4);
   let numLineBits = c.ub(4);
   if (numFillBits > 16 || numLineBits > 16) {
-    c.emit(Codes.SHAPE_INDEX_WIDTH_INVALID, 'error', `style index width too large (fill ${numFillBits}, line ${numLineBits})`);
+    c.emit(
+      Codes.SHAPE_INDEX_WIDTH_INVALID,
+      'error',
+      `style index width too large (fill ${numFillBits}, line ${numLineBits})`,
+    );
     numFillBits = Math.min(numFillBits, 16);
     numLineBits = Math.min(numLineBits, 16);
   }
@@ -419,8 +449,12 @@ export function readShapeWithStyle(
   closeRun(fill0, false);
   closeRun(line, true);
 
-  for (const id of usedFill) if (id >= fills.length) c.emit(Codes.SHAPE_STYLE_INDEX_RANGE, 'error', `fill style index ${id} beyond the array (clamped to 0)`);
-  for (const id of usedLine) if (id >= lines.length) c.emit(Codes.SHAPE_STYLE_INDEX_RANGE, 'error', `line style index ${id} beyond the array (clamped to 0)`);
+  for (const id of usedFill)
+    if (id >= fills.length)
+      c.emit(Codes.SHAPE_STYLE_INDEX_RANGE, 'error', `fill style index ${id} beyond the array (clamped to 0)`);
+  for (const id of usedLine)
+    if (id >= lines.length)
+      c.emit(Codes.SHAPE_STYLE_INDEX_RANGE, 'error', `line style index ${id} beyond the array (clamped to 0)`);
 
   const unused = fills.length - 1 - usedFill.size;
   if (unused > 0) {
@@ -498,7 +532,11 @@ export function decodeDefineShapeVersion(tagCode: number, c: Cursor): DefineShap
   const shape = readShapeWithStyle(c, id, version, bounds);
   const reservedBits = flags & 0b0001_1111;
   if (reservedBits !== 0) {
-    c.emit(Codes.SHAPE_RESERVED_FLAG_BITS, 'info', `reserved DefineShape4 flag bits 0x${reservedBits.toString(16)} non-zero (preserved)`);
+    c.emit(
+      Codes.SHAPE_RESERVED_FLAG_BITS,
+      'info',
+      `reserved DefineShape4 flag bits 0x${reservedBits.toString(16)} non-zero (preserved)`,
+    );
   }
   const used = c.offset - start;
   if (used === 0) {

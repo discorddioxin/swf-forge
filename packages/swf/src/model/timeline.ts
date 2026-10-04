@@ -115,7 +115,11 @@ export function assembleTimeline(
         const { name, namedAnchor } = decodeFrameLabel(c);
         const at = frames.length;
         if (labels.has(name)) {
-          c.emit(Codes.FRAME_LABEL_DUPLICATE, 'warning', `frame label "${name}" appears again at frame ${at}; the first wins`);
+          c.emit(
+            Codes.FRAME_LABEL_DUPLICATE,
+            'warning',
+            `frame label "${name}" appears again at frame ${at}; the first wins`,
+          );
         } else {
           labels.set(name, at);
         }
@@ -165,9 +169,7 @@ export function assembleTimeline(
   return {
     frames,
     labels,
-    sounds: first
-      ? { head: first.headTag, blocks: spans.flatMap((span) => span.blockTags) }
-      : null,
+    sounds: first ? { head: first.headTag, blocks: spans.flatMap((span) => span.blockTags) } : null,
     streamSoundSpans: spans,
     declaredFrameCount: declared,
     observedFrameCount: frames.length,

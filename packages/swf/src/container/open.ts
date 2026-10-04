@@ -79,7 +79,10 @@ function assemble(
   opts: SwfOpenOptions,
 ): SwfFile {
   const version = input.length > 3 ? (input[3] ?? 0) : 0;
-  const fileLength = input.length >= 8 ? ((input[4] ?? 0) | ((input[5] ?? 0) << 8) | ((input[6] ?? 0) << 16) | ((input[7] ?? 0) << 24)) >>> 0 : 0;
+  const fileLength =
+    input.length >= 8
+      ? ((input[4] ?? 0) | ((input[5] ?? 0) << 8) | ((input[6] ?? 0) << 16) | ((input[7] ?? 0) << 24)) >>> 0
+      : 0;
   const { header, tagStreamOffset } = parseHeader(payload, fileLength, compression, input.length, sink, {
     mode: opts.mode ?? 'soft',
     declaredVersion: version,
@@ -184,7 +187,13 @@ export function openSwf(input: Uint8Array, opts: SwfOpenOptions = {}): SwfFile {
 
   const result = opts.inflate(payloadPart, maxBytes);
   if (result.error) {
-    sink.emit({ code: Codes.DECOMPRESSION_FAILED, severity: 'error', message: result.error, offset: 0, context: 'container' });
+    sink.emit({
+      code: Codes.DECOMPRESSION_FAILED,
+      severity: 'error',
+      message: result.error,
+      offset: 0,
+      context: 'container',
+    });
   }
   if (result.truncated) {
     sink.emit({

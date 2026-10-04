@@ -146,10 +146,13 @@ describe('movie model', () => {
   it('collects scenes, labels, script limits and metadata from control tags', () => {
     const sceneData = concat(
       Uint8Array.from([2]), // SceneCount (EncodedU32)
-      Uint8Array.from([0]), asciiZ('Intro'),
-      Uint8Array.from([1]), asciiZ('Level 1'),
+      Uint8Array.from([0]),
+      asciiZ('Intro'),
+      Uint8Array.from([1]),
+      asciiZ('Level 1'),
       Uint8Array.from([1]), // FrameLabelCount
-      Uint8Array.from([1]), asciiZ('start'),
+      Uint8Array.from([1]),
+      asciiZ('start'),
     );
     const body = concat(
       tag(Tag.SetBackgroundColor, Uint8Array.from([0x10, 0x20, 0x30])),
@@ -172,11 +175,7 @@ describe('movie model', () => {
   });
 
   it('reports a Metadata/HasMetadata disagreement (SF0163)', () => {
-    const body = concat(
-      tag(Tag.Metadata, asciiZ('<xmp/>')),
-      tag(Tag.ShowFrame),
-      endTag(),
-    );
+    const body = concat(tag(Tag.Metadata, asciiZ('<xmp/>')), tag(Tag.ShowFrame), endTag());
     const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
     buildMovieModel(file);
     expect(file.sink.codes()).toContain('SF0163');

@@ -68,7 +68,7 @@ export function runCli(argv: readonly string[], io: CliIo): number {
         return EXIT.unreadable;
     }
   } catch (error) {
-    io.err(`internal error: ${error instanceof Error ? error.stack ?? error.message : String(error)}`);
+    io.err(`internal error: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`);
     return EXIT.internal;
   }
 }

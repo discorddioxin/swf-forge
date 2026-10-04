@@ -97,11 +97,7 @@ export interface TagStreamOptions {
   declaredFrames?: number;
 }
 
-export function buildTagIndex(
-  body: Uint8Array,
-  sink: DiagnosticSink,
-  opts: TagStreamOptions = {},
-): TagStreamResult {
+export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagStreamOptions = {}): TagStreamResult {
   const tags: TagRef[] = [];
   const definitions: DefinitionEntry[] = [];
   const definitionsById = new Map<number, DefinitionEntry>();
@@ -187,13 +183,10 @@ export function buildTagIndex(
       tags.push(ref);
 
       if (!isKnownTag(code)) {
-        cursor.emit(
-          Codes.UNKNOWN_TAG,
-          'info',
-          `unknown tag code ${code} skipped by length`,
-          headerOffset,
-          { tagCode: code, context: `unknown tag ${code}` },
-        );
+        cursor.emit(Codes.UNKNOWN_TAG, 'info', `unknown tag code ${code} skipped by length`, headerOffset, {
+          tagCode: code,
+          context: `unknown tag ${code}`,
+        });
       } else {
         const info = tagInfo(code);
         if (level.inSprite !== null && info !== undefined && !info.inSprite && !level.reported.has(code)) {
@@ -215,7 +208,7 @@ export function buildTagIndex(
             { tagCode: code },
           );
         } else if (info?.definition) {
-          const id = length >= 2 ? ((body[bodyOffset] ?? 0) | ((body[bodyOffset + 1] ?? 0) << 8)) : 0;
+          const id = length >= 2 ? (body[bodyOffset] ?? 0) | ((body[bodyOffset + 1] ?? 0) << 8) : 0;
           const prior = definitionsById.get(id);
           if (definitions.length + 1 > maxEntries) {
             cursor.emit(Codes.DICTIONARY_CAP, 'error', `dictionary entry cap ${maxEntries} exceeded`, headerOffset, {
@@ -272,9 +265,8 @@ export function buildTagIndex(
       }
 
       if (code === 39) {
-        const spriteId = length >= 2 ? ((body[bodyOffset] ?? 0) | ((body[bodyOffset + 1] ?? 0) << 8)) : 0;
-        const declared =
-          length >= 4 ? ((body[bodyOffset + 2] ?? 0) | ((body[bodyOffset + 3] ?? 0) << 8)) : 0;
+        const spriteId = length >= 2 ? (body[bodyOffset] ?? 0) | ((body[bodyOffset + 1] ?? 0) << 8) : 0;
+        const declared = length >= 4 ? (body[bodyOffset + 2] ?? 0) | ((body[bodyOffset + 3] ?? 0) << 8) : 0;
         if (level.depth >= 32) {
           cursor.emit(
             Codes.SPRITE_DEPTH_CAP,

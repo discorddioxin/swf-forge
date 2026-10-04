@@ -97,7 +97,11 @@ function readPairs(c: Cursor, count: number, what: string): AssetPair[] {
   return pairs;
 }
 
-function buildExportMaps(c: Cursor, pairs: readonly AssetPair[], what: string): Pick<ExportAssetsResult, 'byName' | 'byId'> {
+function buildExportMaps(
+  c: Cursor,
+  pairs: readonly AssetPair[],
+  what: string,
+): Pick<ExportAssetsResult, 'byName' | 'byId'> {
   const byName = new Map<string, number>();
   const byId = new Map<number, string>();
   for (const { id, name } of pairs) {
@@ -112,7 +116,11 @@ function buildExportMaps(c: Cursor, pairs: readonly AssetPair[], what: string): 
     }
     const prior = byId.get(id);
     if (prior !== undefined && prior !== name) {
-      c.emit(Codes.EXPORT_ID_DUPLICATE, 'warning', `character ${id} exported as "${prior}" and "${name}"; the later name wins`);
+      c.emit(
+        Codes.EXPORT_ID_DUPLICATE,
+        'warning',
+        `character ${id} exported as "${prior}" and "${name}"; the later name wins`,
+      );
     }
     byId.set(id, name);
   }
@@ -155,7 +163,11 @@ export function decodeImportAssets(
   const entries = readPairs(c, count, tagCode === 71 ? 'ImportAssets2' : 'ImportAssets');
   const deprecated = tagCode === 57 && c.version >= 8;
   if (deprecated) {
-    c.emit(Codes.IMPORTASSETS_DEPRECATED, 'warning', 'ImportAssets (57) in a SWF 8+ file is ignored by Flash Player 8+');
+    c.emit(
+      Codes.IMPORTASSETS_DEPRECATED,
+      'warning',
+      'ImportAssets (57) in a SWF 8+ file is ignored by Flash Player 8+',
+    );
   }
   return { url, entries, deprecated };
 }
@@ -193,7 +205,11 @@ export function decodeDefineScalingGrid(c: Cursor): { characterId: number; split
   const characterId = c.u16();
   const splitter = readRect(c);
   if (splitter.xMax - splitter.xMin < 1 || splitter.yMax - splitter.yMin < 1) {
-    c.emit(Codes.SCALING_GRID_BELOW_MIN, 'warning', `scaling grid for character ${characterId} is below one twip per side`);
+    c.emit(
+      Codes.SCALING_GRID_BELOW_MIN,
+      'warning',
+      `scaling grid for character ${characterId} is below one twip per side`,
+    );
   }
   return { characterId, splitter };
 }

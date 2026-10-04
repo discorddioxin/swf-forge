@@ -23,7 +23,12 @@ export function readRect(c: Cursor): Rect {
   const yMax = c.sb(nbits);
   c.align();
   const PLAUSIBLE = 2 ** 27;
-  if (Math.abs(xMin) > PLAUSIBLE || Math.abs(xMax) > PLAUSIBLE || Math.abs(yMin) > PLAUSIBLE || Math.abs(yMax) > PLAUSIBLE) {
+  if (
+    Math.abs(xMin) > PLAUSIBLE ||
+    Math.abs(xMax) > PLAUSIBLE ||
+    Math.abs(yMin) > PLAUSIBLE ||
+    Math.abs(yMax) > PLAUSIBLE
+  ) {
     c.emit(Codes.VALUE_OUT_OF_RANGE, 'info', 'RECT coordinate outside the plausible twip range');
   }
   return { xMin, xMax, yMin, yMax };

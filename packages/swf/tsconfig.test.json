@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false,
+    "rootDir": ".",
+    "baseUrl": ".",
+    "paths": {
+      "@swf-forge/swf": ["./src/index.ts"],
+      "@swf-forge/swf/test-support": ["./src/test-support/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}

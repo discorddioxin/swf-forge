@@ -1,0 +1,34 @@
+# Node / TypeScript
+node_modules/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+.turbo/
+.vite/
+.eslintcache
+.pnpm-store/
+
+# Test output
+.playwright/
+test-results/
+blob-report/
+*.log
+
+# Local caches and conversion scratch space (never commit fixtures derived from copyrighted SWFs)
+.forge-cache/
+*.local
+.swf-local/
+corpus/
+goldens/private/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Python bytecode from the tools/ scripts
+__pycache__/
+*.pyc

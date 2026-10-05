@@ -111,3 +111,60 @@ describe('buildSwf test-support writer', () => {
     expect(bytes[0]! >> 3).toBe(15);
   });
 });
+
+// ---------------------------------------------------------------------------
+// P1 resolution pass (`audits/archive/P1-RESOLUTION-AUDIT.md`) — R-06, R-10
+// ---------------------------------------------------------------------------
+
+describe('F-06 — SF0030 is reported once per tag code, not per level', () => {
+  it('two distinct long-under-63 tag codes produce two entries; a repeat dedups', () => {
+    const sink = new DiagnosticSink();
+    const body = concat(
+      tag(2, new Uint8Array(10), { forceLong: true }),
+      tag(11, new Uint8Array(10), { forceLong: true }),
+      tag(2, new Uint8Array(8), { forceLong: true }),
+      endTag(),
+    );
+    const result = buildTagIndex(body, sink, {});
+    const entries = sink.list().filter((d) => String(d.code) === 'SF0030');
+    expect(entries).toHaveLength(2); // tag 2 and tag 11 — the repeat of tag 2 adds nothing
+    expect(entries.map((d) => d.context).sort()).toEqual(['long header 11', 'long header 2']);
+    expect(result.index.tags.map((t) => t.code)).toEqual([2, 11, 2, 0]);
+  });
+});
+
+describe('T-SWF-003 boundary — short form tops out at 62, long form from 63', () => {
+  it('a 62-byte body uses the short header and parses without SF0030', () => {
+    const sink = new DiagnosticSink();
+    const encoded = tag(2, new Uint8Array(62));
+    // Short form: single UI16 word, six-bit field = 62 (0x3E), no long length follows.
+    expect(encoded.length).toBe(2 + 62);
+    expect(encoded[0]! & 0x3f).toBe(62);
+    const result = buildTagIndex(concat(encoded, endTag()), sink, {});
+    expect(result.index.tags[0]!.length).toBe(62);
+    expect(result.index.tags[0]!.longHeader).toBe(false);
+    expect(sink.codes()).not.toContain('SF0030');
+  });
+
+  it('a 63-byte body takes the long form (the six-bit field cannot hold 63)', () => {
+    const sink = new DiagnosticSink();
+    const encoded = tag(2, new Uint8Array(63));
+    expect(encoded.length).toBe(6 + 63); // UI16 (field 0x3F) + UI32 length
+    expect(encoded[0]! & 0x3f).toBe(0x3f);
+    const length = (encoded[2]! | (encoded[3]! << 8) | (encoded[4]! << 16) | (encoded[5]! << 24)) >>> 0;
+    expect(length).toBe(63);
+    const result = buildTagIndex(concat(encoded, endTag()), sink, {});
+    expect(result.index.tags[0]!.length).toBe(63);
+    expect(result.index.tags[0]!.longHeader).toBe(true);
+    // 63 is the smallest legal long-form length — not an SF0030 case.
+    expect(sink.codes()).not.toContain('SF0030');
+  });
+
+  it('a 62-byte body forced into the long form is legal but non-canonical (SF0030)', () => {
+    const sink = new DiagnosticSink();
+    const result = buildTagIndex(concat(tag(2, new Uint8Array(62), { forceLong: true }), endTag()), sink, {});
+    expect(result.index.tags[0]!.length).toBe(62);
+    expect(result.index.tags[0]!.longHeader).toBe(true);
+    expect(sink.codes()).toContain('SF0030');
+  });
+});

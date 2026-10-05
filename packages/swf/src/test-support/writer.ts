@@ -130,6 +130,9 @@ export function endTag(): Uint8Array {
   return tag(0);
 }
 
+/** Deliberate corruptions the fixture writer can emit (`IMPL-020-R037`). */
+export type WriterDefect = 'missing-end' | 'bad-file-length' | 'overlong-encoded-u32' | 'out-of-order-stream';
+
 export interface SwfFixtureOptions {
   readonly version?: number;
   /** Header frame size in twips; defaults to 550 × 400 px. */
@@ -139,31 +142,162 @@ export interface SwfFixtureOptions {
   readonly frameCount?: number;
   /** Tag stream, including the `End` tag. */
   readonly body: Uint8Array;
+  /** Compress the tag stream: `CWS` (zlib) or `ZWS` (LZMA). Requires `compressor`. */
+  readonly compression?: 'none' | 'zlib' | 'lzma';
+  /** The compressor (e.g. `node:zlib` `deflateSync`, or the `lzma` package — LZMA_alone). */
+  readonly compressor?: (payload: Uint8Array) => Uint8Array;
+  /** For `lzma`: the advisory `compressedLength` UI32 to write (defaults to the actual length). */
+  readonly zwsLengthOverride?: number;
+  /** Deliberate corruptions (applied to the tag stream before compression). */
+  readonly defects?: readonly WriterDefect[];
 }
 
-/** Builds an uncompressed (`FWS`) file whose `FileLength` matches the bytes produced. */
+/** A definition tag: `UI16 CharacterId` + the tag's own body. */
+export function defineTag(code: number, id: number, body: Uint8Array = new Uint8Array(0)): Uint8Array {
+  const w = new ByteWriter();
+  return tag(code, w.u16(id).bytes(body).toUint8Array());
+}
+
+/** `PlaceObject` (4) v1: `CharacterId`, `Depth`, an empty (zero) matrix. */
+export function placeObjectV1(characterId: number, depth: number): Uint8Array {
+  const w = new ByteWriter();
+  return tag(4, w.u16(characterId).u16(depth).u8(0).toUint8Array());
+}
+
+/** `PlaceObject2` (26): `HasCharacter | HasMatrix` flags, `Depth`, `CharacterId`, zero matrix. */
+export function placeObject2(characterId: number, depth: number): Uint8Array {
+  const w = new ByteWriter();
+  return tag(26, w.u8(0x06).u16(depth).u16(characterId).u8(0).toUint8Array());
+}
+
+/** `StartSound` (15): `SoundId` + a minimal `SOUNDINFO` (event, no loops, no envelope). */
+export function startSound(id: number): Uint8Array {
+  const w = new ByteWriter();
+  return tag(15, w.u16(id).u8(0x01).u8(0).u16(0).u16(0).u8(0).toUint8Array());
+}
+
+/** `DefineSprite` (39): `SpriteID`, `FrameCount`, the sprite's tags (including its `End`). */
+export function defineSprite(id: number, frameCount: number, inner: Uint8Array): Uint8Array {
+  const w = new ByteWriter();
+  return tag(39, w.u16(id).u16(frameCount).bytes(inner).toUint8Array());
+}
+
+/** `SoundStreamHead` (18) with an empty `SOUNDSTREAMHEAD2`-free v1 body. */
+export function soundStreamHead(): Uint8Array {
+  const w = new ByteWriter();
+  return tag(18, w.u8(0).u8(0).u8(0).u8(0).u8(0).u32(0).toUint8Array());
+}
+
+/** `SoundStreamBlock` (19) with a single zero data byte. */
+export function soundStreamBlock(): Uint8Array {
+  return tag(19, new Uint8Array([0]));
+}
+
+/** Applies the R037 defects to a tag stream. */
+function applyDefects(body: Uint8Array, defects: readonly WriterDefect[]): Uint8Array {
+  let out = body;
+  for (const defect of defects) {
+    switch (defect) {
+      case 'missing-end': {
+        // Drop the trailing two-byte `End` tag when present.
+        if (out.length >= 2 && (out[out.length - 1] ?? 0) === 0 && (out[out.length - 2] ?? 0) === 0) {
+          out = out.subarray(0, out.length - 2);
+        }
+        break;
+      }
+      case 'out-of-order-stream': {
+        // A SoundStreamBlock before its SoundStreamHead, just before the End.
+        out = concat(out, soundStreamBlock(), soundStreamHead());
+        break;
+      }
+      case 'overlong-encoded-u32': {
+        // DefineSceneAndFrameLabelData whose scene count is a 5-byte (overlong) zero EncodedU32.
+        const w = new ByteWriter();
+        out = concat(out, tag(86, w.bytes([0, 0, 0, 0, 0x80]).u8(0).toUint8Array()));
+        break;
+      }
+      case 'bad-file-length':
+        break; // applied to the header below
+    }
+  }
+  return out;
+}
+
+const SIGNATURES: Readonly<Record<'none' | 'zlib' | 'lzma', [number, number, number]>> = {
+  none: [0x46, 0x57, 0x53], // FWS
+  zlib: [0x43, 0x57, 0x53], // CWS
+  lzma: [0x5a, 0x57, 0x53], // ZWS
+};
+
+/**
+ * Builds an SWF file (FWS by default, CWS/ZWS with `compression` + `compressor`).
+ *
+ * The *decompressed* stream is always `RECT` + `FrameRate` + `FrameCount` + the tag stream; for
+ * `CWS`/`ZWS` the whole stream is what gets compressed (the 8-byte base header is stored raw).
+ * `FileLength` is the decompressed length in every form.
+ */
 export function buildSwf(options: SwfFixtureOptions): Uint8Array {
   const version = options.version ?? 6;
   const frameSize = options.frameSize ?? { xMin: 0, xMax: 11000, yMin: 0, yMax: 8000 };
   const frameRateRaw = options.frameRateRaw ?? 12 * 256;
   const frameCount = options.frameCount ?? 1;
+  const defects = options.defects ?? [];
+  const compression = options.compression ?? 'none';
 
+  const body = applyDefects(options.body, defects);
+
+  const decompressed = new ByteWriter();
+  writeRect(decompressed, frameSize);
+  decompressed.u16(frameRateRaw).u16(frameCount);
+  decompressed.bytes(body);
+  const stream = decompressed.toUint8Array();
+
+  let payload: Uint8Array;
+  if (compression === 'none') {
+    payload = stream;
+  } else {
+    if (options.compressor === undefined) throw new Error(`buildSwf: compression "${compression}" needs a compressor`);
+    if (compression === 'lzma') {
+      // The compressor emits `LZMA_alone` (5 property bytes + data). The ZWS base carries an
+      // advisory `compressedLength` before the properties; open.ts expects it to equal the
+      // property+data length it will hand to the decoder.
+      const alone = options.compressor(stream);
+      const w = new ByteWriter();
+      w.u32(options.zwsLengthOverride ?? alone.length);
+      w.bytes(alone);
+      payload = w.toUint8Array();
+    } else {
+      payload = options.compressor(stream);
+    }
+  }
+
+  const [s0, s1, s2] = SIGNATURES[compression];
+  let fileLength = 8 + stream.length;
+  if (defects.includes('bad-file-length')) fileLength += 10;
+  const result = new Uint8Array(8 + payload.length);
+  result[0] = s0;
+  result[1] = s1;
+  result[2] = s2;
+  result[3] = version;
+  result[4] = fileLength & 0xff;
+  result[5] = (fileLength >>> 8) & 0xff;
+  result[6] = (fileLength >>> 16) & 0xff;
+  result[7] = (fileLength >>> 24) & 0xff;
+  result.set(payload, 8);
+  return result;
+}
+
+/**
+ * A `DoAction`-style action block: a `UI32` `Length` then the record bytes. An `End` (0x00) is
+ * appended when the caller did not supply one. (`IMPL-050-R003`/`R006`.)
+ */
+export function actionBlock(records: readonly number[]): Uint8Array {
+  const body = [...records];
+  if (body.length === 0 || body[body.length - 1] !== 0x00) body.push(0x00);
   const w = new ByteWriter();
-  w.u8(0x46).u8(0x57).u8(0x53).u8(version); // 'F','W','S'
-  w.u32(0); // patched below — FileLength
-  writeRect(w, frameSize);
-  w.u16(frameRateRaw);
-  w.u16(frameCount);
-  const headerAndBody = w.bytes(options.body).toUint8Array();
-  const total = headerAndBody.length;
-  const out = new ByteWriter();
-  out.bytes(headerAndBody);
-  const bytes = out.toUint8Array();
-  bytes[4] = total & 0xff;
-  bytes[5] = (total >>> 8) & 0xff;
-  bytes[6] = (total >>> 16) & 0xff;
-  bytes[7] = (total >>> 24) & 0xff;
-  return bytes;
+  w.u32(body.length);
+  for (const b of body) w.bytes(Uint8Array.from([b]));
+  return w.toUint8Array();
 }
 
 /** Minimal valid file: header, one `ShowFrame`, `End`. */

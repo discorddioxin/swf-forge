@@ -19,7 +19,7 @@ function fixture(): Uint8Array {
 }
 
 describe('fixtures/appendix-a.swf', () => {
-  it('is the appendix bytes: FWS, version 3, FileLength 79', () => {
+  it('T-SWF-023: is the appendix bytes — FWS, version 3, FileLength 79', () => {
     const bytes = fixture();
     expect(bytes.length).toBe(79);
     expect(String.fromCharCode(...bytes.subarray(0, 3))).toBe('FWS');
@@ -28,29 +28,36 @@ describe('fixtures/appendix-a.swf', () => {
     expect(declared).toBe(79);
   });
 
-  it('decodes the header: 550x400 px, 12 fps, one frame', () => {
+  it('T-SWF-023: decodes the header — 550x400 px, raw FrameRate 3072 = 12.0, one frame', () => {
     const file = openSwf(fixture());
     expect(file.header.version).toBe(3);
     expect(file.header.fileLength).toBe(79);
+    // The 8.8 FrameRate reads raw 3072 little-endian (bytes 00 0C) — 12.0 fps (`IMPL-020-R012`).
+    expect(file.header.frameRateRaw).toBe(3072);
     expect(file.header.frameRate).toBeCloseTo(12, 6);
     expect(file.header.frameCount).toBe(1);
     expect(file.header.frameSizePx.width).toBe(550);
     expect(file.header.frameSizePx.height).toBe(400);
+    // RECT Nbits 15: 0 / 11000 / 0 / 8000 twips = 550x400 px.
     expect(toPixels(file.header.frameSize.xMax)).toBe(550);
     expect(file.header.frameSize.xMin).toBe(0);
     expect(file.header.frameSize.yMin).toBe(0);
+    expect(file.header.frameSize.yMax).toBe(8000);
   });
 
-  it('walks the five tags in order and finds the one definition', () => {
+  it('T-SWF-022: walks the five tags in order and finds the one definition', () => {
     const file = openSwf(fixture());
     expect(file.tagIndex.tags.map((t) => t.code)).toEqual([9, 2, 26, 1, 0]);
+    // Tag 9 (DoInitAction) carries the appendix's 3-byte body.
+    expect(file.tagIndex.tags[0]?.length).toBe(3);
+    expect(file.tagIndex.tags[0]?.longHeader).toBe(false);
     expect(file.definitions.map((d) => d.id)).toEqual([1]);
     expect(file.definitions.map((d) => d.tagCode)).toEqual([2]);
-    // The DefineShape is the long-header tag: a 35-byte body does not fit the short form.
+    // The DefineShape is the long-header tag: a 35-byte body does not fit the short form
+    // (6-bit length field 63 + UI32).
     const shapeTag = file.tagIndex.tags[1];
     expect(shapeTag?.longHeader).toBe(true);
     expect(shapeTag?.length).toBe(35);
-    expect(file.tagIndex.tags[0]?.longHeader).toBe(false);
   });
 
   it('T-SWF-018 lazily builds the index on first access and memoizes the raw tag payload', () => {

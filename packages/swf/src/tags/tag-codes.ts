@@ -141,6 +141,7 @@ const SINCE: Readonly<Record<number, number>> = {
   [Tag.RemoveObject]: 1,
   [Tag.DefineBits]: 1,
   [Tag.DefineButton]: 1,
+  [Tag.JPEGTables]: 1,
   [Tag.SetBackgroundColor]: 1,
   [Tag.DefineFont]: 1,
   [Tag.DefineText]: 1,

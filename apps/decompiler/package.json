@@ -9,6 +9,7 @@
     "forge-decompile": "./dist/main.js"
   },
   "dependencies": {
+    "@swf-forge/avm1": "workspace:*",
     "@swf-forge/swf": "workspace:*"
   },
   "scripts": {

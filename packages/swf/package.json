@@ -22,5 +22,8 @@
   ],
   "scripts": {
     "build": "tsc -b"
+  },
+  "optionalDependencies": {
+    "lzma": "^2.3.2"
   }
 }

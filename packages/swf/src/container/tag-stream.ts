@@ -86,6 +86,8 @@ interface Level {
   limit: number;
   readonly declaredFrames: number;
   showFrames: number;
+  /** True when the level's own `End` tag was seen (vs. closed by hitting its byte limit). */
+  ended: boolean;
   /** Tag codes already reported as not-in-sprite for this level (`SF0129`, once per kind). */
   readonly reported: Set<number>;
 }
@@ -115,6 +117,7 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
     limit: body.length,
     declaredFrames: opts.declaredFrames ?? 0,
     showFrames: 0,
+    ended: false,
     reported: new Set<number>(),
   };
   const stack: Level[] = [top];
@@ -143,7 +146,14 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
           'info',
           `tag ${code} (${tagName(code)}) uses a long header though its body is ${length} byte(s)`,
           headerOffset,
-          { tagCode: code },
+          {
+            tagCode: code,
+            // Per-code context (R017: "once per tag code"): without it the sink's
+            // (code, context, characterId) dedup key folds distinct tag codes in the same level
+            // into a single entry — the second code never gets its report (SF0104's
+            // `unknown tag N` context is the established pattern).
+            context: `long header ${code}`,
+          },
         );
       }
 
@@ -198,6 +208,17 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
             headerOffset,
             { tagCode: code },
           );
+          // `FileAttributes` is root-SWF-only (Ch.15): inside a sprite it is ignored, and that
+          // specific case is named `SF0175` on top of the generic unlisted-tag note.
+          if (code === 69) {
+            cursor.emit(
+              Codes.FILE_ATTRIBUTES_IN_SPRITE,
+              'info',
+              `FileAttributes inside sprite ${level.inSprite} is ignored (root-SWF-only tag)`,
+              headerOffset,
+              { tagCode: code },
+            );
+          }
         }
         if (info?.definition && level.inSprite !== null) {
           cursor.emit(
@@ -250,6 +271,7 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
         level.limit = bodyEnd;
         pos = bodyEnd;
         closed = true;
+        level.ended = true;
         if (level.inSprite === null) {
           sawEnd = true;
           trailingBytes = Math.max(0, body.length - bodyEnd);
@@ -288,6 +310,7 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
           limit: Math.min(bodyEnd, level.limit),
           declaredFrames: declared,
           showFrames: 0,
+          ended: false,
           reported: new Set<number>(),
         };
         pos = bodyOffset + 4;
@@ -311,9 +334,23 @@ export function buildTagIndex(body: Uint8Array, sink: DiagnosticSink, opts: TagS
     }
 
     if (closed && level !== top) {
+      if (!level.ended) {
+        sink.emit({
+          code: Codes.MISSING_END_STRUCTURAL,
+          severity: 'warning',
+          message: `sprite ${level.inSprite} body ends without an End tag (closed at its byte limit)`,
+          offset: Math.min(level.limit, body.length),
+          context: `sprite ${level.inSprite}`,
+          ...(level.inSprite !== null ? { characterId: level.inSprite } : {}),
+        });
+      }
       spriteRanges.set(level.inSprite ?? -1, {
         start: level.startTag,
-        end: level.now,
+        // A level closed *with* its `End` tag keeps `now` (the End tag's index, set in the
+        // `code === 0` branch); a level closed by its byte limit *without* an `End` tag would
+        // otherwise keep `now` at its entry value (= `startTag`) and slice away every tag the
+        // indexer kept — so the range extends to the last indexed tag (T-SWF-002 prefix).
+        end: level.ended ? level.now : tags.length,
         frameCount: level.declaredFrames,
         depth: level.depth,
       });

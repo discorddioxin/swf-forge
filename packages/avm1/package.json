@@ -1,0 +1,22 @@
+{
+  "name": "@swf-forge/avm1",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@swf-forge/swf": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

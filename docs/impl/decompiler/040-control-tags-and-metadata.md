@@ -180,7 +180,7 @@ dependency in the control layer and MUST be a type-only import so no runtime cyc
     readonly index: number;     // file order within the frame; stamped by doc 030's assembler
     readonly depth: number;     // UI16, as authored
     readonly tabIndex: number;  // UI16; lower = earlier in the tab order
-    readonly origin: TagRef;
+    readonly tagOffset: number; // byte offset of the tag body (see doc 030 §3 deviation note)
   }
   ```
 
@@ -405,7 +405,6 @@ the exact tag a decision came from.
 | `SF0153` | warning | duplicate frame label (first wins for lookups) |
 | `SF0154` | warning | export/`SymbolClass` name empty or invalid (sanitised for the manifest) |
 | `SF0155` | error | import alias cycle |
-| `SF0156` | warning | invalid scaling grid (dropped: < 1 twip, bad rect order) |
 | `SF0157` | info | `SymbolClass` in an AVM2-flagged movie would have been an error (unreachable in practice) |
 | `SF0158` | info | scene data collapsed; navigation remapped |
 | `SF0159` | warning | duplicate export **character id** (later name wins, per Ch.4; shadowed entry kept) |
@@ -523,3 +522,4 @@ APP-§10.2.
 | 1.1 | 2026-10-04 | Ch.4-grounded: version windows, duplicate-key rules, named-anchor byte, `End` at sprite level, `ImportAssets` SWF 8+ no-effect rule, `FileAttributes` mask table + bit-order traps, `SymbolClass` root class, `Metadata` biconditional, `DefineScalingGrid` twip rule, scene offset semantics; `SetTabIndexOp` export contract with doc 030 (R003/R024–R027); new diagnostics `SF0160`–`SF0174`; tests `T-MOD-013`–`T-MOD-033` (v1.1 added `T-MOD-024`–`T-MOD-033`); WPs 01–14 = 21.5 d; open items cut to the Ch.15 residue |
 | 1.2 | 2026-10-04 | Ch.15-grounded: `DefineBinaryData` exact layout (`Tag UI16`, `Reserved UI32`, data to end) and `EnableTelemetry` (2 bytes + optional SHA-256 `PasswordHash`, redacted), the root-SWF-only `FileAttributes` rule, and the Ch.15 bit-name divergences (`E-022`: bits 6/5 `Reserved` vs `UseDirectBlit`/`UseGPU`; bit 2 `NoCrossDomainCache` vs reserved) with the legacy bit now named (`SF0176`); diagnostics `SF0175`–`SF0179`; tests `T-MOD-034`–`036`; §3 rules `R041`–`R043` added (telemetry, then the ordering/framing rules shifted from `R041`/`R042`); WPs re-estimated to 24 d |
 | 1.3 | 2026-10-04 | §3.6 added: the `forge-decompile dump` contract (`R044`–`R048`) — three modes, the byte-deterministic JSON dump, sorted-map/fixed-order rules, the timeline form doc 030 §7 defines, and the `--out` file/exit-code rules; tests `T-MOD-037`–`T-MOD-040`; covered by the existing `WP-040-14` |
+| 1.4 | 2026-10-05 | P2 integrity resolutions: the `SF0156` row is removed from §6 (doc error — it duplicated the `SF0167` case assigned by `R028`; inverted-rect inputs are caught by the < 1 twip width check) and was never registered in code; `SetTabIndexOp` now carries `tagOffset: number` to match the implementation (R-P2-13, with doc 030 v1.5) |

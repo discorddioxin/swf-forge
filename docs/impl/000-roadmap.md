@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.10 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.12 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -41,7 +41,7 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
 | --- | --- | --- | --- | --- |
 | **P0** | Foundations | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven | T-SWF-001…004, T-SWF-009 |
 | **P1** | Container & dictionary | Ch.2 | `inspect --tags --symbols` prints dictionary, sprites, exports, ordering violations | T-SWF-002, 003, 007, 008, 010–012 |
-| **P2** | Model & timeline | Ch.3, 4, 12, 13, 15 | `inspect --timeline` dumps every frame's placements/actions/labels; buttons + sprites resolved | T-MOD-* (new, this doc §6) |
+| **P2** | Model & timeline | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints every frame's placements/actions/labels as stable, diffable JSON; sprites resolved — buttons (doc 100) remain open | T-MOD-* (new, this doc §6) |
 | **P3** | Media decode | Ch.6–10 | `swfforge assets dump` writes PNG/WAV/WOFF2 previews of every character | T-SWF-005, 006 + T-GFX/AST decode suites |
 | **P4** | Static render (no VM) | — | A no-script SWF renders its main timeline in the browser, frame-accurate | T-GFX-001…005, 020, 021 |
 | **P5** | AVM1 front end | Ch.5 | `swfforge analyze --tiers` reports T0/T1/T2 per function; coercion suite passes | T-AVM1-008, 009, 012, 025 |
@@ -105,7 +105,7 @@ what is open, and a package is only "done" for the phase gate when its gate test
 | --- | --- | --- | --- |
 | P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `io.test.ts`, `framing.test.ts` (bit-width limits, soft/strict bounds, matrix rotation, primitive records) |
 | P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, lazy tag index/payload, length handling, missing `End`, duplicate ids); ordering and LZMA adapter WPs remain open |
-| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `place-filters.test.ts` (sprites/padding, placeholders, scenes/remap, ordered labels, removal ids, PlaceObject3/filter metadata) |
+| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `place-filters.test.ts`, `control.test.ts` (sprites/padding, placeholders, scenes/remap, ordered labels, removal ids, PlaceObject3/filter metadata, `--strict-timeline`); buttons (doc 100) remain open |
 | `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (duplicate definitions, strict length handling, exit codes, `--json`) |
 | `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` and audit synthetic probes (field order, sorted maps, file-order labels, op fields, `--out` bytes) |
 | P3 media decode | `packages/swf/src/tags/shape.ts` (shape/gradient decoding only) | [060](decompiler/060-shapes-and-gradients.md) | `shape-runs.test.ts`, `shape-regressions.test.ts`; image/font/sound export pipeline and the P3 asset demo remain incomplete |
@@ -210,7 +210,7 @@ ensures every measurement lands in the table it belongs to.
 | --- | --- |
 | FWS/CWS/ZWS all parse; length mismatch policy matches SWF-R009 | unit + fixture tests |
 | Tag index built lazily; sprite ranges recorded | unit tests |
-| Ordering rule violations detected and reported (Ch.2 rules) | new diagnostics `SF0120`-range |
+| Ordering rule violations detected and reported (Ch.2 rules) | new diagnostics `SF0024`–`SF0026`, `SF0032` (020 §9) |
 | Fuzz smoke: 10⁴ mutations, zero uncaught exceptions | CI job |
 
 ### P2 — Model & timeline
@@ -441,3 +441,5 @@ art):
 | 1.8 | 2026-10-04 | Folder reorganisation: the document map now points at `foundation/`, `decompiler/`, `transpiler/`, `engine-flash/`, `code-inspector/`, `engine-clean/`, `harness/` and the registers directory; document ids, work packages and totals unchanged; verification moved to `tools/verify_docs.py` + `tools/gen_status.py` |
 | 1.9 | 2026-10-04 | Implementation started (Phase 10): §2.2 added to record the code that exists and where its evidence lives — P0 readers, P1 container/dictionary, P2 model, the `inspect` verb and the P4 reference renderer (`packages/gfx`), with the Appendix-A gate and the shape style-run defect it found; the phase tables and the work-package index are unchanged |
 | 1.10 | 2026-10-04 | `dump` implemented (`WP-040-14`): §2.2 gains its row; the P0–P2 gate note records what is closed locally and what still needs the corpus harness and the AVM2 signals |
+| 1.11 | 2026-10-05 | P1 resolution pass: the P1 exit-criteria row for ordering-rule diagnostics cited a nonexistent `SF0120`-range; corrected to `SF0024`–`SF0026`, `SF0032` (020 §9 — `SF0120` belongs to doc 100) |
+| 1.12 | 2026-10-05 | P2 integrity resolutions (R-P2-15): the P2 demo/exit rows now cite the `forge-decompile dump` verb instead of the never-built `inspect --timeline`/`verify`; §2.2 records the `control.test.ts` evidence and that buttons (doc 100) remain open until their resolution lands |

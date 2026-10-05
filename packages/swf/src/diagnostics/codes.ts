@@ -3,8 +3,8 @@
  * literal (`IMPL-010-R002`); every other module refers to these constants.
  *
  * Ranges (owner in brackets): `SF0001`–`SF0019` IO (010) · `SF0020`–`SF0049` container (020) ·
- * `SF0100`–`SF0199` tag stream/dictionary (020) · `SF0110`–`SF0129` placements (030) ·
- * `SF0150`–`SF0179` control/metadata (040) · `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
+ * `SF0100`–`SF0109` tag stream/dictionary (020) · `SF0110`–`SF0129` placements (030) ·
+ * `SF0130`–`SF0139` buttons (100) · `SF0150`–`SF0179` control/metadata (040) · `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
  * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF1000+` fatal (050).
  */
 
@@ -77,8 +77,22 @@ export const Codes = {
   REMOVAL_EMPTY_DEPTH: 'SF0127',
   SPRITE_DEFINITION_TAG: 'SF0128',
   SPRITE_TAG_UNLISTED: 'SF0129',
+  // ---- buttons (100) ----------------------------------------------------------------------------
+  CONDACTION_CHAIN_MALFORMED: 'SF0130',
+  BUTTON_MATRIX_SINGULAR: 'SF0131',
+  BUTTON_SOUND_INVALID: 'SF0132',
+  BUTTON2_AVM2_ACTIONS: 'SF0133',
+  BUTTON_RECORD_NO_STATE: 'SF0134',
+  BUTTON_KEYCODE_UNDOCUMENTED: 'SF0135',
+  BUTTON_AUX_TARGET_NOT_BUTTON: 'SF0136',
+  BUTTON_CONDITION_EMPTY: 'SF0137',
+  BUTTON_V1_ACTIONS_PRESENT: 'SF0138',
   // ---- control tags (040) ---------------------------------------------------------------------
+  IMPORT_UNRESOLVED: 'SF0150',
+  DEBUGGER_TAG_PRESENT: 'SF0151',
+  TELEMETRY_OPT_IN: 'SF0152',
   FRAME_LABEL_DUPLICATE: 'SF0153',
+  IMPORT_ALIAS_CYCLE: 'SF0155',
   EXPORT_NAME_INVALID: 'SF0154',
   EXPORT_ID_DUPLICATE: 'SF0159',
   EXPORT_NAME_DUPLICATE: 'SF0160',
@@ -92,6 +106,41 @@ export const Codes = {
   SCALING_GRID_TARGET: 'SF0168',
   SCENE_DATA_INCONSISTENT: 'SF0169',
   SCRIPT_LIMITS_IMPLAUSIBLE: 'SF0170',
+  RESERVED_FIELD_NONZERO: 'SF0171',
+  FILE_ATTRIBUTES_NOT_FIRST_MODEL: 'SF0172',
+  MISSING_END_STRUCTURAL: 'SF0173',
+  EXPORT_ID_UNDEFINED: 'SF0174',
+  FILE_ATTRIBUTES_IN_SPRITE: 'SF0175',
+  FILE_ATTRIBUTES_LEGACY_NOCROSSDOMAINCACHE: 'SF0176',
+  TELEMETRY_HASH_PRESENT: 'SF0177',
+  BINARY_DATA_RESERVED_NONZERO: 'SF0178',
+  SYMBOLCLASS_BINARY_DATA: 'SF0179',
+  // ---- AVM1 front end (050) -------------------------------------------------------------------
+  ACTION_STREAM_TRUNCATED: 'SF0400',
+  ACTION_RECORD_OVERRUN: 'SF0401',
+  UNKNOWN_OPCODE: 'SF0402',
+  PUSH_MALFORMED: 'SF0403',
+  TRY_BODIES_DONT_TILE: 'SF0404',
+  BRANCH_TARGET_NOT_BOUNDARY: 'SF0405',
+  STACK_DEPTH_MISMATCH: 'SF0406',
+  SETTARGET_IN_LOOP: 'SF0407',
+  SWF3_ACTION_MODEL: 'SF0408',
+  DEFINE_FUNCTION_DEPTH: 'SF0409',
+  CONSTANT_POOL_DYNAMIC: 'SF0410',
+  CONSTANT_INDEX_OUT_OF_RANGE: 'SF0411',
+  WITH_DEPTH_OVER_CAP: 'SF0412',
+  DEFINE_FUNCTION2_RESERVED_BITS: 'SF0413',
+  DEFINE_FUNCTION2_PRELOAD_SUPPRESS: 'SF0414',
+  REGISTER_OUTSIDE_FUNCTION: 'SF0415',
+  REGISTER_OUT_OF_RANGE: 'SF0416',
+  PROPERTY_ID_UNDEFINED: 'SF0417',
+  CALL_TARGET_FRAME_MISSING: 'SF0418',
+  ACTION_NEWER_THAN_VERSION: 'SF0419',
+  ACTION_BLOCK_TERMINATOR: 'SF0420',
+  DUPLICATE_DOINITACTION: 'SF0421',
+  DOINITACTION_UNKNOWN_SPRITE: 'SF0422',
+  TOPRIMITIVE_RECURSION: 'SF0423',
+  PROTOTYPE_CHAIN_CYCLE: 'SF0424',
   // ---- shapes (060) ---------------------------------------------------------------------------
   SHAPE_FILL_TYPE_UNKNOWN: 'SF0180',
   SHAPE_STYLE_INDEX_RANGE: 'SF0181',
@@ -201,6 +250,72 @@ const REGISTRY: Record<string, CodeInfo> = {
     severity: 'info',
     meaning: 'tag inside a sprite outside the chapter list (decoded normally)',
   },
+  SF0130: {
+    code: 'SF0130',
+    severity: 'warning',
+    meaning:
+      'BUTTONCONDACTION chain malformed (CondActionSize zero-length advance, overrun, or non-advancing) — chain truncated',
+  },
+  SF0131: {
+    code: 'SF0131',
+    severity: 'warning',
+    meaning: 'singular placement matrix — the button is non-interactive in that state',
+  },
+  SF0132: {
+    code: 'SF0132',
+    severity: 'warning',
+    meaning: 'DefineButtonSound truncated, or references a character that is not a sound',
+  },
+  SF0133: {
+    code: 'SF0133',
+    severity: 'warning',
+    meaning: 'AS3-flagged file carries DefineButton2 condition actions (inert under AVM2)',
+  },
+  SF0134: {
+    code: 'SF0134',
+    severity: 'warning',
+    meaning: 'button record with no state flag set (dropped; it cannot be rendered or hit-tested)',
+  },
+  SF0135: {
+    code: 'SF0135',
+    severity: 'info',
+    meaning: 'CondKeyPress outside the documented key set (kept raw, never fires)',
+  },
+  SF0136: {
+    code: 'SF0136',
+    severity: 'warning',
+    meaning: 'DefineButtonCxform/DefineButtonSound targets a character that is not a button',
+  },
+  SF0137: {
+    code: 'SF0137',
+    severity: 'info',
+    meaning: 'condition action with no condition bit and no key code (never fires)',
+  },
+  SF0138: {
+    code: 'SF0138',
+    severity: 'info',
+    meaning: 'v1 button carries a trailing action array (legal; run on click-and-release)',
+  },
+  SF0150: {
+    code: 'SF0150',
+    severity: 'warning',
+    meaning: 'import could not be resolved against the supplied input set (character becomes a missing placeholder)',
+  },
+  SF0151: {
+    code: 'SF0151',
+    severity: 'info',
+    meaning: 'EnableDebugger (58) present — recorded, ignored (SWF 5 only; deprecated in SWF 6+)',
+  },
+  SF0152: {
+    code: 'SF0152',
+    severity: 'info',
+    meaning: 'EnableTelemetry present — advanced telemetry opt-in (inert; hash redacted)',
+  },
+  SF0155: {
+    code: 'SF0155',
+    severity: 'error',
+    meaning: 'import alias cycle detected during transitive resolution (alias chain abandoned at the cycle)',
+  },
   SF0153: { code: 'SF0153', severity: 'warning', meaning: 'duplicate frame label (first wins for lookups)' },
   SF0154: {
     code: 'SF0154',
@@ -243,6 +358,119 @@ const REGISTRY: Record<string, CodeInfo> = {
     severity: 'warning',
     meaning: 'ScriptLimits value outside the supported window (clamped/recorded)',
   },
+  SF0171: {
+    code: 'SF0171',
+    severity: 'info',
+    meaning:
+      'reserved field or bits non-zero (FileAttributes, EnableDebugger2, EnableTelemetry, …) — recorded verbatim',
+  },
+  SF0172: {
+    code: 'SF0172',
+    severity: 'warning',
+    meaning:
+      'FileAttributes is not the first tag (SWF ≥ 8) — model-side consumption of the container check, tag offset named',
+  },
+  SF0173: {
+    code: 'SF0173',
+    severity: 'warning',
+    meaning:
+      'End tag missing at the file or a sprite level (a structural error; decoding continues, stream bounds are the authority)',
+  },
+  SF0174: {
+    code: 'SF0174',
+    severity: 'info',
+    meaning: 'export references a character id not in the dictionary (resolved through the missing placeholder)',
+  },
+  SF0175: {
+    code: 'SF0175',
+    severity: 'info',
+    meaning: 'FileAttributes inside a sprite (root-only rule; decoded for inspect, not interpreted)',
+  },
+  SF0176: {
+    code: 'SF0176',
+    severity: 'info',
+    meaning: 'legacy SWF 9 NoCrossDomainCache bit (0x04) set — named and recorded verbatim, never changes behaviour',
+  },
+  SF0177: {
+    code: 'SF0177',
+    severity: 'info',
+    meaning: 'EnableTelemetry PasswordHash present (credential-derived; redacted, digest only)',
+  },
+  SF0178: {
+    code: 'SF0178',
+    severity: 'warning',
+    meaning: 'DefineBinaryData Reserved UI32 is non-zero (recorded verbatim)',
+  },
+  SF0179: {
+    code: 'SF0179',
+    severity: 'info',
+    meaning: 'SymbolClass entry naming a DefineBinaryData character in AVM1 content (inert)',
+  },
+  SF0400: { code: 'SF0400', severity: 'error', meaning: 'action stream truncated mid-record' },
+  SF0401: {
+    code: 'SF0401',
+    severity: 'error',
+    meaning: 'action record overruns its block (stream desynchronised; function residual)',
+  },
+  SF0402: { code: 'SF0402', severity: 'warning', meaning: 'unknown opcode (function becomes residual)' },
+  SF0403: { code: 'SF0403', severity: 'error', meaning: 'malformed Push pair / unrecognised type byte' },
+  SF0404: { code: 'SF0404', severity: 'error', meaning: 'Try bodies do not tile the record (gap/overlap)' },
+  SF0405: { code: 'SF0405', severity: 'error', meaning: 'branch target not on a record boundary (function residual)' },
+  SF0406: { code: 'SF0406', severity: 'error', meaning: 'stack-depth mismatch at a block join (function residual)' },
+  SF0407: { code: 'SF0407', severity: 'warning', meaning: 'SetTarget inside a loop/conditional requires T1' },
+  SF0408: { code: 'SF0408', severity: 'info', meaning: 'SWF 3-era action model detected' },
+  SF0409: { code: 'SF0409', severity: 'info', meaning: 'DefineFunction* nesting depth near the cap' },
+  SF0410: {
+    code: 'SF0410',
+    severity: 'warning',
+    meaning: 'constant-pool dependency not statically provable (modelled dynamic, tier ≥ T1)',
+  },
+  SF0411: { code: 'SF0411', severity: 'error', meaning: 'constant8/16 index outside the pool' },
+  SF0412: {
+    code: 'SF0412',
+    severity: 'warning',
+    meaning: 'With nesting exceeds the version cap (body skipped by the player)',
+  },
+  SF0413: { code: 'SF0413', severity: 'info', meaning: 'reserved DefineFunction2 flag bits non-zero (preserved)' },
+  SF0414: {
+    code: 'SF0414',
+    severity: 'warning',
+    meaning: 'DefineFunction2 preloads and suppresses the same variable (suppression wins)',
+  },
+  SF0415: {
+    code: 'SF0415',
+    severity: 'warning',
+    meaning: 'register number ≥ 4 outside DefineFunction2 (treated as undefined)',
+  },
+  SF0416: {
+    code: 'SF0416',
+    severity: 'warning',
+    meaning: 'register number out of range, or a parameter register inside the preload range (overwritten)',
+  },
+  SF0417: {
+    code: 'SF0417',
+    severity: 'warning',
+    meaning: 'property id ≥ 22 (get → undefined, set → no-op, once per id)',
+  },
+  SF0418: { code: 'SF0418', severity: 'info', meaning: 'Call target frame was not found (action does nothing)' },
+  SF0419: {
+    code: 'SF0419',
+    severity: 'info',
+    meaning: "action newer than the movie's declared version (version-window violation)",
+  },
+  SF0420: { code: 'SF0420', severity: 'warning', meaning: 'missing/non-zero block terminator (End flag), tolerated' },
+  SF0421: {
+    code: 'SF0421',
+    severity: 'warning',
+    meaning: 'more than one DoInitAction for one sprite (all executed in tag order)',
+  },
+  SF0422: { code: 'SF0422', severity: 'warning', meaning: 'DoInitAction for an unknown sprite id (dropped)' },
+  SF0423: {
+    code: 'SF0423',
+    severity: 'warning',
+    meaning: 'ToPrimitive recursion guard tripped at depth 32 (AVM1-R021)',
+  },
+  SF0424: { code: 'SF0424', severity: 'warning', meaning: 'prototype chain cycle broken at assignment (AVM1-R040)' },
   SF0180: { code: 'SF0180', severity: 'error', meaning: 'unknown FillStyleType (shape quarantined)' },
   SF0181: { code: 'SF0181', severity: 'error', meaning: 'style index beyond the array (clamped to 0)' },
   SF0182: { code: 'SF0182', severity: 'error', meaning: 'shape style index width greater than 16' },

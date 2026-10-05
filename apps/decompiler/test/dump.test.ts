@@ -114,10 +114,15 @@ describe('forge-decompile dump', () => {
       'rootClassName',
       'imports',
       'scalingGrids',
+      'scalingGridsShadowed',
       'tabIndexOps',
       'scriptLimits',
       'attributes',
       'metadata',
+      'protect',
+      'debugger',
+      'telemetry',
+      'binaryData',
     ]);
 
     // Declared out of order on purpose: ids ascending, names alphabetical.

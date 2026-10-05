@@ -18,8 +18,8 @@ export type { CliIo } from './exit.js';
 export const USAGE = `forge-decompile — inspect a SWF and report what it contains
 
 Usage:
-  forge-decompile inspect <file.swf> [--json] [--verbose] [--strict] [--tolerate-length]
-  forge-decompile dump <file.swf> [--json] [--verbose] [--strict] [--tolerate-length] [--out <dir>]
+  forge-decompile inspect <file.swf> [--json] [--verbose] [--actions] [--tags] [--symbols] [--strict] [--tolerate-length] [--strict-timeline]
+  forge-decompile dump <file.swf> [--json] [--verbose] [--strict] [--tolerate-length] [--strict-timeline] [--out <dir>]
   forge-decompile <command> --help
 
 Commands:
@@ -29,8 +29,12 @@ Commands:
 Options:
   --json        machine-readable output on stdout (stable field order)
   --verbose     include info-level diagnostics and per-frame sprite detail
+  --actions     inspect: run the AVM1 front end and print the disassembly (SF1000 -> exit 3)
+  --tags        inspect: list every indexed tag (index, code, depth, sprite, offset, length)
+  --symbols     inspect: print the export/import name tables in full
   --strict      fail on FileLength mismatch and structural read errors where supported
   --tolerate-length  keep FileLength mismatch as a warning (default; overrides --strict for length only)
+  --strict-timeline  report removals at empty depths (SF0127, info) instead of silent no-ops
   --out <dir>   dump: write <dir>/model.json (same bytes as --json) and print a summary
 
 Exit codes:
@@ -101,8 +105,12 @@ export function runCli(argv: readonly string[], io: CliIo): number {
             file,
             json: flags.has('--json'),
             verbose: flags.has('--verbose'),
+            actions: flags.has('--actions'),
+            tags: flags.has('--tags'),
+            symbols: flags.has('--symbols'),
             strict: flags.has('--strict'),
             strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
+            strictTimeline: flags.has('--strict-timeline'),
           },
           io,
         );
@@ -120,6 +128,7 @@ export function runCli(argv: readonly string[], io: CliIo): number {
             verbose: flags.has('--verbose'),
             strict: flags.has('--strict'),
             strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
+            strictTimeline: flags.has('--strict-timeline'),
             out: values.get('--out') ?? null,
           },
           io,

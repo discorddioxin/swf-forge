@@ -29,9 +29,18 @@ importers:
 
   apps/decompiler:
     dependencies:
+      '@swf-forge/avm1':
+        specifier: workspace:*
+        version: link:../../packages/avm1
       '@swf-forge/swf':
         specifier: workspace:*
         version: link:../../packages/swf
+
+  packages/avm1:
+    dependencies:
+      '@swf-forge/swf':
+        specifier: workspace:*
+        version: link:../swf
 
   packages/gfx:
     devDependencies:
@@ -39,7 +48,11 @@ importers:
         specifier: workspace:*
         version: link:../swf
 
-  packages/swf: {}
+  packages/swf:
+    optionalDependencies:
+      lzma:
+        specifier: ^2.3.2
+        version: 2.3.2
 
 packages:
 
@@ -693,6 +706,10 @@ packages:
 
   loupe@3.2.1:
     resolution: {integrity: sha512-CdzqowRJCeLU72bHvWqwRBBlLcMEtIvGrlvef74kMnV2AolS9Y8xUv1I0U/MNAWMhBlKIoyuEgoJ0t/bbwHbLQ==}
+
+  lzma@2.3.2:
+    resolution: {integrity: sha512-DcfiawQ1avYbW+hsILhF38IKAlnguc/fjHrychs9hdxe4qLykvhT5VTGNs5YRWgaNePh7NTxGD4uv4gKsRomCQ==}
+    hasBin: true
 
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
@@ -1514,6 +1531,9 @@ snapshots:
       p-locate: 5.0.0
 
   loupe@3.2.1: {}
+
+  lzma@2.3.2:
+    optional: true
 
   magic-string@0.30.21:
     dependencies:

@@ -519,15 +519,11 @@ def check_coverage(rows):
 # remove its entry; the checker rejects stale mappings. Codes raised as strict exceptions are
 # reported separately from DiagnosticSink emissions.
 DEFERRED_DIAGNOSTIC_WPS = {
-    "SF0025": "WP-020-08",
-    "SF0026": "WP-020-08",
-    "SF0027": "WP-020-03",
     "SF0111": "WP-030-01",
     "SF0115": "WP-030-06",
     "SF0118": "WP-030-06",
     "SF0119": "WP-030-06",
     "SF0125": "WP-030-06",
-    "SF0127": "WP-030-07",
 }
 EXCEPTION_DIAGNOSTIC_WPS = {"SF0016": "WP-010-02"}
 

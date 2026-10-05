@@ -21,6 +21,9 @@ blob-report/
 *.local
 .swf-local/
 corpus/
+# The synthetic fuzz *crasher* corpus is committed test data (tiny, generated — see
+# packages/swf/test/fuzz.test.ts IMPL-140-R016); the copyright-protected SWF corpora are not.
+!packages/swf/test/fuzz/corpus/
 goldens/private/
 
 # Editors / OS

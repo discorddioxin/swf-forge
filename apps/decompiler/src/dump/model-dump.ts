@@ -152,6 +152,11 @@ export interface DumpTimeline {
   readonly frames: readonly DumpFrame[];
   readonly labels: readonly DumpLabel[];
   readonly streamSoundSpans: readonly DumpStreamSoundSpan[];
+  /**
+   * Scene data found inside a sprite, recorded as a single implicit scene
+   * (`IMPL-040-R013`, `SF0169`). Always `null` on the main timeline.
+   */
+  readonly implicitScene: { readonly name: string } | null;
 }
 
 export interface DumpSprite {
@@ -198,6 +203,8 @@ export interface DumpControl {
     readonly applied: boolean;
   }[];
   readonly scalingGrids: readonly { readonly id: number; readonly rect: DumpRect }[];
+  /** Rects shadowed by repeated `DefineScalingGrid` tags (last wins; reported, IMPL-040-R028). */
+  readonly scalingGridsShadowed: readonly { readonly id: number; readonly rect: DumpRect }[];
   readonly tabIndexOps: readonly DumpTabIndex[];
   readonly scriptLimits: {
     readonly maxRecursionDepth: number | null;
@@ -214,6 +221,37 @@ export interface DumpControl {
     readonly origin: DumpTagRef;
   } | null;
   readonly metadata: readonly { readonly key: string; readonly value: string }[];
+  /** `Protect` (24): present/absent + digest only — the password is never serialized. */
+  readonly protect: {
+    readonly present: boolean;
+    readonly passwordPresent: boolean;
+    readonly digest: string | null;
+  } | null;
+  /** `EnableDebugger`(58)/`EnableDebugger2`(64): recorded, inert. */
+  readonly debugger: {
+    readonly version: 1 | 2;
+    readonly reserved: number | null;
+    readonly passwordPresent: boolean;
+    readonly digest: string | null;
+  } | null;
+  /** `EnableTelemetry` (93): opt-in present; hash redacted to a digest. */
+  readonly telemetry: {
+    readonly reserved: number;
+    readonly hashPresent: boolean;
+    readonly digest: string | null;
+  } | null;
+  /**
+   * `DefineBinaryData` (87) assets: size + digest, never the bytes (the payload stays in the
+   * model's `Uint8Array`, SEC-R003). `bytesPresent` makes the registered `binary` asset (R038)
+   * visible in the JSON dump without serialising the payload.
+   */
+  readonly binaryData: readonly {
+    readonly characterId: number;
+    readonly reserved: number;
+    readonly length: number;
+    readonly digest: string;
+    readonly bytesPresent: boolean;
+  }[];
 }
 
 export interface DumpDiagnostics {
@@ -385,6 +423,7 @@ function timelineDump(
       head: tagRef(span.headTag),
       blocks: span.blockTags.map(tagRef),
     })),
+    implicitScene: timeline.implicitScene,
   };
 }
 
@@ -444,6 +483,10 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
     scalingGrids: [...model.control.scalingGrids.entries()]
       .map(([id, value]) => ({ id, rect: rect(value) }))
       .sort((a, b) => a.id - b.id),
+    scalingGridsShadowed: model.control.scalingGridsShadowed.map((entry) => ({
+      id: entry.characterId,
+      rect: rect(entry.rect),
+    })),
     tabIndexOps: model.control.tabIndexOps.map((op) => ({
       kind: 'tabIndex' as const,
       index: op.index,
@@ -469,6 +512,18 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
             origin: tagRef(attributes.origin),
           },
     metadata: metadataEntries(model.control.metadata),
+    protect: model.control.protect,
+    debugger: model.control.debugger,
+    telemetry: model.control.telemetry,
+    binaryData: model.control.binaryData.map((entry) => ({
+      characterId: entry.characterId,
+      reserved: entry.reserved,
+      length: entry.length,
+      digest: entry.digest,
+      // The payload is registered on the character model as a `Uint8Array` (R038); the JSON dump
+      // carries size + digest + presence, never the bytes.
+      bytesPresent: model.characters.get(entry.characterId)?.bytes !== null,
+    })),
   };
 
   const dictionary: DumpCharacter[] = [...model.characters.values()]

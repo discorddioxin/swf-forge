@@ -1,4 +1,9 @@
 {
   "files": [],
-  "references": [{ "path": "packages/swf" }, { "path": "packages/gfx" }, { "path": "apps/decompiler" }]
+  "references": [
+    { "path": "packages/swf" },
+    { "path": "packages/avm1" },
+    { "path": "packages/gfx" },
+    { "path": "apps/decompiler" }
+  ]
 }

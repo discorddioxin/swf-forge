@@ -9,6 +9,7 @@
     "baseUrl": ".",
     "paths": {
       "@swf-forge/swf": ["./src/index.ts"],
+      "@swf-forge/swf/node": ["./src/node/index.ts"],
       "@swf-forge/swf/test-support": ["./src/test-support/index.ts"]
     }
   },

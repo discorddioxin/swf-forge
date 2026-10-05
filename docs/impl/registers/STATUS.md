@@ -1,7 +1,7 @@
 # IMPL STATUS — implementation-spec coverage
 
 **Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.
-**Snapshot:** 2026-10-04 · source: `docs/impl/**/*.md`
+**Snapshot:** 2026-10-05 · source: `docs/impl/**/*.md`
 
 State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =
 chapter-independent · ⏳ partial = open items remain (each listed in that document's §Open items).
@@ -12,7 +12,7 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | [150](../code-inspector/150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 | 0 | 14 | 9 | ✅ |
 | [030](../decompiler/030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 | 9 | 16 | 20 | ✅ |
-| [040](../decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 | 5 | 28 | 30 | ✅ |
+| [040](../decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 | 5 | 28 | 29 | ✅ |
 | [060](../decompiler/060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 | 9 | 23 | 16 | ✅ |
 | [070](../decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 14 | 47 | 9 | 21 | 20 | ✅ |
 | [080](../decompiler/080-fonts-and-text.md) | Fonts and Text | 13 | 41 | 7 | 18 | 16 | ✅ |
@@ -22,11 +22,11 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [160](../engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 | 0 | 14 | 17 | ✅ |
 | [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 19 | 0 | ✅ |
 | [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 2 | 10 | 30 | ✅ |
-| [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 4 | 14 | 25 | ✅ |
+| [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 6 | 30 | 26 | ✅ |
 | [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 | 0 | 8 | 2 | ✅ |
-| **Total** | 16 documents | **208** | **≈ 646.5** | **68** | **267** | **256** | |
+| **Total** | 16 documents | **208** | **≈ 646.5** | **71** | **267** | **255** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -39,7 +39,7 @@ count, because `010` restates the container codes it owns jointly with `020`.
 | --- | --- | --- |
 | 150 | `SF0901`, `SF0902`, `SF0903`, `SF0904`, `SF0905`, `SF0906`, `SF0907`, `SF0908`, `SF0909` | SF0901–SF0909 |
 | 030 | `SF0110`, `SF0111`, `SF0112`, `SF0113`, `SF0114`, `SF0115`, `SF0116`, `SF0117`, `SF0118`, `SF0119`, `SF0120`, `SF0121`, `SF0122`, `SF0123`, `SF0124`, `SF0125`, `SF0126`, `SF0127`, `SF0128`, `SF0129` | SF0110–SF0129 |
-| 040 | `SF0150`, `SF0151`, `SF0152`, `SF0153`, `SF0154`, `SF0155`, `SF0156`, `SF0157`, `SF0158`, `SF0159`, `SF0160`, `SF0161`, `SF0162`, `SF0163`, `SF0164`, `SF0165`, `SF0166`, `SF0167`, `SF0168`, `SF0169`, `SF0170`, `SF0171`, `SF0172`, `SF0173`, `SF0174`, `SF0175`, `SF0176`, `SF0177`, `SF0178`, `SF0179` | SF0150–SF0179 |
+| 040 | `SF0150`, `SF0151`, `SF0152`, `SF0153`, `SF0154`, `SF0155`, `SF0157`, `SF0158`, `SF0159`, `SF0160`, `SF0161`, `SF0162`, `SF0163`, `SF0164`, `SF0165`, `SF0166`, `SF0167`, `SF0168`, `SF0169`, `SF0170`, `SF0171`, `SF0172`, `SF0173`, `SF0174`, `SF0175`, `SF0176`, `SF0177`, `SF0178`, `SF0179` | SF0150–SF0179 |
 | 060 | `SF0180`, `SF0181`, `SF0182`, `SF0183`, `SF0184`, `SF0185`, `SF0186`, `SF0187`, `SF0188`, `SF0189`, `SF0190`, `SF0191`, `SF0192`, `SF0193`, `SF0194`, `SF0195` | SF0180–SF0195 |
 | 070 | `SF0250`, `SF0251`, `SF0252`, `SF0253`, `SF0254`, `SF0255`, `SF0256`, `SF0257`, `SF0258`, `SF0259`, `SF0260`, `SF0261`, `SF0262`, `SF0263`, `SF0264`, `SF0265`, `SF0266`, `SF0267`, `SF0268`, `SF0269` | SF0250–SF0269 |
 | 080 | `SF0270`, `SF0271`, `SF0272`, `SF0273`, `SF0274`, `SF0275`, `SF0276`, `SF0277`, `SF0278`, `SF0279`, `SF0280`, `SF0281`, `SF0282`, `SF0283`, `SF0284`, `SF0285` | SF0270–SF0285 |

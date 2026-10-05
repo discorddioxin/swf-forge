@@ -11,7 +11,7 @@ import type { SwfFile } from '../container/open.js';
 import type { TagRef } from '../container/tag-stream.js';
 import { Codes } from '../diagnostics/codes.js';
 import { Cursor } from '../io/cursor.js';
-import { decodeFrameLabel, decodeSetTabIndex } from '../tags/control.js';
+import { decodeFrameLabel, decodeSceneAndFrameLabelData, decodeSetTabIndex } from '../tags/control.js';
 import {
   decodePlaceObject,
   decodePlaceObject2,
@@ -29,6 +29,8 @@ export interface AssembleTimelineOptions {
   /** Append empty frames until `declaredFrameCount` is reached (main timeline only). */
   readonly padToDeclared?: boolean;
   readonly mode?: 'soft' | 'strict';
+  /** `--strict-timeline`: report removals at empty depths (`SF0127`, info). */
+  readonly strictTimeline?: boolean;
   /** Called for every `FrameLabel`, so the model layer can build its own label index. */
   readonly onFrameLabel?: (name: string, namedAnchor: boolean, frameIndex: number) => void;
 }
@@ -70,6 +72,9 @@ export function assembleTimeline(
   let soundStreamBlock: { offset: number; length: number } | null = null;
   let videoFrames: TagRef[] = [];
   let currentSpan: { headTag: TagRef; blockTags: TagRef[] } | null = null;
+  // Scene data found inside a sprite is a single implicit scene (`IMPL-040-R013`, `SF0169`);
+  // main-timeline scene data is owned by the model layer (`collectControl`).
+  let implicitScene: { readonly name: string } | null = null;
 
   const pushFrame = (): void => {
     frames.push({
@@ -126,6 +131,13 @@ export function assembleTimeline(
         const current = displayList.get(op.depth);
         if (current !== undefined && (op.characterId === null || op.characterId === current)) {
           displayList.delete(op.depth);
+        } else if (current === undefined && options.strictTimeline === true) {
+          // Ch.4 makes the removal a silent no-op; `--strict-timeline` reports it (`SF0127`, info).
+          c.emit(
+            Codes.REMOVAL_EMPTY_DEPTH,
+            'info',
+            `RemoveObject${op.tag === 'RemoveObject2' ? '2' : ''} at empty depth ${op.depth} is a no-op`,
+          );
         }
         ops.push(op);
         break;
@@ -173,18 +185,32 @@ export function assembleTimeline(
       case Tag.VideoFrame:
         videoFrames.push(ref);
         break;
+      case Tag.DefineSceneAndFrameLabelData: {
+        // Main-timeline scene data is consumed by the model layer (`collectControl`); only the
+        // in-sprite form is handled here, per `IMPL-040-R013`.
+        if (ref.inSprite !== null && implicitScene === null) {
+          const data = decodeSceneAndFrameLabelData(c);
+          implicitScene = { name: data.scenes[0]?.name ?? '' };
+          c.emit(
+            Codes.SCENE_DATA_INCONSISTENT,
+            'warning',
+            `DefineSceneAndFrameLabelData inside sprite ${ref.inSprite}; recorded as a single implicit scene`,
+          );
+        }
+        break;
+      }
       default:
         // Definitions, sprite headers and tags owned by other docs are not frame operations.
         break;
     }
   }
 
-  if (ops.length > 0 || actions.length > 0 || videoFrames.length > 0 || soundStreamBlock !== null) {
+  // A `FrameLabel` after the final `ShowFrame` names the frame that ShowFrame is about to show
+  // (`IMPL-040-R008`: a label associates its name with the *next* `ShowFrame`). Push that frame —
+  // empty — so the `labels` entry resolves to a real frame, instead of retroactively renaming the
+  // previous one (P2-RESOLUTION-AUDIT R-P2-09).
+  if (ops.length > 0 || actions.length > 0 || videoFrames.length > 0 || soundStreamBlock !== null || label !== null) {
     pushFrame();
-  } else if (label !== null && frames.length > 0) {
-    // A `FrameLabel` at the very start of a frame names the frame the previous `ShowFrame` opened.
-    const last = frames[frames.length - 1];
-    if (last && last.label === null) frames[frames.length - 1] = { ...last, label };
   }
 
   const observedFrameCount = frames.length;
@@ -199,6 +225,7 @@ export function assembleTimeline(
     labels,
     sounds: first ? { head: first.headTag, blocks: spans.flatMap((span) => span.blockTags) } : null,
     streamSoundSpans: spans,
+    implicitScene,
     declaredFrameCount: declared,
     observedFrameCount,
   };

@@ -11,19 +11,26 @@ import type { SwfFile } from '../container/open.js';
 import type { TagRef } from '../container/tag-stream.js';
 import { Codes } from '../diagnostics/codes.js';
 import {
+  decodeDefineBinaryData,
   decodeDefineScalingGrid,
   decodeDoInitAction,
+  decodeEnableDebugger,
+  decodeEnableDebugger2,
+  decodeEnableTelemetry,
   decodeExportAssets,
   decodeFileAttributes,
   decodeFrameLabel,
   decodeImportAssets,
   decodeMetadata,
+  decodeProtect,
   decodeSceneAndFrameLabelData,
   decodeScriptLimits,
   decodeSetBackgroundColor,
   decodeSymbolClass,
   type FileAttributesInfo,
+  type PasswordState,
 } from '../tags/control.js';
+import { fnv1a64Hex } from '../io/hash.js';
 import { Tag, tagName } from '../tags/tag-codes.js';
 import { openTagCursor, assembleTimeline } from './timeline.js';
 import type {
@@ -41,6 +48,11 @@ import type { Rect } from '../io/types.js';
 
 export interface BuildMovieOptions {
   readonly mode?: 'soft' | 'strict';
+  /**
+   * `--strict-timeline`: a removal at an empty depth is reported (`SF0127`, info) instead of being
+   * a silent no-op. Off by default — Ch.4 makes the removal a no-op; the flag is for auditing.
+   */
+  readonly strictTimeline?: boolean;
   /** Overrides the content-derived id (a caller-supplied `sha256:<hex>`, say). */
   readonly id?: string;
 }
@@ -127,6 +139,12 @@ interface ControlPass {
   initActions: InitActionBlock[];
   labels: Map<string, { frame: number; namedAnchor: boolean }[]>;
   labelEntries: { name: string; frame: number; namedAnchor: boolean }[];
+  protect: PasswordState | null;
+  debugger: MovieControlModel['debugger'];
+  telemetry: MovieControlModel['telemetry'];
+  binaryData: MovieControlModel['binaryData'];
+  unknownExportIds: Set<number>;
+  binaryBytes: Map<number, Uint8Array>;
 }
 
 function normalizeScenes(
@@ -191,7 +209,20 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
   const exportsById = new Map<number, string>();
   const imports: ImportEntry[] = [];
   const scalingGrids = new Map<number, Rect>();
+  /** Shadowed rects from repeated `DefineScalingGrid` tags (last wins; reported per `IMPL-040-R028`). */
+  const scalingGridsShadowed: { characterId: number; rect: Rect }[] = [];
+  /** Export/`SymbolClass` ids not in the dictionary (`SF0174` → `missing` placeholder, R015). */
+  const unknownExportIds = new Set<number>();
+  /** `SymbolClass` pairs with their tag, for the `SF0179` binary-character check (R038). */
+  const symbolClassPairs: { id: number; name: string; ref: TagRef }[] = [];
+  let sawDoABC = false;
+  /** `DefineBinaryData` payloads by character id (last wins), for the `binary` asset (R038). */
+  const binaryBytes = new Map<number, Uint8Array>();
   const initActions: InitActionBlock[] = [];
+  /** DoInitAction count per sprite id, for `SF0421` (duplicate) and `SF0422` (unknown sprite). */
+  const doInitCounts = new Map<number, number>();
+  /** `SF0422` checks the whole dictionary (`IMPL-050-R015`): an id not defined at all is dropped. */
+  const definedIds = new Set(file.definitions.map((definition) => definition.id));
   let rootClassName: string | null = null;
   let scriptLimits: { maxRecursionDepth: number | null; scriptTimeout: number | null } = {
     maxRecursionDepth: null,
@@ -200,6 +231,15 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
   let attributes: FileAttributesModel | null = null;
   let metadataXmp: string | null = null;
   let metadataTag: TagRef | null = null;
+  let protect: PasswordState | null = null;
+  let debuggerTag: MovieControlModel['debugger'] = null;
+  let telemetry: MovieControlModel['telemetry'] = null;
+  const binaryData: {
+    readonly characterId: number;
+    readonly reserved: number;
+    readonly length: number;
+    readonly digest: string;
+  }[] = [];
   let frame = 0;
 
   const mergeExports = (byName: ReadonlyMap<string, number>, byId: ReadonlyMap<number, string>): void => {
@@ -225,12 +265,39 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       case Tag.ExportAssets: {
         const result = decodeExportAssets(c);
         mergeExports(result.byName, result.byId);
+        for (const pair of result.pairs) {
+          if (!definedIds.has(pair.id) && !unknownExportIds.has(pair.id)) {
+            unknownExportIds.add(pair.id);
+            file.sink.emit({
+              code: Codes.EXPORT_ID_UNDEFINED,
+              severity: 'info',
+              message: `ExportAssets names character ${pair.id}, which is not in the dictionary (missing placeholder)`,
+              offset: ref.headerOffset,
+              context: 'control tags',
+              tagCode: Tag.ExportAssets,
+            });
+          }
+        }
         break;
       }
       case Tag.SymbolClass: {
         const result = decodeSymbolClass(c);
         rootClassName = result.rootClassName;
         mergeExports(result.byName, result.byId);
+        for (const pair of result.pairs) {
+          if (!definedIds.has(pair.id) && !unknownExportIds.has(pair.id)) {
+            unknownExportIds.add(pair.id);
+            file.sink.emit({
+              code: Codes.EXPORT_ID_UNDEFINED,
+              severity: 'info',
+              message: `SymbolClass names character ${pair.id}, which is not in the dictionary (missing placeholder)`,
+              offset: ref.headerOffset,
+              context: 'control tags',
+              tagCode: Tag.SymbolClass,
+            });
+          }
+          symbolClassPairs.push({ id: pair.id, name: pair.name, ref });
+        }
         break;
       }
       case Tag.ImportAssets:
@@ -253,6 +320,10 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
           );
           break;
         }
+        // Repeated tags: the last one wins and the shadowed rect is reported (`IMPL-040-R028`) —
+        // retained in the model the same way shadowed exports are (no dedicated code assigned).
+        const prior = scalingGrids.get(characterId);
+        if (prior !== undefined) scalingGridsShadowed.push({ characterId, rect: prior });
         scalingGrids.set(characterId, splitter);
         break;
       }
@@ -264,6 +335,14 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       case Tag.FileAttributes: {
         const info = decodeFileAttributes(c);
         attributes = { ...info, origin: ref };
+        if (file.header.version >= 8 && topRefs[0] !== ref) {
+          c.emit(
+            Codes.FILE_ATTRIBUTES_NOT_FIRST_MODEL,
+            'warning',
+            `FileAttributes is not the first tag (it is top-level tag #${topRefs.indexOf(ref) + 1})`,
+            ref.headerOffset,
+          );
+        }
         if (info.as3) {
           c.emit(
             Codes.AVM2_CONTENT,
@@ -275,6 +354,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
         break;
       }
       case Tag.DoABC:
+        sawDoABC = true;
         c.emit(
           Codes.AVM2_CONTENT,
           'error',
@@ -292,6 +372,35 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
         metadataXmp = xmp;
         break;
       }
+      case Tag.Protect: {
+        protect = decodeProtect(c);
+        break;
+      }
+      case Tag.EnableDebugger: {
+        const state = decodeEnableDebugger(c);
+        debuggerTag = { version: 1, reserved: null, passwordPresent: state.passwordPresent, digest: state.digest };
+        break;
+      }
+      case Tag.EnableDebugger2: {
+        const state = decodeEnableDebugger2(c);
+        debuggerTag = {
+          version: 2,
+          reserved: state.reserved,
+          passwordPresent: state.passwordPresent,
+          digest: state.digest,
+        };
+        break;
+      }
+      case Tag.EnableTelemetry: {
+        telemetry = decodeEnableTelemetry(c);
+        break;
+      }
+      case Tag.DefineBinaryData: {
+        const { characterId, reserved, bytes } = decodeDefineBinaryData(c);
+        binaryData.push({ characterId, reserved, length: bytes.length, digest: fnv1a64Hex(bytes) });
+        binaryBytes.set(characterId, bytes);
+        break;
+      }
       case Tag.DefineSceneAndFrameLabelData: {
         const data = decodeSceneAndFrameLabelData(c);
         scenes.push(...normalizeScenes(data.scenes, file.header.frameCount, c));
@@ -306,6 +415,31 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       }
       case Tag.DoInitAction: {
         const { spriteId, block } = decodeDoInitAction(c);
+        const seen = doInitCounts.get(spriteId) ?? 0;
+        doInitCounts.set(spriteId, seen + 1);
+        if (seen > 0) {
+          // `IMPL-050-R013`: the invariant is reported, not enforced — all execute in tag order.
+          file.sink.emit({
+            code: Codes.DUPLICATE_DOINITACTION,
+            severity: 'warning',
+            message: `sprite ${spriteId} has ${seen + 1} DoInitAction tags; all execute in tag order`,
+            offset: ref.headerOffset,
+            context: 'control tags',
+            tagCode: Tag.DoInitAction,
+          });
+        }
+        if (!definedIds.has(spriteId)) {
+          // `IMPL-050-R015`: never reachable, so it is dropped from the model.
+          file.sink.emit({
+            code: Codes.DOINITACTION_UNKNOWN_SPRITE,
+            severity: 'warning',
+            message: `DoInitAction for sprite ${spriteId}, which is not in the dictionary (dropped)`,
+            offset: ref.headerOffset,
+            context: 'control tags',
+            tagCode: Tag.DoInitAction,
+          });
+          break;
+        }
         initActions.push({ spriteId, block, index: ref });
         break;
       }
@@ -339,6 +473,28 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
     });
   }
 
+  // `IMPL-040-R038`: a `SymbolClass` entry naming a `DefineBinaryData` character in AVM1 content
+  // is inert and reported once (`SF0179`, info). In an AVM2 movie the class is `DoABC`'s concern
+  // and `SF1000` already fired, so the check only applies to AVM1 content.
+  const isAvm2Content = (attributes as FileAttributesInfo | null)?.as3 === true || sawDoABC;
+  if (!isAvm2Content && symbolClassPairs.length > 0) {
+    const binaryIds = new Set(file.definitions.filter((d) => d.tagCode === Tag.DefineBinaryData).map((d) => d.id));
+    const reported = new Set<number>();
+    for (const pair of symbolClassPairs) {
+      if (binaryIds.has(pair.id) && !reported.has(pair.id)) {
+        reported.add(pair.id);
+        file.sink.emit({
+          code: Codes.SYMBOLCLASS_BINARY_DATA,
+          severity: 'info',
+          message: `SymbolClass name "${pair.name}" points at binary character ${pair.id} (inert in AVM1 content)`,
+          offset: pair.ref.headerOffset,
+          context: 'control tags',
+          tagCode: Tag.SymbolClass,
+        });
+      }
+    }
+  }
+
   const metadata: Record<string, string> = {};
   if (metadataXmp !== null) metadata['xmp'] = metadataXmp;
   const sceneFrameRemap = scenes.map((scene, sceneIndex) => {
@@ -360,13 +516,24 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       rootClassName,
       imports,
       scalingGrids,
+      scalingGridsShadowed,
       scriptLimits,
       attributes,
       metadata,
+      protect,
+      debugger: debuggerTag,
+      telemetry,
+      binaryData,
     },
     initActions,
     labels,
     labelEntries: [...tagLabelEntries, ...sceneLabelEntries],
+    protect,
+    debugger: debuggerTag,
+    telemetry,
+    binaryData,
+    unknownExportIds,
+    binaryBytes,
   };
 }
 
@@ -375,6 +542,7 @@ function buildSpriteModel(
   id: number,
   exportName: string | undefined,
   mode: 'soft' | 'strict',
+  strictTimeline: boolean,
 ): SpriteModel | null {
   const range = file.tagIndex.spriteRanges.get(id);
   if (!range) return null;
@@ -383,6 +551,7 @@ function buildSpriteModel(
     declaredFrameCount: range.frameCount,
     padToDeclared: true,
     mode,
+    strictTimeline,
   });
   return {
     characterId: id,
@@ -397,17 +566,25 @@ function buildSpriteModel(
 /** Builds the model for one opened file. */
 export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}): MovieModel {
   const mode = options.mode ?? 'soft';
+  const strictTimeline = options.strictTimeline ?? false;
   const topRefs = file.tagIndex.tags.filter((tag) => tag.inSprite === null);
 
-  const { control, initActions, labels, labelEntries } = collectControl(file, topRefs, mode);
+  const { control, initActions, labels, labelEntries, unknownExportIds, binaryBytes } = collectControl(
+    file,
+    topRefs,
+    mode,
+  );
   const characters = new Map<number, CharacterModel>();
   for (const definition of file.definitions) {
     const ref = file.tagIndex.tags[definition.tagIndex];
     if (!ref) continue;
     const sprite =
       definition.tagCode === Tag.DefineSprite
-        ? buildSpriteModel(file, definition.id, control.exportsById.get(definition.id), mode)
+        ? buildSpriteModel(file, definition.id, control.exportsById.get(definition.id), mode, strictTimeline)
         : null;
+    // `IMPL-040-R038`: a `DefineBinaryData` character registers its `binary` asset `{id, bytes}`
+    // in the dictionary — payload access is by `Uint8Array` only, never a string (SEC-R003).
+    const bytes = definition.tagCode === Tag.DefineBinaryData ? (binaryBytes.get(definition.id) ?? null) : null;
     characters.set(definition.id, {
       id: definition.id,
       kind: characterKindForTag(definition.tagCode),
@@ -415,6 +592,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
       tagName: tagName(definition.tagCode),
       index: ref,
       sprite,
+      bytes,
     });
   }
 
@@ -422,6 +600,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     declaredFrameCount: file.header.frameCount,
     padToDeclared: true,
     mode,
+    strictTimeline,
     onFrameLabel: (name, namedAnchor, frame) => {
       const list = labels.get(name) ?? [];
       if (!list.some((entry) => entry.frame === frame && entry.namedAnchor === namedAnchor)) {
@@ -446,9 +625,25 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
             tagName: 'missing',
             index: null,
             sprite: null,
+            bytes: null,
           });
         }
       }
+    }
+  }
+  // `IMPL-040-R015`: export/`SymbolClass` entries naming an undefined id resolve through the same
+  // `missing` placeholder policy as placements (`SF0174` was reported at collection time).
+  for (const characterId of unknownExportIds) {
+    if (!characters.has(characterId)) {
+      characters.set(characterId, {
+        id: characterId,
+        kind: 'missing',
+        tagCode: null,
+        tagName: 'missing',
+        index: null,
+        sprite: null,
+        bytes: null,
+      });
     }
   }
 

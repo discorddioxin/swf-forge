@@ -9,6 +9,7 @@
 import { Codes } from '../diagnostics/codes.js';
 import { readRgb } from '../io/colour.js';
 import type { Cursor } from '../io/cursor.js';
+import { fnv1a64Hex } from '../io/hash.js';
 import { readRect } from '../io/records.js';
 import type { Rect, Rgba } from '../io/types.js';
 import type { ActionBlockRef } from './place.js';
@@ -23,14 +24,20 @@ export function decodeSetBackgroundColor(c: Cursor): { color: Rgba } {
   return { color };
 }
 
-/** `FrameLabel` (43); SWF 6+ may append the named-anchor byte (`IMPL-040-R009`). */
+/**
+ * `FrameLabel` (43); SWF 6+ may append the named-anchor byte (`IMPL-040-R009`).
+ *
+ * Presence is defined by **one byte remaining after the string's null terminator** — that byte is
+ * the `UI8` anchor flag and it is always `1`. Any other value is `SF0165` (warning) but the frame
+ * is *still* anchored: the byte's presence, not its value, is the anchor marker.
+ */
 export function decodeFrameLabel(c: Cursor): { name: string; namedAnchor: boolean } {
   const name = c.string();
   let namedAnchor = false;
   if (c.limit - c.offset >= 1) {
     const byte = c.u8();
-    namedAnchor = byte === 1;
-    if (byte !== 1 && byte !== 0) {
+    namedAnchor = true;
+    if (byte !== 1) {
       c.emit(Codes.NAMED_ANCHOR_BYTE_INVALID, 'warning', `FrameLabel anchor byte is ${byte}, not 1`);
     }
   }
@@ -54,11 +61,35 @@ export interface FileAttributesInfo {
  * the four bytes big-endian, or rebuilding the integer MSB-first from the chapter's bit-field order,
  * both invert the flag positions; the masks in `IMPL-040` §3.5 are the sanctioned reading.
  */
+/**
+ * The reserved bit fields of `FileAttributes` (`IMPL-040-R031`). `0x00000004` is handled separately
+ * as the legacy SWF 9 `NoCrossDomainCache` flag (`SF0176`); every other reserved bit is `SF0171`.
+ */
+const FILE_ATTRIBUTES_RESERVED = 0x80 | 0x02 | 0xffffff00;
+const FILE_ATTRIBUTES_NOCROSSDOMAINCACHE = 0x04;
+
 export function decodeFileAttributes(c: Cursor): FileAttributesInfo {
+  const start = c.offset;
   const available = Math.min(4, Math.max(0, c.limit - c.offset));
   let raw = 0;
   for (let i = 0; i < available; i += 1) raw += (c.u8() & 0xff) * 2 ** (8 * i);
   const bitLength = available * 8;
+  if ((raw & FILE_ATTRIBUTES_RESERVED) !== 0) {
+    c.emit(
+      Codes.RESERVED_FIELD_NONZERO,
+      'info',
+      `FileAttributes reserved bits 0x${(raw & FILE_ATTRIBUTES_RESERVED).toString(16)} are set (recorded verbatim)`,
+      start,
+    );
+  }
+  if ((raw & FILE_ATTRIBUTES_NOCROSSDOMAINCACHE) !== 0) {
+    c.emit(
+      Codes.FILE_ATTRIBUTES_LEGACY_NOCROSSDOMAINCACHE,
+      'info',
+      'FileAttributes legacy SWF 9 NoCrossDomainCache bit is set (recorded; no behaviour change)',
+      start,
+    );
+  }
   return {
     useNetwork: (raw & 0x00000001) !== 0,
     as3: (raw & 0x00000008) !== 0,
@@ -243,9 +274,141 @@ export function decodeDoInitAction(c: Cursor): { spriteId: number; block: Action
   return { spriteId, block: { offset, length: Math.max(0, c.limit - offset) } };
 }
 
-/** `Protect` (24): empty, or a null-terminated password (meaningful from SWF 5). */
-export function decodeProtect(c: Cursor): { password: string | null } {
-  if (c.limit - c.offset === 0) return { password: null };
-  const password = c.string();
-  return { password: password.length > 0 ? password : null };
+/**
+ * A password-bearing control tag's recorded state (`IMPL-040-R039`/`R040`): present/absent plus a
+ * one-way digest — the password is credential material and MUST NOT be reproduced.
+ */
+export interface PasswordState {
+  /** The tag (or its password field) is present. */
+  readonly present: boolean;
+  /** A non-empty password body was carried. */
+  readonly passwordPresent: boolean;
+  /** FNV-1a 64 hex over the password bytes; null when absent. */
+  readonly digest: string | null;
+}
+
+/**
+ * Reads a null-terminated password's **raw bytes** (advancing the cursor past the terminator) and
+ * folds them into a {@link PasswordState}. The text is never returned or retained — only a digest.
+ */
+function readPasswordState(c: Cursor): PasswordState {
+  if (c.limit - c.offset === 0) return { present: true, passwordPresent: false, digest: null };
+  const start = c.offset;
+  let end = c.limit;
+  while (end > start && (c.bytes[end] ?? 0) !== 0) end += 1;
+  const raw = c.bytes.subarray(start, end);
+  c.skip(Math.max(0, end - start) + (end < c.limit ? 1 : 0)); // consume the bytes + the terminator
+  const present = raw.length > 0;
+  return { present: true, passwordPresent: present, digest: present ? fnv1a64Hex(raw) : null };
+}
+
+/** `Protect` (24): empty (file marked non-importable) or a null-terminated password (SWF 5+). */
+export function decodeProtect(c: Cursor): PasswordState & { swf5Password: boolean } {
+  const state = readPasswordState(c);
+  // A password in a SWF < 5 file is recorded but clamped to a warning (`IMPL-040-R039`).
+  const swf5Password = state.passwordPresent && (c.version ?? 0) < 5;
+  if (swf5Password) {
+    c.emit(
+      Codes.SCRIPT_LIMITS_IMPLAUSIBLE,
+      'warning',
+      `Protect password is only meaningful from SWF 5 (file claims SWF ${c.version})`,
+      c.offset,
+    );
+  }
+  return { ...state, swf5Password };
+}
+
+/** `EnableDebugger` (58, SWF 5 only): a null-terminated password; recorded, never acted on. */
+export function decodeEnableDebugger(c: Cursor): PasswordState {
+  c.emit(Codes.DEBUGGER_TAG_PRESENT, 'info', 'EnableDebugger (58) present; recorded and ignored', c.offset);
+  return readPasswordState(c);
+}
+
+/** `EnableDebugger2` (64): `UI16 Reserved` (must be 0) then a null-terminated password. */
+export function decodeEnableDebugger2(c: Cursor): PasswordState & { reserved: number } {
+  const reserved = c.u16();
+  if (reserved !== 0) {
+    c.emit(
+      Codes.RESERVED_FIELD_NONZERO,
+      'info',
+      `EnableDebugger2 Reserved is ${reserved} (recorded verbatim)`,
+      c.offset - 2,
+    );
+  }
+  return { ...readPasswordState(c), reserved };
+}
+
+/**
+ * `EnableTelemetry` (93, SWF 11): `Reserved UB[16]` (2 bytes, must be 0) then an optional
+ * `PasswordHash` (32 bytes). Only the presence of the hash matters to us (`IMPL-040-R041`).
+ */
+export function decodeEnableTelemetry(c: Cursor): {
+  readonly reserved: number;
+  readonly hashPresent: boolean;
+  readonly digest: string | null;
+} {
+  c.emit(Codes.TELEMETRY_OPT_IN, 'info', 'EnableTelemetry present; advanced telemetry opt-in (inert)', c.offset);
+  const start = c.offset;
+  const reserved = c.u16();
+  if (reserved !== 0) {
+    c.emit(
+      Codes.RESERVED_FIELD_NONZERO,
+      'info',
+      `EnableTelemetry reserved word is 0x${reserved.toString(16)} (recorded verbatim)`,
+      start,
+    );
+  }
+  const remaining = c.limit - c.offset;
+  if (remaining === 0) return { reserved, hashPresent: false, digest: null };
+  if (remaining !== 32) {
+    c.emit(
+      Codes.RESERVED_FIELD_NONZERO,
+      'info',
+      `EnableTelemetry body has ${remaining} trailing byte(s), not 32 (recorded verbatim)`,
+      start,
+    );
+  }
+  const hash = c.takeBytes(remaining);
+  c.emit(
+    Codes.TELEMETRY_HASH_PRESENT,
+    'info',
+    'EnableTelemetry carries a password hash (redacted; digest only)',
+    start,
+  );
+  return { reserved, hashPresent: true, digest: fnv1a64Hex(hash) };
+}
+
+/**
+ * `DefineBinaryData` (87, SWF 9+): `CharacterID UI16`, `Reserved UI32` (must be 0), then `Data`
+ * to the end of the tag. The payload is shipped verbatim as bytes, never as a string (`SEC-R003`).
+ */
+export function decodeDefineBinaryData(
+  c: Cursor,
+  maxBytes: number = 16 * 1024 * 1024,
+): {
+  readonly characterId: number;
+  readonly reserved: number;
+  readonly bytes: Uint8Array;
+} {
+  const characterId = c.u16();
+  const reserved = c.u32();
+  if (reserved !== 0) {
+    c.emit(
+      Codes.BINARY_DATA_RESERVED_NONZERO,
+      'warning',
+      `DefineBinaryData for character ${characterId} has reserved ${reserved} (recorded verbatim)`,
+      c.offset - 6,
+    );
+  }
+  const remaining = c.limit - c.offset;
+  if (remaining > maxBytes) {
+    c.emit(
+      Codes.BINARY_DATA_RESERVED_NONZERO,
+      'warning',
+      `DefineBinaryData payload is ${remaining} bytes, exceeding the configured blob cap of ${maxBytes}; truncated`,
+      c.offset,
+    );
+  }
+  const bytes = c.takeBytes(Math.min(remaining, maxBytes));
+  return { characterId, reserved, bytes };
 }

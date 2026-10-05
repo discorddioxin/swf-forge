@@ -9,7 +9,7 @@
 
 import type { TagRef } from '../container/tag-stream.js';
 import type { Rect } from '../io/types.js';
-import type { FileAttributesInfo } from '../tags/control.js';
+import type { FileAttributesInfo, PasswordState } from '../tags/control.js';
 import type { ActionBlockRef, PlacementOp, RemovalOp } from '../tags/place.js';
 
 /** `FIXED8_8` as a branded alias, per `CMP` §3 — the raw 8.8 value, not a float. */
@@ -59,6 +59,12 @@ export interface TimelineModel {
   readonly sounds: StreamSoundModel | null;
   /** All spans, including the ones inside sprites (`IMPL-030` §8). */
   readonly streamSoundSpans: readonly StreamSoundSpan[];
+  /**
+   * Scene data found inside a sprite — recorded as a single implicit scene covering this
+   * timeline (`IMPL-040-R013`, `SF0169`). Always `null` on the main timeline (its scene data is
+   * normalised into `MovieControlModel.scenes`).
+   */
+  readonly implicitScene: { readonly name: string } | null;
   /** Declared frame count (movie header or `DefineSprite`), when known. */
   readonly declaredFrameCount: number | null;
   readonly observedFrameCount: number;
@@ -103,6 +109,11 @@ export interface CharacterModel {
   readonly tagName: string;
   readonly index: TagRef | null;
   readonly sprite: SpriteModel | null;
+  /**
+   * The `binary` asset of a `DefineBinaryData` character — the payload as bytes, never a string
+   * (`IMPL-040-R038`, SEC-R003). `null` for every other kind (and for `missing` placeholders).
+   */
+  readonly bytes: Uint8Array | null;
 }
 
 export interface StageModel {
@@ -153,11 +164,38 @@ export interface MovieControlModel {
   readonly rootClassName: string | null;
   readonly imports: readonly ImportEntry[];
   readonly scalingGrids: ReadonlyMap<number, Rect>;
+  /**
+   * Rects shadowed by a repeated `DefineScalingGrid` for the same character (the last one wins in
+   * `scalingGrids`; the shadowed rects are reported, `IMPL-040-R028`).
+   */
+  readonly scalingGridsShadowed: readonly { readonly characterId: number; readonly rect: Rect }[];
   readonly tabIndexOps: readonly SetTabIndexOp[];
   readonly scriptLimits: { readonly maxRecursionDepth: number | null; readonly scriptTimeout: number | null };
   readonly attributes: FileAttributesModel | null;
   /** `Metadata` (77) as `{ xmp }`; empty when the tag is absent. */
   readonly metadata: Readonly<Record<string, string>>;
+  /** `Protect` (24) state: present/absent + digest, never the password text (`IMPL-040-R039`). */
+  readonly protect: PasswordState | null;
+  /** `EnableDebugger` (58, `version: 1`) / `EnableDebugger2` (64, `version: 2`) — recorded, inert. */
+  readonly debugger: {
+    readonly version: 1 | 2;
+    readonly reserved: number | null;
+    readonly passwordPresent: boolean;
+    readonly digest: string | null;
+  } | null;
+  /** `EnableTelemetry` (93) — telemetry opt-in; hash redacted to a digest (`IMPL-040-R041`). */
+  readonly telemetry: {
+    readonly reserved: number;
+    readonly hashPresent: boolean;
+    readonly digest: string | null;
+  } | null;
+  /** `DefineBinaryData` (87) assets: size + digest, the bytes stay in the tag payload (`SEC-R003`). */
+  readonly binaryData: readonly {
+    readonly characterId: number;
+    readonly reserved: number;
+    readonly length: number;
+    readonly digest: string;
+  }[];
 }
 
 /** One SWF file, ready for the pipeline (`CMP` §3, `IMPL-040-R043`). */

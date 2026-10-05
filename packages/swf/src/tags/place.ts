@@ -134,6 +134,11 @@ export function decodePlaceObject(c: Cursor, index: number, tagOffset: number): 
     c.emit(Codes.PLACEOBJECT_V1_ID_ZERO, 'info', 'PlaceObject v1 with CharacterId 0 tolerated as a move (E-010)');
     move = true;
   }
+  // The dynamic-depth convention (§4 "Depth conventions" / §6 row SF0112) applies to every
+  // placement form, not just PlaceObject2.
+  if (depth >= 16384) {
+    c.emit(Codes.PLACEMENT_DEPTH_DYNAMIC, 'info', `placement depth ${depth} is in the conventionally dynamic range`);
+  }
   return { ...base, depth, move, characterId: characterId === 0 ? null : characterId, matrix, cxform };
 }
 
@@ -224,6 +229,20 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
   const ratio = hasRatio ? c.u16() : null;
   const name = hasName ? c.string() : null;
   const clipDepth = hasClipDepth ? c.u16() : null;
+
+  // The depth/clip-depth conventions (§4 "Depth conventions"/"Clipping layers", §6 rows
+  // SF0112/SF0113) apply to every placement form, not just PlaceObject2 — same checks, same
+  // positions, as `decodePlaceObject2`.
+  if (clipDepth !== null && clipDepth !== 0 && clipDepth <= depth) {
+    c.emit(
+      Codes.CLIP_DEPTH_EMPTY,
+      'warning',
+      `ClipDepth ${clipDepth} does not exceed Depth ${depth}; the mask range is empty`,
+    );
+  }
+  if (depth >= 16384) {
+    c.emit(Codes.PLACEMENT_DEPTH_DYNAMIC, 'info', `placement depth ${depth} is in the conventionally dynamic range`);
+  }
 
   let filters: readonly FilterSpec[] | null = null;
   if (hasFilterList) {

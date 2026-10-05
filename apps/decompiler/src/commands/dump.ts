@@ -21,6 +21,7 @@ export interface DumpRequest {
   readonly verbose: boolean;
   readonly strict?: boolean;
   readonly strictLength?: boolean;
+  readonly strictTimeline?: boolean;
   /** Directory for `model.json`, or null to write nothing. */
   readonly out: string | null;
 }
@@ -43,7 +44,7 @@ function open(request: DumpRequest, io: CliIo): DumpResult | number {
     mode: request.strict ? 'strict' : 'soft',
     strictLength: request.strictLength ?? false,
   });
-  const model = buildMovieModel(unit);
+  const model = buildMovieModel(unit, { strictTimeline: request.strictTimeline ?? false });
   return { dump: buildModelDump(unit, model, sha256Hex(bytes)), model, unit };
 }
 

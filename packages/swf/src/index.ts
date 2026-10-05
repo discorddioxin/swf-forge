@@ -37,6 +37,9 @@ export type { Cxform, Mat2D, MatrixDecomposition, Rect, Rgba } from './io/types.
 // ---- container (`IMPL-020`) ---------------------------------------------------------------------
 export { openSwf, openSwfAsync } from './container/open.js';
 export { buildTagIndex, readTagHeader } from './container/tag-stream.js';
+export { checkTagOrdering } from './container/ordering.js';
+export { ProcessStep, PROCESSING_ORDER } from './container/processing.js';
+export type { ProcessStep as ProcessStepName } from './container/processing.js';
 export { SIGNATURES, compressionOf, parseHeader } from './container/header.js';
 export type { SwfFile, SwfOpenOptions, TagPayload, InflateResult } from './container/open.js';
 export type { Compression, HeaderResult, SwfHeader } from './container/header.js';

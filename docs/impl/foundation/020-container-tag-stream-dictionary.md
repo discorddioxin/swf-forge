@@ -46,6 +46,12 @@ packages/swf/src/
       lzma.ts          optional LZMA adapter (SEC-§5 dependency table)
 ```
 
+> **Layout note (accepted deviation — see the §3 API note, item 6).** The realised tree is
+> `container/{open, header, tag-stream, ordering, processing}.ts` plus the platform adapters in
+> `node/` (`open.ts`, `inflate.ts`, `lzma.ts`); the sketch's `compress.ts`, `tag-index.ts`,
+> `tag-reader.ts`, `dictionary.ts` and `decompress/` are consolidated into `tag-stream.ts` and the
+> `node/` adapters. The R001 import boundary below is what the consolidation preserves.
+
 **IMPL-020-R001** `container/` MUST NOT import from `shapes/`, `actions/`, `fonts/`, or any other
 payload decoder. The dependency runs *from* those modules *to* the container, never back.
 
@@ -131,6 +137,51 @@ export interface TagIndex {
   readonly histogram: ReadonlyMap<number, number>;
 }
 ```
+
+> **API note (accepted deviation — `SwfFile.dictionary`).** The `dictionary: Dictionary` member
+> shown in the `SwfFile` sketch above is realised **split across the two layers** that already own
+> its parts, rather than as one container-level object:
+>
+> - `SwfFile.definitions: readonly DefinitionEntry[]` (this layer) is the character table in
+>   definition order — `id`, `tagCode`, body `offset`/`length`, and the `tagIndex` cursor. This is
+>   `Dictionary.size`/`entries()`/`get(id)` at the container level.
+> - The `CharacterModel` view (`kind`, `exportNames`, lazily-decoded `payload<T>()`) and the
+>   export map (`Dictionary.exports`) live in the P2 model layer: `buildMovieModel(file)` returns
+>   `MovieModel.characters: Map<number, CharacterModel>` and `MovieModel.control.exports`.
+>
+> The split is deliberate and follows the layering rule (R001: the container MUST NOT import
+> payload decoders, which is exactly what `CharacterModel.payload<T>()` needs). It is functionally
+> equivalent to the single `Dictionary` in the sketch; consumers that want the documented shape can
+> pair `openSwf` (definitions) with `buildMovieModel` (kinds/exports/payloads). Marked here so the
+> surface difference from the §3 sketch is a recorded decision, not an oversight.
+
+> **API note (accepted deviations — implementation surface vs. this sketch).** The implemented
+> public surface diverges from the sketch above in the following recorded ways, each kept because
+> the sketch's shape was not the layering-honest one:
+>
+> 1. **`TagRef.offset` is stream-relative, not file-absolute.** The sketch says "absolute offset
+>    of the body in the decompressed buffer"; the implementation indexes over the tag stream
+>    (`payload.subarray(tagStreamOffset)`), so `offset` is relative to the tag-stream start (after
+>    the 8-byte header). `readTag`'s views are cut from the same stream, so behaviour is
+>    self-consistent; the sketch's "absolute" wording is superseded.
+> 2. **`TagRef` carries two extra fields:** `headerOffset` (the tag header's stream offset, used
+>    by reports) and `longHeader` (whether the long form was used — R017 needs it).
+> 3. **`TagIndex` carries an extra `frameCounts` member** (movie `0` + sprite ids → observed
+>    `ShowFrame` count, for the `SF0023` cross-check and `inspect`), and **`spriteRanges` entries
+>    carry an extra `depth`**.
+> 4. **`SwfFile` carries an extra `sink` member** — the shared `DiagnosticSink`, so later layers
+>    (model, P5 front end) report onto the same movie's diagnostic list.
+> 5. **`SwfOpenOptions` carries extras the sketch omits:** `strictLength` (R011),
+>    `legacyStringEncoding` (doc 010 R023), `reportPaddingBits` (SF0008), optional `sha256`
+>    (browsers may omit; `''` when absent), and `inflate`/`inflateAsync` (platform adapters, R002).
+> 6. **Module layout (§2) is consolidated:** the sketch's `compress.ts` / `tag-index.ts` /
+>    `tag-reader.ts` / `dictionary.ts` / `decompress/` are realised as
+>    `container/{open, header, tag-stream, ordering, processing}.ts` plus the `node/` adapters
+>    (`node/{open, inflate, lzma}.ts`). Framing, index construction and the container-level
+>    dictionary tables live together in `tag-stream.ts` (the dictionary *view* is split per the
+>    note above). The consolidation is deliberate — it keeps the container small while R001's
+>    import boundary (verified: `container/` imports only `../diagnostics`, `../io` and tag
+>    codes) is enforced by the same tests.
 
 **IMPL-020-R003** `TagIndex` MUST store `TagRef`s in file order, always. Consumers that want a
 different order sort a copy.
@@ -315,7 +366,9 @@ export interface CharacterModel {
   (`kind: 'missing'`) so that timeline and event semantics still see a named object at the right depth
   (design SWF-R024), with `SF0110` (warning) naming the referencing tag.
 - **IMPL-020-R030** `exports` MUST merge `ExportAssets` and `SymbolClass` (AVM1-era usage); a name that
-  maps to two ids reports `SF0159` (warning; the control-tag range, owned by doc 040) and the last wins, deterministically.
+  maps to two ids reports `SF0160` (warning; the control-tag range, owned by doc 040, R015) and the
+  **first id wins**, deterministically; an id that maps to two names reports `SF0159`, and the later
+  name wins (Ch.4).
 - **IMPL-020-R031** Dictionary construction MUST respect `maxDictionaryEntries` (`SF0031`, error when
   exceeded) measured in *registered* definitions, not total tags.
 
@@ -407,6 +460,14 @@ alongside the container range:
 `SF0105`, `SF0106` and `SF0108` are unassigned inside this block; `SF0110` is shared with `IMPL-030`
 for an undefined character reference seen from the placement side (`E-016`).
 
+**Cross-layer emissions.** `tag-stream.ts` also emits four codes that are *allocated by other
+documents* and are not part of this document's allocation: `SF0128` (SPRITE_DEFINITION_TAG) and
+`SF0129` (SPRITE_TAG_UNLISTED) — the `SF0110`–`SF0129` placement range owned by doc 030 — and
+`SF0173` (MISSING_END_STRUCTURAL) and `SF0175` (FILE_ATTRIBUTES_IN_SPRITE) — the `SF0150`–`SF0179`
+control range owned by doc 040. The container reports them at index time because it is the first
+layer to see the structural case; they are registered in the owning documents' ranges (see
+`STATUS.md`'s cross-document citation note).
+
 ## 10. Test obligations
 
 | ID | Test | Level |
@@ -476,6 +537,9 @@ const bytes = swf({
 | 3 | Confirm the exact wording of the ordering rules (we implement five checks) and whether any rule is normative for *players* rather than tools | open |
 | 4 | Confirm whether `FileAttributes` violation is an error for SWF ≥ 8 or a tolerated warning | open (we warn) |
 | 5 | Confirm the long-header body-length semantics (we now exclude the header; see E-007) | **resolved** by cross-checking formal grammars; re-confirm on receipt |
+| 6 | **Pinned deviation (ZWS streaming bound):** the optional pure-JS `lzma` adapter cannot stream, so for compressed inputs *at or under* the cap the full output is materialised before the `maxDecompressedBytes` check (R010's "streaming" is unmet for ZWS). Risk: a small, highly-compressible ZWS payload (e.g. 1 KB encoding a long run of zeros) can allocate more than the cap before the file is rejected with `SF0007` — the rejection is deterministic (the over-cap file is never parsed) and ZWS is pre-Flash-8 content. Mitigation in place: input-size pre-bound in `node/lzma.ts` (compressed input over the cap is refused before any decode). Follow-up: a streaming LZMA decoder is a new-dependency decision — **deferred to doc 140** | open (pinned deviation, 2026-10-05) |
+| 7 | **Deferred test scale (T-SWF-011 full scale):** the 512 MiB-bomb obligation is tested with a 64 MiB cap and the RSS assertion on the *marginal* memory of the open (`peakRSS − preOpenRSS < 256 MiB`), because the input buffer and the process baseline are held by the caller before `open` runs — an absolute-256-MiB reading is unreachable for any in-process test and the margin reading is what "rejected without exhausting memory" governs. The default-cap full-scale variant (512 MiB cap, ≥ 1 GiB potential output) is **deferred to doc 140**'s budget work (CI memory / RSS flakiness at that scale) | deferred (owner: doc 140, 2026-10-05) |
+| 8 | **Pinned deviation (synchronous zlib partial yield):** `node:zlib`'s synchronous API cannot emit partial output for a corrupt stream — `inflateSync` throws `Z_BUF_ERROR` on every truncated prefix (probed across cut points), so the sync path cannot deliver R007's "bytes decoded so far". Consequences: the sync `nodeInflate` reports `SF0003` with an **empty body** (no throw, deterministic — T-SWF-002's truncation obligation still holds via the tag-stream's byte-limit recovery, which is independent of decompression); R007's partial yield is delivered by the async path (`openSwfNodeAsync` → `nodeInflateAsync`, and the browser `DecompressionStream` path), verified by `T-SWF-002 / F-05`. The CLI verbs (`inspect`/`dump`) remain synchronous by construction (`TECH-SPEC` §5.2), so they report `SF0003` + empty body on a corrupt CWS rather than a partial one | pinned deviation (2026-10-05) |
 
 ## 13. Done criteria
 
@@ -493,3 +557,6 @@ const bytes = swf({
 | --- | --- | --- |
 | 1.0 | initial | Written against Ch.2 (minus two sections); container code range allocated; E-006/E-007 filed |
 | 1.1 | 2026-10-04 | Appendix pass: the Appendix A fixture is wired into the header and tag-stream obligations (`T-SWF-022`/`T-SWF-023`), including the canonical long-header case (`DefineShape`, length field 63) and the little-endian 8.8 `FrameRate` reading |
+| 1.2 | 2026-10-04 | P1 closeout: `ordering.ts` ships the five ordering rules (`T-SWF-019`, `SF0024`–`SF0026`, `SF0032`); the optional `lzma` adapter makes `ZWS` openable (sync + async, `SF0006`/`SF0027`); `buildSwf` gains `compression`/`defects` and the truncation (`T-SWF-002`), nesting (`T-SWF-008`), cap (`T-SWF-011`), determinism (`T-SWF-012`) and zero-copy (`T-SWF-021`) obligations gain labelled fixtures; the R034 processing-order sequence is exported (`processing.ts`); `SF0421`/`SF0422` are emitted for duplicate/unknown-sprite `DoInitAction`; the `SwfFile.dictionary` split is recorded as an accepted API deviation (§3 note) |
+| 1.3 | 2026-10-05 | P1 resolution pass: **R030 corrected** to match the registry and doc 040 R015 (duplicate export name → `SF0160`, first id wins; duplicate export id → `SF0159`, later name wins — code unchanged, it already implements the corrected rule); **§3 API note extended** with six recorded surface deviations (stream-relative `TagRef.offset`, `headerOffset`/`longHeader`, `TagIndex.frameCounts`/`spriteRanges.depth`, `SwfFile.sink`, `SwfOpenOptions` extras, consolidated module layout — §2 layout note); **§9 cross-layer emissions note** (SF0128/SF0129 owned by 030, SF0173/SF0175 owned by 040, emitted by `tag-stream.ts`); **§12** gains item 6 (pinned ZWS streaming deviation + input pre-bound) and item 7 (T-SWF-011 full-scale test deferral to doc 140) |
+| 1.4 | 2026-10-05 | P1 resolution pass (code + evidence): sprite levels closed without an `End` tag keep their **non-empty tag ranges** (R-01; `SF0173` + `spriteRanges` now drive the model for the `T-SWF-002 / F-01` corpus); the async decompression path yields **partial decoded bytes plus `SF0003`** on a corrupt stream (R-05, `openSwfNodeAsync`/`nodeInflateAsync`; the sync platform limit is pinned as §12 item 8) and **rejects at the cap with an empty body** (R-04, D-1); `SF0030` diagnostics carry the offending tag code in their context (R-06); the T-SWF-001 header matrix, the 62/63 long-header boundary, the per-code `SF0030` dedup, the seven previously untested P1 codes, the F-05 partial-vs-sync contrast, and the 512 MiB-bomb / RSS obligation are now exercised by labelled tests (F-01…F-08, T-SWF-001/002/003/007/011) |

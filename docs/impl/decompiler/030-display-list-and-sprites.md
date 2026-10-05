@@ -75,7 +75,7 @@ export interface PlacementOp {
   readonly ratio: number | null;          // 0..65535 morph ratio
   readonly clipDepth: number | null;      // > 0 => this object masks depths (depth, clipDepth]
   readonly filters: readonly FilterSpec[] | null;
-  readonly blendMode: BlendMode | null;   // APP-§6; null => absent
+  readonly blendMode: number | null;      // raw APP-§6 byte; null => absent (see deviation note)
   readonly cacheAsBitmap: boolean;        // raw nonzero or implied by a non-empty filter list
   readonly rawCacheValue: number | null;  // original BitmapCache UI8, null when absent
   readonly visible: boolean | null;       // PlaceObject3 HasVisible; null => field absent
@@ -83,7 +83,7 @@ export interface PlacementOp {
   readonly className: string | null;      // PlaceObject3 HasClassName (AVM2-era; inert in AVM1)
   readonly image: { kind: 'class' | 'characterId' } | null;   // PlaceObject3 HasImage
   readonly clipActions: ClipActions | null;
-  readonly origin: TagRef;
+  readonly tagOffset: number;            // byte offset of the tag body (see deviation note)
 }
 
 export interface RemovalOp {
@@ -91,7 +91,7 @@ export interface RemovalOp {
   readonly index: number;
   readonly depth: number;                 // both tag forms carry a depth
   readonly characterId: number | null;    // RemoveObject only; null for RemoveObject2
-  readonly origin: TagRef;
+  readonly tagOffset: number;             // byte offset of the tag body (see deviation note)
 }
 
 export interface ClipActions {
@@ -106,6 +106,14 @@ export interface ClipActionRecord {
   readonly sizeBytes: number;                     // the declared ActionRecordSize, for diagnostics
 }
 ```
+
+**Deviation (surface API — documented, not reworked; precedent: the P1 `dictionary`→`definitions`
+amendment).** The three op types carry `tagOffset: number` — the byte offset of the tag body —
+rather than `origin: TagRef`. The dump and source maps consume byte offsets, and a `TagRef` would
+couple the op type to the container's record type for no benefit. Likewise `PlacementOp.blendMode`
+is the raw APP-§6 byte (`number | null`), not a named `BlendMode` union: APP-§6's values are
+recorded verbatim, and the named mapping is the renderer's job (GFX-§). `SetTabIndexOp` (doc 040)
+carries the same `tagOffset: number`.
 
 **IMPL-030-R003** `ClipEventFlags` MUST be modelled as explicit booleans in **spec bit order**
 (APP-§10.1), not as a raw mask, and MUST additionally carry `raw` plus `width: 2 | 4`. The width is
@@ -443,3 +451,4 @@ passes). The sprite/sound obligations originally occupied `T-MOD-013`–`015`, w
 | 1.2 | 2026-10-04 | Ch.13-grounded: `DefineSprite` body and the closed sprite tag set (with the chapter's pre-`PlaceObject3` omissions reported rather than rejected), definition-tags-not-allowed rule, sprite-local streaming sound spans mixed with the main track, instance naming + `SetTarget` path grammar, removal-stops-the-timeline; diagnostics `SF0128`/`SF0129`; tests `T-MOD-601`–`603` (renumbered from `013`–`015` in v1.3 — `E-023` addendum); WP-030-12 added (30 d) |
 | 1.3 | 2026-10-04 | Appendix pass: `T-MOD-604` asserts the Appendix A `PlaceObject2` walkthrough (the only upstream byte-level placement example); the sprite/naming/sound obligations move out of `IMPL-040`'s `T-MOD-013`–`036` block to `T-MOD-601`–`604` (`E-023` addendum) |
 | 1.4 | 2026-10-04 | Tech-spec pass: `IMPL-030-R007` was cited in §4.1 but never defined (lost in the Ch.3 intake) — the bullet is now the numbered rule |
+| 1.5 | 2026-10-05 | P2 integrity resolution (R-P2-13): §3 amended to the implemented surface API — `PlacementOp`/`RemovalOp` (and `SetTabIndexOp`, doc 040) carry `tagOffset: number` (byte offset of the tag body) instead of `origin: TagRef`, and `PlacementOp.blendMode` is the raw APP-§6 byte (`number \| null`), with the named mapping left to the renderer; documented deviation, not reworked (precedent: the P1 `definitions` amendment) |

@@ -4,7 +4,14 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { Cursor, decodePlaceObject3, decodeRemoveObject, decodeRemoveObject2, readFilterList } from '@swf-forge/swf';
+import {
+  Cursor,
+  decodePlaceObject,
+  decodePlaceObject3,
+  decodeRemoveObject,
+  decodeRemoveObject2,
+  readFilterList,
+} from '@swf-forge/swf';
 import { ByteWriter } from '@swf-forge/swf/test-support';
 
 function rgba(writer: ByteWriter, value = [1, 2, 3, 4]): ByteWriter {
@@ -238,6 +245,40 @@ describe('PlaceObject3 full field order', () => {
     expect(placement.image).toEqual({ kind: 'class' });
     expect(placement.className).toBe('remote.BitmapClass');
     expect(placement.characterId).toBeNull();
+  });
+});
+
+describe('placement depth/clip-depth conventions (SF0112/SF0113)', () => {
+  it('T-MOD-004: PlaceObject3 reports depth ≥ 16384 (SF0112) like PlaceObject2 does', () => {
+    // v2 flags 0, v3 flags 0, Depth = 16384 (0x4000 little-endian).
+    const cursor = new Cursor(Uint8Array.from([0x00, 0x00, 0x00, 0x40]));
+    decodePlaceObject3(cursor, 0, 0);
+    expect(cursor.sink.codes()).toContain('SF0112');
+  });
+
+  it('T-MOD-004: PlaceObject3 reports an empty mask range (SF0113) when ClipDepth does not exceed Depth', () => {
+    // v2 flags: HasClipDepth (0x40) | HasCharacter (0x02); v3 flags 0;
+    // Depth = 10, CharacterId = 1, ClipDepth = 5 (≤ 10 => empty mask range).
+    const cursor = new Cursor(Uint8Array.from([0x42, 0x00, 10, 0, 1, 0, 5, 0]));
+    const placement = decodePlaceObject3(cursor, 0, 0);
+    expect(placement.clipDepth).toBe(5);
+    expect(cursor.sink.codes()).toContain('SF0113');
+    expect(cursor.sink.codes()).not.toContain('SF0112');
+  });
+
+  it('T-MOD-004: a legal clip depth above its own depth and a conventional depth report nothing', () => {
+    // Depth = 10, CharacterId = 1, ClipDepth = 12 (> 10 => non-empty range).
+    const cursor = new Cursor(Uint8Array.from([0x42, 0x00, 10, 0, 1, 0, 12, 0]));
+    decodePlaceObject3(cursor, 0, 0);
+    expect(cursor.sink.codes()).not.toContain('SF0113');
+    expect(cursor.sink.codes()).not.toContain('SF0112');
+  });
+
+  it('T-MOD-004: PlaceObject v1 reports the dynamic depth range (SF0112) too', () => {
+    // CharacterId = 1, Depth = 16384, then a 4-byte identity-ish MATRIX tail (Nbits byte 0).
+    const cursor = new Cursor(Uint8Array.from([1, 0, 0x00, 0x40, 0x00]));
+    decodePlaceObject(cursor, 0, 0);
+    expect(cursor.sink.codes()).toContain('SF0112');
   });
 });
 

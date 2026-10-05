@@ -70,17 +70,19 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
                 self.assertIn(wp, packages)
 
     def test_deferred_mapping_becomes_stale_when_the_code_is_emitted(self):
+        # SF0115 is a real DEFERRED_DIAGNOSTIC_WPS entry (WP-030-06); the synthetic scenario
+        # pretends it now has a production emission site, which must flag the mapping as stale.
         coverage = audit_dev.check_emission_ownership(
-            {"SF0025": {"severity": "warning", "meaning": "test"}},
-            {"FILE_ATTRIBUTES_NOT_FIRST": "SF0025"},
+            {"SF0115": {"severity": "warning", "meaning": "test"}},
+            {"CLIP_ACTIONS_NO_FLAGS": "SF0115"},
             {},
-            {"SF0025"},
+            {"SF0115"},
             set(),
-            {"SF0025": ["packages/swf/src/container/ordering.ts:1"]},
+            {"SF0115": ["packages/swf/src/tags/place.ts:1"]},
             {},
         )
         self.assertEqual(coverage[0]["status"], "emitted")
-        self.assertIn("ownership.stale:SF0025", {item["key"] for item in audit_dev.findings})
+        self.assertIn("ownership.stale:SF0115", {item["key"] for item in audit_dev.findings})
 
     def test_test_ids_in_work_package_rows_are_attributed_to_that_wp(self):
         owners = audit_dev.test_work_package_owners()

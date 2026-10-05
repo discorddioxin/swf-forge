@@ -48,6 +48,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Fuzz smoke (10^4 mutations, IMPL-140-R018)
+        run: pnpm test:fuzz
+
       - name: Build
         run: pnpm build
 
@@ -56,3 +59,6 @@ jobs:
 
       - name: Run development-integrity audit
         run: pnpm audit:dev
+
+      - name: Tag coverage report (P2 exit criterion 4)
+        run: pnpm tag:coverage

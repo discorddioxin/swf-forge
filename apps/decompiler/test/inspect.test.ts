@@ -15,7 +15,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { EXIT, runCli, type CliIo } from '@swf-forge/decompiler';
 import { Tag } from '@swf-forge/swf';
-import { buildSwf, concat, endTag, tag } from '@swf-forge/swf/test-support';
+import { buildSwf, concat, defineSprite, endTag, placeObject2, tag } from '@swf-forge/swf/test-support';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/appendix-a.swf', import.meta.url));
 const WORK = mkdtempSync(join(tmpdir(), 'swf-forge-'));
@@ -157,5 +157,98 @@ describe('forge-decompile inspect', () => {
 
     const help = capture();
     expect(runCli(['--help'], help.io)).toBe(EXIT.ok);
+  });
+
+  it('F-02: --strict on a structurally torn file prints the report and fails without a stack trace', () => {
+    const original = new Uint8Array(readFileSync(FIXTURE));
+    const compressed = deflateSync(original.subarray(8));
+    const cws = new Uint8Array(8 + compressed.length);
+    cws.set(original.subarray(0, 8));
+    cws.set(compressed, 8);
+    cws[0] = 0x43;
+    // Tear the compressed stream: the decoded tag stream no longer reaches its declared end.
+    const torn = write('torn-cws.swf', cws.subarray(0, cws.length - 12));
+
+    const strict = capture();
+    expect(runCli(['inspect', torn, '--strict'], strict.io)).toBe(EXIT.failed);
+    // The accumulated diagnostics are printed (R011: failure after producing the report)…
+    expect(strict.err.join('\n')).toMatch(/SF00\d\d/);
+    // …the abort is reported as an input problem, not an internal error…
+    expect(strict.err.join('\n')).toContain('strict mode aborted');
+    expect(strict.err.join('\n')).not.toContain('internal error');
+    // …and no stack trace escapes.
+    expect(strict.err.join('\n')).not.toContain('\n    at ');
+  });
+
+  it('F-02: --strict on a non-SWF file fails cleanly with the soft-mode exit code', () => {
+    const path = write('not-a-swf-strict.bin', Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 1, 2, 3, 4, 5]));
+    const strict = capture();
+    expect(runCli(['inspect', path, '--strict'], strict.io)).toBe(EXIT.unreadable);
+    expect(strict.err.join('\n')).toContain('SF0001');
+    expect(strict.err.join('\n')).not.toContain('internal error');
+    expect(strict.err.join('\n')).not.toContain('\n    at ');
+  });
+
+  /** A movie with one sprite, one export and one import — the WP-020-12 demo surface. */
+  function symbolFixture(): string {
+    const ascii = (s: string): Uint8Array => {
+      const bytes = new Uint8Array(s.length + 1);
+      for (let i = 0; i < s.length; i += 1) bytes[i] = s.charCodeAt(i);
+      return bytes;
+    };
+    const sprite = defineSprite(2, 1, concat(tag(1), endTag()));
+    // ExportAssets (56): `UI16 Count` + (`UI16 Id`, `STRING Name`)…
+    const exportAssets = tag(Tag.ExportAssets, concat(new Uint8Array([0x01, 0x00, 0x02, 0x00]), ascii('mySprite')));
+    // ImportAssets (57): `STRING Url` + `UI16 Count` + (`UI16 Id`|0x0000, `STRING Name`)…
+    const importAssets = tag(
+      Tag.ImportAssets,
+      concat(ascii('other.swf'), new Uint8Array([0x01, 0x00, 0x00, 0x00]), ascii('other')),
+    );
+    const body = concat(sprite, exportAssets, importAssets, placeObject2(2, 1), tag(1), endTag());
+    return write('symbols.swf', buildSwf({ body, frameCount: 1 }));
+  }
+
+  it('F-12: the default report prints export names, not just a count', () => {
+    const path = symbolFixture();
+    const { io, out } = capture();
+    expect(runCli(['inspect', path], io)).toBe(EXIT.ok);
+    expect(out.join('\n')).toContain('#2  mySprite');
+  });
+
+  it('F-12: --symbols prints the export and import tables; --tags lists the tag index', () => {
+    const path = symbolFixture();
+    const { io, out } = capture();
+    expect(runCli(['inspect', path, '--symbols', '--tags'], io)).toBe(EXIT.ok);
+    const text = out.join('\n');
+    expect(text).toContain('export  #2  mySprite  (sprite)');
+    expect(text).toContain('import  other  <- other.swf');
+    expect(text).toContain('tag index');
+    // Eight tags: DefineSprite, ShowFrame, End (sprite body), ExportAssets, ImportAssets,
+    // PlaceObject2, ShowFrame, End.
+    const indexLines = out.filter((line) => /^\s+\d+\s+\d+ \(/.test(line));
+    expect(indexLines).toHaveLength(8);
+  });
+
+  it('F-12: --json carries symbols/tagIndex only when requested (default output stays stable)', () => {
+    const path = symbolFixture();
+    const plain = capture();
+    expect(runCli(['inspect', path, '--json'], plain.io)).toBe(EXIT.ok);
+    const plainSummary = JSON.parse(plain.out.join('\n')) as Record<string, unknown>;
+    expect('tagIndex' in plainSummary).toBe(false);
+    expect('symbols' in plainSummary).toBe(false);
+    expect((plainSummary.exports as readonly { id: number; name: string }[])[0]).toEqual({ id: 2, name: 'mySprite' });
+
+    const full = capture();
+    expect(runCli(['inspect', path, '--json', '--symbols', '--tags'], full.io)).toBe(EXIT.ok);
+    const summary = JSON.parse(full.out.join('\n')) as {
+      tagIndex: readonly unknown[];
+      symbols: {
+        exports: readonly { id: number; name: string; kind: string }[];
+        imports: readonly { name: string; url: string; localId: number }[];
+      };
+    };
+    expect(summary.tagIndex).toHaveLength(8);
+    expect(summary.symbols.exports).toEqual([{ id: 2, name: 'mySprite', kind: 'sprite' }]);
+    expect(summary.symbols.imports).toEqual([{ name: 'other', url: 'other.swf', localId: 0 }]);
   });
 });

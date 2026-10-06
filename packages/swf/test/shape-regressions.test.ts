@@ -1,6 +1,4 @@
-/**
- * Shape decoder findings: `T-MOD-111`–`T-MOD-118` (`IMPL-060` §9), including Shape4 flags and v1 counts.
- */
+/** Shape decoder regression fixtures for Shape4 flags, style counts, and diagnostic ceilings. */
 
 import { describe, expect, it } from 'vitest';
 
@@ -78,8 +76,75 @@ function shape1WithLargeStyleArrays(count: number, duplicates: boolean, lineStyl
   return writer.toUint8Array();
 }
 
+function shape4LineStyle2(startCap: number, endCap: number, join: number): Uint8Array {
+  const writer = new ByteWriter();
+  writer.u16(8);
+  writeRect(writer, BOUNDS);
+  writeRect(writer, BOUNDS);
+  writer.u8(0); // Shape4 flags
+  writer.u8(0); // no fills
+  writer.u8(1).u16(20); // one LineStyle2, 20 twips wide
+  writer.bits(startCap, 2).bits(join, 2).bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1);
+  writer.bits(0, 5).bits(0, 1).bits(endCap, 2);
+  if (join === 2) writer.u16(0x0200); // unsigned 2.0 miter limit
+  writer.u8(0).u8(0).u8(0).u8(255);
+  writer.bits(0, 4).bits(1, 4).bits(0, 6).align();
+  return writer.toUint8Array();
+}
+
+function shape4RectWithStroke(): Uint8Array {
+  const writer = new ByteWriter();
+  writer.u16(9);
+  writeRect(writer, { xMin: -10, xMax: 3010, yMin: -10, yMax: 2010 });
+  writeRect(writer, { xMin: 0, xMax: 3000, yMin: 0, yMax: 2000 });
+  writer.u8(0); // Shape4 flags
+  writer.u8(0); // no fills
+  writer.u8(1).u16(20); // one round-capped/round-joined line
+  writer.bits(0, 2).bits(0, 2).bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1);
+  writer.bits(0, 5).bits(0, 1).bits(0, 2);
+  writer.u8(0).u8(0).u8(0).u8(255);
+  writer.bits(0, 4).bits(1, 4);
+  writer.bits(0, 1).bits(0, 1).bits(1, 1).bits(0, 1).bits(0, 1).bits(1, 1);
+  writer.bits(1, 5).bits(0, 1).bits(0, 1).bits(1, 1); // move to origin, select line 1
+  const edge = (dx: number, dy: number): void => {
+    writer.bits(1, 1).bits(1, 1).bits(11, 4).bits(1, 1); // straight, 13-bit general edge
+    writer.bits(dx < 0 ? 2 ** 13 + dx : dx, 13).bits(dy < 0 ? 2 ** 13 + dy : dy, 13);
+  };
+  edge(3000, 0);
+  edge(0, 2000);
+  edge(-3000, 0);
+  edge(0, -2000);
+  writer.bits(0, 6).align();
+  return writer.toUint8Array();
+}
+
+function shapeWithExtendedCounts(tagCode: number): Uint8Array {
+  const writer = new ByteWriter();
+  writer.u16(10);
+  writeRect(writer, BOUNDS);
+  if (tagCode === Tag.DefineShape4) {
+    writeRect(writer, BOUNDS);
+    writer.u8(0); // Shape4 flags
+  }
+  const version = tagCode === Tag.DefineShape2 ? 2 : tagCode === Tag.DefineShape3 ? 3 : 4;
+  const color = version >= 3 ? [0, 0, 0, 255] : [0, 0, 0];
+  writer.u8(0xff).u16(256);
+  for (let index = 0; index < 256; index += 1) writer.u8(0).bytes(Uint8Array.from(color));
+  writer.u8(0xff).u16(256);
+  for (let index = 0; index < 256; index += 1) {
+    writer.u16(20);
+    if (version === 4) {
+      writer.bits(0, 2).bits(0, 2).bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1);
+      writer.bits(0, 5).bits(0, 1).bits(0, 2);
+    }
+    writer.bytes(Uint8Array.from(color));
+  }
+  writer.bits(0, 4).bits(0, 4).bits(0, 6).align();
+  return writer.toUint8Array();
+}
+
 describe('DefineShape4 flag byte', () => {
-  it('T-MOD-111–118 decodes all named bits 0x00–0x07 and keeps reserved flags separate', () => {
+  it('decodes all named Shape4 flag bits 0x00–0x07 and keeps reserved flags separate', () => {
     for (let flags = 0; flags <= 7; flags += 1) {
       const { bytes, sink } = shape4(flags);
       const result = decodeDefineShapeVersion(
@@ -94,7 +159,7 @@ describe('DefineShape4 flag byte', () => {
     }
   });
 
-  it('T-MOD-112 preserves the reserved mask and raw byte in one per-file diagnostic', () => {
+  it('T-MOD-126 preserves the reserved mask and raw byte in one per-file diagnostic', () => {
     const sink = new DiagnosticSink();
     const bytes = shape4(0xa0).bytes;
     const first = decodeDefineShapeVersion(Tag.DefineShape4, new Cursor(bytes, 0, bytes.length, { version: 10, sink }));
@@ -106,7 +171,7 @@ describe('DefineShape4 flag byte', () => {
     expect(diagnostic?.count).toBe(2);
   });
 
-  it('T-MOD-112 reports Shape4 in a pre-SWF-8 file without a character scope', () => {
+  it('T-MOD-126 reports Shape4 in a pre-SWF-8 file without a character scope', () => {
     const { bytes, sink } = shape4(0x04, 5);
     decodeDefineShapeVersion(Tag.DefineShape4, new Cursor(bytes, 0, bytes.length, { version: 5, sink }));
     const diagnostic = sink.list().find((entry) => entry.code === 'SF0183');
@@ -116,13 +181,49 @@ describe('DefineShape4 flag byte', () => {
 });
 
 describe('empty shape subpaths', () => {
-  it('T-MOD-116 reports and drops a MoveTo with no edges', () => {
+  it('reports and drops a MoveTo with no edges (SF0185)', () => {
     const sink = new DiagnosticSink();
     const bytes = shape1WithEmptyMoveTo();
     const result = decodeDefineShapeVersion(Tag.DefineShape, new Cursor(bytes, 0, bytes.length, { sink }));
     expect(result.shape.edges).toEqual([]);
     expect(result.shape.paths).toEqual([]);
     expect(sink.codes()).toContain('SF0185');
+  });
+});
+
+describe('LINESTYLE2 caps and joins', () => {
+  it('T-MOD-116 covers every cap × join pair and reads miter only for miter joins', () => {
+    for (let startCap = 0; startCap <= 2; startCap += 1) {
+      for (let endCap = 0; endCap <= 2; endCap += 1) {
+        for (let join = 0; join <= 2; join += 1) {
+          const bytes = shape4LineStyle2(startCap, endCap, join);
+          const result = decodeDefineShapeVersion(
+            Tag.DefineShape4,
+            new Cursor(bytes, 0, bytes.length, { version: 10 }),
+          );
+          const style = result.shape.styles.lines[1];
+          expect(style?.caps).toEqual({ start: startCap, end: endCap });
+          expect(style?.join).toBe(join);
+          expect(style?.miterLimit).toBe(join === 2 ? 2 : undefined);
+        }
+      }
+    }
+  });
+});
+
+describe('DefineShape4 bounds', () => {
+  it('T-MOD-118 retains edge bounds and recomputes the four-edge stroke geometry', () => {
+    const bytes = shape4RectWithStroke();
+    const sink = new DiagnosticSink();
+    const result = decodeDefineShapeVersion(
+      Tag.DefineShape4,
+      new Cursor(bytes, 0, bytes.length, { version: 10, sink }),
+    );
+    expect(result.shape.bounds).toEqual({ xMin: -10, xMax: 3010, yMin: -10, yMax: 2010 });
+    expect(result.shape.edgeBounds).toEqual({ xMin: 0, xMax: 3000, yMin: 0, yMax: 2000 });
+    expect(result.shape.recomputedBounds).toEqual(result.shape.edgeBounds);
+    expect(result.shape.strokes).toEqual([{ styleId: 1, edgeRefs: [0, 1, 2, 3], closed: true }]);
+    expect(sink.codes()).not.toContain('SF0187');
   });
 });
 
@@ -137,7 +238,19 @@ describe('DefineShape v1 style counts', () => {
     expect(cursor.sink.codes()).not.toContain('SF0191');
   });
 
-  it('T-MOD-118 emits SF0190 only for byte-identical fills at the named ceiling', () => {
+  it('T-MOD-113 reads extended 0xFF counts in Shape2, Shape3, and Shape4', () => {
+    for (const tagCode of [Tag.DefineShape2, Tag.DefineShape3, Tag.DefineShape4]) {
+      const bytes = shapeWithExtendedCounts(tagCode);
+      const cursor = new Cursor(bytes);
+      const result = decodeDefineShapeVersion(tagCode, cursor);
+      expect(result.shape.styles.fills).toHaveLength(257);
+      expect(result.shape.styles.lines).toHaveLength(257);
+      expect(cursor.offset).toBe(bytes.length);
+      expect(cursor.bitOffset).toBe(0);
+    }
+  });
+
+  it('T-MOD-127 emits SF0190 only for byte-identical fills at the named ceiling', () => {
     const distinctSink = new DiagnosticSink();
     const distinct = shape1WithLargeStyleArrays(250, false);
     decodeDefineShapeVersion(Tag.DefineShape, new Cursor(distinct, 0, distinct.length, { sink: distinctSink }));
@@ -150,7 +263,7 @@ describe('DefineShape v1 style counts', () => {
     expect(duplicateSink.list().find((entry) => entry.code === 'SF0190')?.severity).toBe('warning');
   });
 
-  it('T-MOD-118 applies the same byte-identity ceiling to line styles', () => {
+  it('T-MOD-127 applies the same byte-identity ceiling to line styles', () => {
     const sink = new DiagnosticSink();
     const bytes = shape1WithLargeStyleArrays(250, true, true);
     decodeDefineShapeVersion(Tag.DefineShape, new Cursor(bytes, 0, bytes.length, { sink }));

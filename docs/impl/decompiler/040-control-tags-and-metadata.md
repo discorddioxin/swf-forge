@@ -307,10 +307,10 @@ emission order, and no field may carry a timestamp, an absolute path, a host nam
 runs over the same input bytes produce identical bytes on any machine. The human summary may name the
 input file it was given; the JSON dump never does.
 
-Top-level fields, in order: `format` (`"swf-forge/model-dump"`), `formatVersion` (`1`), `source`
+Top-level fields, in order: `format` (`"swf-forge/model-dump"`), `formatVersion` (`4`), `source`
 (`bytes`, `sha256`, `compression`, `version`, `fileLength`, `frameRate`, `stage`), `model` (`id`,
 `background`, `backgroundSource`, `metadata`), `dictionary`, `timeline` (the main timeline),
-`initActions`, `control`, `diagnostics`.
+`initActions`, `control`, `diagnostics`. Version 2 adds `dictionary[].vectorShape` (stable static-shape counts, local bounds and geometry SHA-256; it never contains raster buffers) and `dictionary[].sound` (format/rate/channel/sample metadata plus payload byte count and SHA-256; it never contains sound bytes). Version 3 adds `dictionary[].bitmap` (format/header metadata and payload/alpha digests, never image bytes), per-frame `soundEvents` (decoded `StartSound`/`StartSound2` controls), and decoded stream-head metadata, cumulative sample counts and per-block sample-offset/data-range records. Version 4 adds `dictionary[].font` (font metadata and a code/metric digest), `dictionary[].text` (static glyph runs and authored advances), and `dictionary[].editText` (all editable-field flags and optional fields); outline bytes are not inlined. Non-applicable summaries are explicit `null` fields.
 
 **IMPL-040-R046** Everything derived from a map MUST be emitted as an array **sorted by key**: the
 dictionary by character id, `control.exports` by name, `control.scalingGrids` by id, timeline `labels`
@@ -321,8 +321,8 @@ by name, `control.metadata` by key. Sequences that exist in file order keep file
 
 **IMPL-040-R047** The timeline object is doc 030 §7's frame-by-frame form: `declaredFrameCount`,
 `observedFrameCount`, `frames[]` (`index`, `label`, `ops[]`, `actions[]`, `soundStreamBlock`,
-`videoFrames[]`), `labels[]` (`name`, `frame`, `namedAnchor` — first occurrence per name, the map doc 030
-builds) and `streamSoundSpans[]` (`head`, `blocks`). `observedFrameCount` is measured before padding;
+`soundEvents[]`, `videoFrames[]`), `labels[]` (`name`, `frame`, `namedAnchor` — first occurrence per name, the map doc 030
+builds) and `streamSoundSpans[]` (`head`, decoded `format`/`sampleRate`/`channels`/`latencySeek`, cumulative `sampleCount`, and `blocks[]`). Each stream block records its tag reference, start-sample offset, sample count, MP3 seek value where present, and byte range; each sound event retains its decoded `SOUNDINFO` flags, points, loop count and envelope. `observedFrameCount` is measured before padding;
 `frames` contains `max(declaredFrameCount, observedFrameCount)` entries, retaining observed extras and
 appending empty entries only when the declared count is larger (IMPL-030-R033). An op is `{ kind: "place", … }` with every
 `PlacementOp` field, `{ kind: "remove", … }` or `{ kind: "tabIndex", … }`; each carries its `tagOffset`,
@@ -464,6 +464,10 @@ AVM2 content ever moves from "refuse" to "report".
 | `T-MOD-038` | `dump --out <dir>` writes exactly `<dir>/model.json`, creates the directory, and its bytes equal `--json`'s stdout (`IMPL-040-R048`) | F1 |
 | `T-MOD-039` | dump of `fixtures/appendix-a.swf`: dictionary, one frame, the stroke character, `SetTabIndex` in both places, empty diagnostics (`IMPL-040-R047`) | F2 |
 | `T-MOD-040` | exit codes for the verb: unreadable input → `2`, error diagnostics → `1`, AVM2 content → `3`, clean file → `0` | F1 |
+| `T-MOD-041` | version-2 dump includes decoded sound metadata and a payload digest without inlining the payload bytes | F1 |
+| `T-MOD-042` | version-3 dump includes StartSound scheduling records and exact stream-block sample offsets with stable ordered JSON | F1 |
+| `T-MOD-043` | version-3 bitmap dictionary entry carries header metadata and payload/alpha digests without inlining media bytes | F1 |
+| `T-MOD-044` | version-4 font/static-text/edit-text dictionary entries expose typed summaries without embedding glyph or payload buffers | F1 |
 
 ## 8. Work packages
 
@@ -483,7 +487,8 @@ AVM2 content ever moves from "refuse" to "report".
 | WP-040-12 | `SymbolClass` + root class + export-name source | WP-040-04 | 1 | `control/exports.ts`, T-MOD-027 |
 | WP-040-13 | `End` validation at file and sprite level | WP-020-03 | 0.5 | `control/end-tag.ts`, T-MOD-024 |
 | WP-040-14 | Model integration + `MovieControlModel` in the dump + report rows | WP-040-01…13 | 2 | model wiring, goldens |
-| | **Total** | | **24** | |
+| WP-040-15 | StartSound controls + stream block sample-offset table in model dump v3 | WP-040-14, WP-090-07/08 | 2 | typed frame sound events, T-MOD-042 |
+| | **Total** | | **26** | |
 
 ## 9. Open items
 
@@ -522,4 +527,7 @@ APP-§10.2.
 | 1.1 | 2026-10-04 | Ch.4-grounded: version windows, duplicate-key rules, named-anchor byte, `End` at sprite level, `ImportAssets` SWF 8+ no-effect rule, `FileAttributes` mask table + bit-order traps, `SymbolClass` root class, `Metadata` biconditional, `DefineScalingGrid` twip rule, scene offset semantics; `SetTabIndexOp` export contract with doc 030 (R003/R024–R027); new diagnostics `SF0160`–`SF0174`; tests `T-MOD-013`–`T-MOD-033` (v1.1 added `T-MOD-024`–`T-MOD-033`); WPs 01–14 = 21.5 d; open items cut to the Ch.15 residue |
 | 1.2 | 2026-10-04 | Ch.15-grounded: `DefineBinaryData` exact layout (`Tag UI16`, `Reserved UI32`, data to end) and `EnableTelemetry` (2 bytes + optional SHA-256 `PasswordHash`, redacted), the root-SWF-only `FileAttributes` rule, and the Ch.15 bit-name divergences (`E-022`: bits 6/5 `Reserved` vs `UseDirectBlit`/`UseGPU`; bit 2 `NoCrossDomainCache` vs reserved) with the legacy bit now named (`SF0176`); diagnostics `SF0175`–`SF0179`; tests `T-MOD-034`–`036`; §3 rules `R041`–`R043` added (telemetry, then the ordering/framing rules shifted from `R041`/`R042`); WPs re-estimated to 24 d |
 | 1.3 | 2026-10-04 | §3.6 added: the `forge-decompile dump` contract (`R044`–`R048`) — three modes, the byte-deterministic JSON dump, sorted-map/fixed-order rules, the timeline form doc 030 §7 defines, and the `--out` file/exit-code rules; tests `T-MOD-037`–`T-MOD-040`; covered by the existing `WP-040-14` |
-| 1.4 | 2026-10-05 | P2 integrity resolutions: the `SF0156` row is removed from §6 (doc error — it duplicated the `SF0167` case assigned by `R028`; inverted-rect inputs are caught by the < 1 twip width check) and was never registered in code; `SetTabIndexOp` now carries `tagOffset: number` to match the implementation (R-P2-13, with doc 030 v1.5) |
+| 1.4 | 2026-10-05 | `model-dump` format version 2 adds stable static-VectorShape summaries and zero-copy sound-payload metadata/digests; test `T-MOD-041` |
+| 1.5 | 2026-10-05 | Version 3 adds StartSound/StartSound2 frame events and decoded stream-head/block sample offsets; test `T-MOD-042` |
+| 1.6 | 2026-10-05 | Version 4 adds typed font, static-text and editable-text dictionary summaries; P3 tests cover the font/text decode slice |
+| 1.7 | 2026-10-05 | P2 integrity resolutions: the `SF0156` row is removed from §6 (doc error — it duplicated the `SF0167` case assigned by `R028`; inverted-rect inputs are caught by the < 1 twip width check) and was never registered in code; `SetTabIndexOp` now carries `tagOffset: number` to match the implementation (R-P2-13, with doc 030 v1.5) |

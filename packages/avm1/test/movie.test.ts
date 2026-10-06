@@ -7,6 +7,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { Tag, buildMovieModel, openSwf } from '@swf-forge/swf';
+import { analyzeMovie } from '../src/index.js';
 import { actionBlock, buildSwf, concat, defineSprite, endTag, showFrames, tag } from '@swf-forge/swf/test-support';
 
 import { analyze, block } from './harness.js';
@@ -30,6 +31,10 @@ const pushEmptyString = [0x96, 2, 0, 0, 0];
 
 const END = 0x00;
 
+function u16(value: number): Uint8Array {
+  return Uint8Array.from([value & 0xff, (value >>> 8) & 0xff]);
+}
+
 /** `DoInitAction` (59) payload: sprite id UI16 + action block. */
 const doInitAction = (spriteId: number, records: readonly number[]): Uint8Array => {
   const blockBytes = actionBlock(records);
@@ -39,6 +44,59 @@ const doInitAction = (spriteId: number, records: readonly number[]): Uint8Array 
   out.set(blockBytes, 2);
   return tag(Tag.DoInitAction, out);
 };
+
+describe('button action block integration (IMPL-100)', () => {
+  it('analyzes the v1 click-and-release action array as a button block at its raw source offset', () => {
+    const actionBytes = Uint8Array.of(0x07, 0x00); // Stop; ActionEndFlag
+    const record = concat(Uint8Array.of(0x01), u16(1), u16(1), Uint8Array.of(0));
+    const body = concat(
+      tag(Tag.DefineButton, concat(u16(20), record, Uint8Array.of(0), actionBytes)),
+      showFrames(1),
+      endTag(),
+    );
+    const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
+    const model = buildMovieModel(file);
+    const actionOffset = model.characters.get(20)?.button?.actions[0]?.actionBytes.offset;
+    const analysis = analyzeMovie(file, model, { emit: () => undefined });
+    const buttonBlock = analysis.blocks.find((item) => item.ir.kind === 'button');
+    expect(buttonBlock?.ir.id).toBe('button_20_0');
+    expect(buttonBlock?.ir.byteRange.start).toBe(actionOffset);
+    expect(
+      buttonBlock?.ir.blocks
+        .flatMap((block) => block.ops)
+        .some((op) => op.kind === 'timeline' && op.timeline.op === 'stop'),
+    ).toBe(true);
+  });
+
+  it('T-MOD-817 analyzes each v2 CONDACTION as one button block and preserves source ranges', () => {
+    const actionBytes = Uint8Array.of(0x07, 0x00);
+    const conditionActions = concat(
+      u16(6),
+      Uint8Array.of(0x01, 0x00),
+      actionBytes,
+      u16(0),
+      Uint8Array.of(0x00, 65 << 1),
+      actionBytes,
+    );
+    const buttonBody = concat(u16(20), Uint8Array.of(0), u16(3), Uint8Array.of(0), conditionActions);
+    const body = concat(tag(Tag.DefineButton2, buttonBody), showFrames(1), endTag());
+    const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
+    const model = buildMovieModel(file);
+    const handlers = model.characters.get(20)?.button?.actions ?? [];
+    const blocks = analyzeMovie(file, model, { emit: () => undefined }).blocks.filter(
+      (item) => item.ir.kind === 'button',
+    );
+    expect(handlers).toHaveLength(2);
+    expect(handlers[1]?.keyCode).toBe(65);
+    expect(blocks.map((item) => item.ir.id)).toEqual(['button_20_0', 'button_20_1']);
+    expect(blocks.map((item) => item.ir.byteRange.start)).toEqual(handlers.map((entry) => entry.actionBytes.offset));
+    expect(
+      blocks.every((item) =>
+        item.ir.blocks.flatMap((block) => block.ops).some((op) => op.kind === 'timeline' && op.timeline.op === 'stop'),
+      ),
+    ).toBe(true);
+  });
+});
 
 describe('T-AVM1-011 requirement extraction matches a hand-written expectation', () => {
   it('groups appear in fixed order with the first requiring op named in `via`', () => {

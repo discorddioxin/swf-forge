@@ -28,27 +28,31 @@ AUD-§6.1 (button sounds), APP-§2/§6
    hit-area geometry, and focus/`keyPress` behaviour.
 8. Diagnostic/tests for every malformed shape the chapter makes possible.
 
-**Non-goals:** the pointer/focus implementation (doc 130 consumes the model), and the emitted code
-shape (doc 120).
+**Non-goals:** pointer/focus implementation (doc 130 consumes the model), and emitted code shape (doc 120).
+
+**P2 implementation boundary:** the dictionary decoder, data model, transition table, hit-area bounds,
+button sound records, and one AVM1 analysis block per action range are implemented and covered by
+`T-MOD-801`–`817`. `buttonTransitionsForTracking` selects transition data; it is not a pointer state
+machine. `hitArea` is a union of transformed axis-aligned character bounds, not exact vector
+hit-testing. Runtime event dispatch, focus/composite-key input, exact shape hit-testing, generated
+handler symbols, and the `ButtonRuntimeSpec` remain doc 130/120 work and are not claimed as complete.
 
 ## 2. Module layout
 
 ```
-packages/swf/src/buttons/
-  button-record.ts       BUTTONRECORD (v1/v2) — shared reader, one flag table
-  define-button.ts       DefineButton (7): records + trailing v1 action array
-  define-button2.ts      DefineButton2 (34): ReservedFlags/TrackAsMenu/ActionOffset + records
-  button-cond-action.ts  BUTTONCONDACTION: CondActionSize chain, condition bits, key code
-  button-cxform.ts       DefineButtonCxform (23): CXFORM (no alpha) for v1 buttons
-  button-sounds.ts       DefineButtonSound (17): four transition sounds + SOUNDINFO
-  button-model.ts        ButtonModel, state resolution, hit-area geometry
-  conditions.ts          condition bit table + transition/event table + key codes
+packages/swf/src/tags/buttons.ts       BUTTONRECORD, DefineButton/2, CONDACTION, cxform, sounds
+packages/swf/src/model/buttons.ts      shared transition table, tracking filter, state ordering,
+                                       matrix singularity and transformed bounds helpers
+packages/swf/src/model/movie.ts        dictionary assembly, cross-tag linking, nested hit-area bounds
+packages/swf/test/buttons.test.ts      T-MOD-801–816 decoder/model fixtures
+packages/avm1/src/frontend/analyze.ts  one AVM1 analysis block per button action range (doc 050)
+packages/avm1/test/movie.test.ts       T-MOD-817: one analyzed block per CONDACTION range
 ```
 
-**IMPL-100-R001** The transition/event table (§4) MUST live in `conditions.ts` as data
-(`TRANSITIONS: {bit, transition, event, tracking}[]`), consumed by both the runtime's state machine and
-the renderer's state atlas selection. A second hard-coded copy is how "the button plays its down state
-but fires the roll-over action" bugs happen.
+**IMPL-100-R001** The transition/event table (§4) MUST exist as one shared data table
+(`BUTTON_TRANSITIONS: {condition, transition, event, tracking}[]`), consumed by the model helpers and,
+when implemented, the runtime's state machine and renderer's state atlas selection. The current table
+lives in `packages/swf/src/model/buttons.ts`; no second runtime copy is permitted.
 
 **IMPL-100-R002** v1 and v2 records MUST share one `button-record.ts` reader with an explicit version
 parameter. The differences are *structural*, not cosmetic: v2 adds `CXFORMWITHALPHA` to **every**
@@ -215,29 +219,34 @@ export interface ButtonModel {
   readonly id: number;
   readonly version: 1 | 2;
   readonly trackAsMenu: boolean;                        // v2 only; false in v1
-  readonly records: readonly ButtonRecord[];            // in file order, with state sets
+  readonly records: readonly ButtonRecord[];            // authored order; state names are arrays
   readonly characterCxform: Cxform | null;              // v1 only: DefineButtonCxform (no alpha)
   readonly actions: readonly ButtonActionRecord[];      // v1: one record; v2: the CONDACTION chain
   readonly sounds: readonly ButtonSoundRecord[];        // from DefineButtonSound, if any
+  readonly hitArea: Rect | null;                        // transformed axis-aligned bounds, not a hit-test shape
+  readonly hitAreaSource: 'hitTest' | 'up' | null;      // explicit HitTest records win; up-state fallback otherwise
+  readonly keyPressRequiresFocus: false;                // Chapter 12 condition handlers are focus-independent
   readonly origin: TagRef;
 }
 
 export interface ButtonRecord {
-  readonly states: ReadonlySet<ButtonState>;            // up/over/down/hitTest
+  readonly states: readonly ButtonState[];              // up/over/down/hitTest; low flag bits
   readonly depth: number;
   readonly characterId: number;
   readonly matrix: Mat2D;                               // relative to the button character
-  readonly cxform: CxformWithAlpha | null;              // v2 records only
-  readonly blendMode: BlendMode | null;                 // v2 + flag
+  readonly cxform: Cxform | null;                       // v2 records only
+  readonly blendMode: number | null;                    // raw v2 UI8 when flagged
   readonly filters: readonly FilterSpec[] | null;       // v2 + flag
+  readonly rawFlags: number;
   readonly tagOffset: number;
 }
 
 export interface ButtonActionRecord {
-  readonly conditions: ButtonConditions;                // 9 bits + key code
-  readonly rawConditionWord: number;                    // first byte, preserved
-  readonly keyCode: number | null;                      // 1..126; null when 0
-  readonly actionBytes: ByteRange;                      // handed to doc 050
+  readonly conditions: ButtonConditions;                // nine transition bits + 7-bit CondKeyPress
+  readonly rawConditionWord: number;                    // both condition bytes, preserved
+  readonly keyCode: number | null;                      // retained even when undocumented; null when 0
+  readonly actionBytes: ActionBlockRef;                  // exact ACTIONRECORD byte range, handed to doc 050
+  readonly tagOffset: number;
   readonly origin: TagRef;
 }
 
@@ -252,16 +261,24 @@ export interface ButtonConditions {
 export interface ButtonSoundRecord {
   readonly transition: 'overUpToIdle' | 'idleToOverUp' | 'overUpToOverDown' | 'overDownToOverUp';
   readonly soundId: number;
-  readonly info: SoundInfo;                             // doc 090's SOUNDINFO decoder
+  readonly info: ButtonSoundInfo | null;
+}
+
+export interface ButtonSoundInfo {
+  readonly rawFlags: number; readonly reserved: number;
+  readonly syncStop: boolean; readonly syncNoMultiple: boolean;
+  readonly inPoint: number | null; readonly outPoint: number | null;
+  readonly loopCount: number | null;
+  readonly envelope: readonly { readonly position44: number; readonly leftLevel: number; readonly rightLevel: number }[];
 }
 ```
 
-- **IMPL-100-R020** `statesFor(state)` returns the records whose state set includes `state`, ordered by
-  `depth` (lowest first), with equal depths broken by file order (doc 030's rule). The renderer's
-  button atlas and the runtime's draw order MUST call this one function.
-- **IMPL-100-R021** `ButtonSoundRecord.info` MUST reuse `IMPL-090`'s `SOUNDINFO` decoder (start/length,
-  loops, envelope) so envelope units and loop semantics cannot drift between `StartSound` and button
-  sounds (AUD-§6.1).
+- **IMPL-100-R020** `buttonRecordsForState(records, state)` returns the records whose state list includes `state`, ordered by `depth` (lowest first), with equal depths broken by file order (doc 030's rule). This helper is implemented; the renderer's button atlas and runtime draw order MUST call this same function when those stages are implemented.
+- **IMPL-100-R021** `ButtonSoundRecord.info` MUST follow the `SOUNDINFO` field order and raw units in
+  IMPL-090 §5 (start/out sample positions, loops, `Pos44` envelope points). At the time this decoder
+  was added, no shared production `StartSound` decoder existed; `tags/buttons.ts` therefore records
+  these fields directly. When doc 090 adds its decoder, both paths MUST converge on one shared helper
+  before runtime sample/loop conversion (AUD-§6.1).
 - **IMPL-100-R022** `actions` MUST carry raw byte ranges, not decoded IR: doc 050 owns action decoding,
   and a button action block is just another action block to it (with `this` bound to the button's
   parent clip, AVM1-R063).
@@ -320,17 +337,17 @@ shared with doc 030.
 | `T-MOD-801` | hit-area union from `up` geometry, scaled and semi-transparent children | F1 |
 | `T-MOD-802` | explicit `hitTest` records override; multi-state records render in both states | F1 |
 | `T-MOD-803` | every condition bit fires exactly one handler on its mapped transition | F1 |
-| `T-MOD-804` | `keyPress`: codes 1–19 and ASCII 32–126, composite Shift behaviour, fires without focus | F1 |
+| `T-MOD-804` | `keyPress`: documented special keys + ASCII 32–126 retained; focus-independent data contract (modifier routing is runtime work) | F1 |
 | `T-MOD-805` | `DefineButton` v1: records, `CharacterEndFlag`, action array, `ActionEndFlag` | F1 |
 | `T-MOD-806` | button sounds: all four transitions, truncated record, non-sound id | F1 |
-| `T-MOD-807` | nested buttons resolve innermost-first; outer button does not fire | F2 |
-| `T-MOD-808` | `trackAsMenu`: drag-out returns to `up` and fires the menu-only bits | F2 |
+| `T-MOD-807` | nested-button transformed bounds resolve through child records without flattening; handler bubbling is runtime work | F2 |
+| `T-MOD-808` | `TrackAsMenu` selects menu-only versus push-only transition data; pointer-sequence execution is runtime work | F2 |
 | `T-MOD-809` | singular matrix does not crash hit testing | F1 |
 | `T-MOD-810` | `BUTTONCONDACTION` bit layout incl. the ninth bit after the key code and `CondActionSize` chaining | F1 |
 | `T-MOD-811` | `DefineButton2` `ActionOffset` base (field start), zero-offset buttons, AS3-flag violation | F1 |
 | `T-MOD-812` | `DefineButtonCxform` RGB transform applies to v1 button characters and is absent for v2 | F1 |
 | `T-MOD-813` | blend mode/filter list in v2 records match `PlaceObject3` decoding for the same payload | F1 |
-| `T-MOD-814` | push vs menu full transition sequences (press → drag out → drag in → release) | F2 |
+| `T-MOD-814` | push/menu transition-table membership and order; full press/drag/release simulation is runtime work | F2 |
 | `T-MOD-815` | button sound transition order (0 roll-out, 1 roll-over, 2 press, 3 release) | F1 |
 | `T-MOD-816` | empty-state record and empty-condition action produce the documented info codes only | F2 |
 | `T-MOD-817` | handler grouping: one symbol per CONDACTION, key code preserved | F1 |
@@ -365,14 +382,16 @@ The v1.0 open items (condition-bit assignments, v1/v2 flag layouts, v1 trailing 
 placement, hit-area rule, menu semantics) are **settled** — see §3/§4 and APP-§10.10. Item 1 remains
 open *by specification silence*, not by missing chapter text.
 
-## 11. Done criteria
+## 11. Done criteria and current status
 
-1. Both button versions decode; the condition table has a fixture per bit and per tracking mode.
-2. Hit-area computation matches the reference player on the interaction corpus (pointer at known
-   coordinates → expected state and handler).
-3. Nested buttons, `trackAsMenu`, and `keyPress`-without-focus pass the interaction suite.
-4. `ButtonRuntimeSpec` is stable and diffable; `verify` checks every handler symbol resolves and every
-   sound id exists.
+1. **P2 model criterion — met:** both button versions decode; each of the nine condition bits and
+   push/menu transition data has a labeled fixture (`T-MOD-801`–`817`).
+2. **Runtime criterion — open:** exact hit-area computation against the reference player is not
+   established; the current model exposes axis-aligned transformed bounds only.
+3. **Runtime/input criterion — open:** nested-event propagation, pointer sequences, composite-key
+   dispatch, and focus integration require doc 130's runtime and interaction suite.
+4. **Emitter/harness criterion — open:** no emitted `ButtonRuntimeSpec` or `verify` command exists;
+   doc 120/140 owns generated symbols, resource validation, and serialization checks.
 
 ## 12. Changelog
 

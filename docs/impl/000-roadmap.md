@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.12 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.13 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -41,13 +41,13 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
 | --- | --- | --- | --- | --- |
 | **P0** | Foundations | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven | T-SWF-001…004, T-SWF-009 |
 | **P1** | Container & dictionary | Ch.2 | `inspect --tags --symbols` prints dictionary, sprites, exports, ordering violations | T-SWF-002, 003, 007, 008, 010–012 |
-| **P2** | Model & timeline | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints every frame's placements/actions/labels as stable, diffable JSON; sprites resolved — buttons (doc 100) remain open | T-MOD-* (new, this doc §6) |
-| **P3** | Media decode | Ch.6–10 | `swfforge assets dump` writes PNG/WAV/WOFF2 previews of every character | T-SWF-005, 006 + T-GFX/AST decode suites |
+| **P2** | Model & timeline | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints stable, diffable model JSON; ordered placements, sprites, control tags, button records/conditions, and tag dispositions have tests | T-MOD-001–040/601–604/801–817 + `tools/tag_coverage.py` |
+| **P3** | Media decode and build assets | Ch.6–10 + Ch.11 decode/build subset | `forge-decompile assets dump <file.swf> --out <dir>` emits deterministic shape/bitmap PNG debug previews, supported-font WOFF2, PCM/ADPCM WAV previews, MP3 pass-through, and explicit diagnosed fallbacks | T-SWF-005/006 + P3-owned T-MOD/T-AST/T-AUD decode and asset-dump gates |
 | **P4** | Static render (no VM) | — | A no-script SWF renders its main timeline in the browser, frame-accurate | T-GFX-001…005, 020, 021 |
 | **P5** | AVM1 front end | Ch.5 | `swfforge analyze --tiers` reports T0/T1/T2 per function; coercion suite passes | T-AVM1-008, 009, 012, 025 |
 | **P6** | Emitter | — | `swfforge build` emits a project that compiles with zero suppressions | T-CMP-001…005, T-AVM1-026 |
 | **P7** | First playable | — | A real open-corpus game boots and plays its first 60 frames | C1 gate (TST-§9.1) |
-| **P8** | Audio | Ch.11 | Music + SFX play, stream sound stays in sync for 10 minutes | T-AUD-001…010, 020…027 |
+| **P8** | Audio runtime | Ch.11 playback/sync | Music + SFX play, Web Audio scheduling and stream sound stay in sync for 10 minutes | T-AUD-001…010, 020…027 (runtime gates only; decode/build tests are P3) |
 | **P9** | Fidelity hardening | all | Filters, blends, masks, dynamic text, hit testing, device fonts | T-GFX-010…041, T-AST-* |
 | **P10** | Video & long tail | Ch.14 | Video plays; controls/metadata/system tags resolved | T-AST-021, T-RT-* |
 | **P11** | Release engineering | App. A–C | Fuzzing, budgets, three-engine CI, docs, example titles | TST-§9.2, SEC-§9 |
@@ -65,14 +65,14 @@ per-area documents. This table is the map between them:
 | P0 | [010](foundation/010-binary-io-and-records.md) | 140 (writer) |
 | P1 | [020](foundation/020-container-tag-stream-dictionary.md) | 140 |
 | P2 | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | 140 |
-| P3 | [060](decompiler/060-shapes-and-gradients.md), [070](decompiler/070-images-and-morphs.md), [080](decompiler/080-fonts-and-text.md), [090](decompiler/090-sounds.md), [110](decompiler/110-video.md) | 140 |
+| P3 | [060](decompiler/060-shapes-and-gradients.md), [070](decompiler/070-images-and-morphs.md), [080](decompiler/080-fonts-and-text.md), [090](decompiler/090-sounds.md) (decode/build subset only) | 140 |
 | P4 | [130](engine-flash/130-runtime-and-renderer.md) §5 (renderer half) | 060 (Vector IR), 080 (atlases) |
 | P5 | [050](transpiler/050-actions-and-avm1.md) | 130 §6 (object model) |
 | P6 | [120](transpiler/120-compiler-and-emitter.md) | 130 §6 |
 | P7 | [130](engine-flash/130-runtime-and-renderer.md) | 120 |
-| P8 | 090 + [130](engine-flash/130-runtime-and-renderer.md) §7 | AUD design spec |
-| P9 | 030, 060, 080, 100 (fidelity paths) | 130, 140 |
-| P10 | 110 | 040 |
+| P8 | 090 (runtime/playback subset) + [130](engine-flash/130-runtime-and-renderer.md) §7 | AUD design spec |
+| P9 | 030, 060, 080, 100 (fidelity/runtime text paths) | 130, 140 |
+| P10 | [110](decompiler/110-video.md) | 040, P3 media models, P4 renderer |
 | P11 | [140](harness/140-conformance-harness.md) | 120, 130 |
 | P12 | [150](code-inspector/150-code-inspector.md) | 120 (maps, reports), 020/050 (model, disassembly) |
 | P13 | [160](engine-clean/160-engine-clean.md) | 050 (IR, tiers), 120 (emitter contract), 130 (renderer/audio bridges) |
@@ -87,7 +87,7 @@ what can start when.
 | --- | --- |
 | Byte readers first (P0) | Every other subsystem's bugs look like "weird data" if the readers are wrong. Cheap to over-test. |
 | Container before anything semantic (P1) | Enables `inspect`, which becomes the debugging tool for every later phase. Also unlocks fuzz testing early. |
-| Dictionary/model before media (P2) | Media work needs somewhere to put results; the model is also what `verify` re-parses. |
+| Dictionary/model before media (P2) | Media work needs somewhere to put results; the model dump provides the stable inspection and comparison surface. |
 | Media decode before renderer (P3) | You cannot debug a renderer against data you cannot see. PNG/WAV dumps are the fastest feedback loop in the project. |
 | Static render before the VM (P4) | Isolates renderer bugs from VM bugs. A no-script SWF has a deterministic expected output, which makes the golden harness possible. |
 | AVM1 front end before emitter (P5) | The emitter's hardest decisions (tiering, host-API binding) are made in the front end. Emitting before the analysis is right produces throwaway code. |
@@ -105,7 +105,7 @@ what is open, and a package is only "done" for the phase gate when its gate test
 | --- | --- | --- | --- |
 | P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `io.test.ts`, `framing.test.ts` (bit-width limits, soft/strict bounds, matrix rotation, primitive records) |
 | P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, lazy tag index/payload, length handling, missing `End`, duplicate ids); ordering and LZMA adapter WPs remain open |
-| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,control}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `place-filters.test.ts`, `control.test.ts` (sprites/padding, placeholders, scenes/remap, ordered labels, removal ids, PlaceObject3/filter metadata, `--strict-timeline`); buttons (doc 100) remain open |
+| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,clip-actions,control,buttons}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `placement-corpus.test.ts`, `place-filters.test.ts`, `clip-actions.test.ts`, `control.test.ts`, `buttons.test.ts`, `imports.test.ts` (ordered display ops, exhaustive PO2/PO3 flags, sprites/End, labels/anchors, scenes, imports, button records/conditions/sounds, metadata, binary assets); `tools/tag_coverage.py` and `apps/decompiler/test/dump.test.ts` cover tag disposition and deterministic dump round-trip |
 | `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (duplicate definitions, strict length handling, exit codes, `--json`) |
 | `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` and audit synthetic probes (field order, sorted maps, file-order labels, op fields, `--out` bytes) |
 | P3 media decode | `packages/swf/src/tags/shape.ts` (shape/gradient decoding only) | [060](decompiler/060-shapes-and-gradients.md) | `shape-runs.test.ts`, `shape-regressions.test.ts`; image/font/sound export pipeline and the P3 asset demo remain incomplete |
@@ -160,9 +160,9 @@ P0 readers ──► P1 container ──► P2 model/timeline ──┬──►
                         P4 renderer (needs shapes/bitmaps/text) ◄─────────────┤
                         P6 emitter   (needs P2 + P5 + assets)   ◄─────────────┤
                         P7 first playable (needs P4 + P6)       ◄─────────────┘
-                        P8 audio engine (needs P3 sounds + AUD encode)
+                        P8 audio runtime (needs P3 sound assets + AUD runtime contract)
                         P9 fidelity (needs P4 + P7 + golden harness)
-                        P10 video (needs P3 decode + P4)
+                        P10 video (video decode/build owned here; needs P3 infrastructure + P4 renderer)
                         P11 release (needs everything)
 ```
 
@@ -222,14 +222,16 @@ ensures every measurement lands in the table it belongs to.
 | Buttons decoded into records + conditions | unit tests |
 | Tag coverage report: every AVM1-era tag dispositioned | `tools/tag-coverage` output |
 
-### P3 — Media decode
+### P3 — Media decode and build assets
 
 | Criterion | Evidence |
 | --- | --- |
-| `swfforge assets dump` writes PNG for every shape/bitmap, WAV for every sound, TTF for every font | manual + golden hashes |
-| Shape decoder handles all edge sizes, both fill rules, all style-change cases | T-SWF-005, T-SWF-006 |
-| ADPCM decode bit-exact vs reference vectors | T-AUD-002 |
-| Bitmap decode matches an independent decoder for JPEG/PNG/lossless | T-AST-001…004 |
+| `forge-decompile assets dump <file.swf> --out <dir>` emits deterministic shape/bitmap debug PNGs, supported-font WOFF2, PCM/ADPCM WAV previews, MP3 pass-through, and explicit diagnosed fallbacks | CLI golden: manifest schema, hashes, and two-run byte comparison |
+| Production model exposes decoded `VectorShape`; edge widths, fill rules, and style-change records are covered | T-SWF-005/006; P3-owned T-MOD-101…123 |
+| P3-owned image/morph tags, font/text records, and sound metadata decode into typed models | T-MOD-301…313/401…408/501…506/511…518; T-AUD-103…115 decode/build cases |
+| SWF ADPCM output matches independent reference vectors at every bit width; JPEG/PNG/lossless output matches an independent decoder | T-AUD-002; T-AST-001…004 |
+| WOFF2 and supported build-time atlas outputs are reproducible; CFF and intentionally unsupported codecs are explicit fallbacks | T-AST-023; font/audio fallback fixtures |
+| Runtime text/input, audio playback/sync, full-timeline rendering, and video are not P3 criteria | P7–P9/P8/P4/P10 gates respectively |
 
 ### P4 — Static render
 
@@ -265,14 +267,18 @@ ensures every measurement lands in the table it belongs to.
 | No placeholder assets rendered in the first 60 frames | instrumentation assertion |
 | Denied-URL count matches the build report | runtime vs build cross-check |
 
-### P8 — Audio
+### P8 — Audio runtime
 
 | Criterion | Evidence |
 | --- | --- |
-| Decode/encode determinism | T-AUD-010, build-twice byte compare |
+| Runtime selection/scheduling and playback are deterministic over the prepared P3 assets | T-AUD-010 and runtime playback suite |
 | Stream sync drift ≤ 12 ms over 10 min with jumps | T-AUD-027 |
 | No clicks across start/stop/steal/loop/re-anchor | T-AUD-025 |
-| Mixer budgets met | TST-§7.2 `perf-audio` |
+| Web Audio/worklet mixer budgets met | TST-§7.2 `perf-audio` |
+
+P3 owns sound tag/model decoding, ADPCM/PCM conversion, MP3 framing/pass-through, codec-appropriate
+preview artifacts, and deterministic build metadata. P8 owns playback, voice management, mixer/DSP,
+real-time scheduling, and stream-sync behavior; P3 does not close those runtime gates.
 
 ### P9 — Fidelity hardening
 
@@ -308,7 +314,7 @@ implementation + unit tests:
 | P0 | readers, records, diagnostics skeleton | 12–18 | Highest leverage per line of code in the project |
 | P1 | container, compression, tag index, dictionary | 15–22 | LZMA is optional; zlib is 2 d |
 | P2 | model, timeline, place/remove, sprites, buttons, control tags | 25–35 | Wide but shallow |
-| P3 | shapes, gradients, bitmaps, fonts, morphs, sounds, video decode | 45–70 | Video decode is the outlier (Ch.14 is a codec manual) |
+| P3 | shapes/gradients, bitmaps/morphs, font/text decode + WOFF2/atlas build, and sound decode/build assets | 146–173 | 146 d summed from P3-owned WPs: 060 (38), 070 (40 incl. asset-dump integration), 080 (36), 090 (32); upper 27 d is phase integration/conformance overhead. Video is P10; runtime audio is P8. This is gross phase scope, not remaining effort. |
 | P4 | renderer core: tessellation, batching, text, atlases | 60–90 | The largest single subsystem |
 | P5 | AVM1 decode, IR, tiers, host binding | 45–65 | Front end only; runtime semantics are P7 |
 | P6 | emitter, resources, manifest, CLI, reports, verify | 30–45 | |
@@ -317,12 +323,13 @@ implementation + unit tests:
 | P9 | filters, blends, masks, dynamic text, hit testing | 35–55 | Tolerance-driven; expect iteration |
 | P10 | video, system/long-tail API | 15–25 | |
 | P11 | fuzz, security, budgets, docs, examples | 20–30 | |
-| **Total** | | **≈ 387–580** | One engineer: 18–28 months. Three: 8–12 months. |
+| **Total** | | **≈ 488–683** | One engineer: 23–33 months. Three: 10–15 months. |
 
 The work-package tables in the per-area documents (indexed in §10) total **≈ 646.5 developer-days**
-for implementation plus unit tests. The phase ranges above are deliberately wider, because they
-include integration, conformance, and release-engineering overhead that is not attributed to any
-single package.
+for implementation plus unit tests. P3's corrected phase estimate is derived from the P3-owned WP
+slices (148 d gross) after removing P4/P8/P9/P10 work; it is not a claim about remaining effort.
+Phase ranges also include integration, conformance, and release-engineering overhead that is not
+attributed to any single package.
 
 These numbers assume the harness (doc 140) is built as part of P0–P2 rather than retrofitted; retrofitting
 a corpus + oracle harness costs roughly the same as building it, but only after you have already paid
@@ -390,11 +397,11 @@ Generated from the per-area documents. Regenerate with `tools/impl-status --inde
 | [010](foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 |
 | [020](foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 |
 | [030](decompiler/030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 |
-| [040](decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 14 | 24 |
+| [040](decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 15 | 26 |
 | [050](transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 |
 | [060](decompiler/060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 |
-| [070](decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 14 | 47 |
-| [080](decompiler/080-fonts-and-text.md) | Fonts and Text | 13 | 41 |
+| [070](decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 15 | 53 |
+| [080](decompiler/080-fonts-and-text.md) | Fonts and Text | 14 | 45 |
 | [090](decompiler/090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 |
 | [100](decompiler/100-buttons.md) | Buttons and Hit Testing | 10 | 26 |
 | [110](decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 |
@@ -403,9 +410,9 @@ Generated from the per-area documents. Regenerate with `tools/impl-status --inde
 | [140](harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 |
 | [150](code-inspector/150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 |
 | [160](engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 |
-| **Total** | | **208** | **≈ 646.5** |
+| **Total** | | **211** | **≈ 658.5** |
 
-These 208 work packages are the buildable units. The roadmap's phase table adds integration, conformance, and release-engineering work on top; the total remains inside the class estimate in §7. Test ids referenced by these packages (`T-*`) are counted in `docs/impl/registers/STATUS.md` once `tools/impl-status` lands (WP-140-08).
+These 211 work packages are the buildable units. The roadmap's phase table adds integration, conformance, and release-engineering work on top; the total remains inside the class estimate in §7. Test ids and per-document work totals are summarized in `docs/impl/registers/STATUS.md`, regenerated with `python3 tools/gen_status.py`.
 
 **Ordering rule:** a package may start when every `Depends` id is *reviewed*, not necessarily complete; the roadmap's phases (§2) already encode the cross-document ordering.
 <!-- WP-INDEX:END -->
@@ -443,3 +450,4 @@ art):
 | 1.10 | 2026-10-04 | `dump` implemented (`WP-040-14`): §2.2 gains its row; the P0–P2 gate note records what is closed locally and what still needs the corpus harness and the AVM2 signals |
 | 1.11 | 2026-10-05 | P1 resolution pass: the P1 exit-criteria row for ordering-rule diagnostics cited a nonexistent `SF0120`-range; corrected to `SF0024`–`SF0026`, `SF0032` (020 §9 — `SF0120` belongs to doc 100) |
 | 1.12 | 2026-10-05 | P2 integrity resolutions (R-P2-15): the P2 demo/exit rows now cite the `forge-decompile dump` verb instead of the never-built `inspect --timeline`/`verify`; §2.2 records the `control.test.ts` evidence and that buttons (doc 100) remain open until their resolution lands |
+| 1.13 | 2026-10-05 | P2 repeat audit: mark the model/data-level button criterion resolved with `buttons.test.ts` + AVM1 action-block integration evidence; add the exhaustive placement corpus, clip-action/import model suites, and tag-coverage tool to the §2.2 evidence row; retain runtime pointer/hit-test work as a P4/P7 boundary, not as a P2 decoder gap |

@@ -33,7 +33,10 @@ policy, and the pixel model.
    row layout, morph style interleaving).
 
 **Non-goals:** choosing how many KTX2 variants to ship (AST-§4 decision), the renderer's atlas packing
-(doc 130), and applying JPEG deblocking (R022).
+(doc 130), and applying JPEG deblocking (R022). P3 owns decode models, the CPU preview path, and the
+`assets dump` integration (WP-070-15); P6 owns production re-encoding, `.sfa`, and budget integration
+(WP-070-06…09); P4 owns browser/GPU rendering. Video is P10 (`IMPL-110`), not part of this document's
+P3 closure.
 
 ## 2. Module layout
 
@@ -412,23 +415,24 @@ so a 300-morph movie produces a readable report rather than 300 identical lines.
 
 ## 9. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-070-01 | `BitmapAsset` model + `DefineBitsJPEG2/3/4` bodies | WP-010-11, WP-020-05 | 4 | `define-bits-jpeg*.ts`, T-MOD-303 |
-| WP-070-02 | `DefineBits` + `JPEGTables` splice, single-table rule, prefix tolerance | WP-070-01 | 3 | `jpeg-tables.ts`, T-MOD-301/312 |
-| WP-070-03 | PNG/GIF passthrough detection (magic bytes, SWF 8 gate) | WP-070-01 | 1 | T-MOD-305 |
-| WP-070-04 | `DefineBitsLossless`(+2): header, padding, palette, channel order | WP-070-01 | 4 | `lossless-layout.ts`, T-MOD-302/309/311/313 |
-| WP-070-05 | Alpha plane inflate + canonical straight-alpha model (un-premultiply) | WP-070-04 | 3 | `pixel-model.ts`, T-MOD-304/310 |
-| WP-070-06 | Classification heuristics + manifest recording | WP-070-05 | 3 | `assets/src/images/classify.ts`, T-MOD-306 |
-| WP-070-07 | Re-encode ladder + mip generation + residual check | WP-070-06 | 5 | `reencode.ts`, `mips.ts`, T-MOD-307 |
-| WP-070-08 | `.sfa` writer/reader + round-trip test | WP-070-07 | 3 | T-MOD-308 |
-| WP-070-09 | Texture budget accounting into `budgets.json` | WP-070-07 | 2 | AST-§4 integration |
-| WP-070-10 | Morph tag decode: headers, bounds, both edge streams, `Offset` check | WP-060-09 | 5 | `morph-def.ts`, `morph-edges.ts`, T-MOD-401/404 |
-| WP-070-11 | Morph styles: `MORPHFILLSTYLE`, `MORPHGRADIENT`, `MORPHLINESTYLE2` | WP-070-10, WP-060-04 | 4 | `morph-styles.ts`, T-MOD-405/406 |
-| WP-070-12 | Morph IR: pairing, straight↔curved rounding, ratio-bake decision | WP-070-11 | 3 | `morph-ir.ts`, T-MOD-402/403/407/408 |
-| WP-070-13 | Image corpus harness (decode parity vs a reference decoder) | WP-070-07 | 4 | CI corpus, parity report |
-| WP-070-14 | Morph corpus + endpoint/blend goldens | WP-070-12, WP-140-03 | 3 | morph goldens, T-MOD-401 |
-| | **Total** | | **47** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-070-01 | `BitmapAsset` model + `DefineBitsJPEG2/3/4` bodies | WP-010-11, WP-020-05 | 4 | `define-bits-jpeg*.ts`, T-MOD-303 | P3 |
+| WP-070-02 | `DefineBits` + `JPEGTables` splice, single-table rule, prefix tolerance | WP-070-01 | 3 | `jpeg-tables.ts`, T-MOD-301/312 | P3 |
+| WP-070-03 | PNG/GIF passthrough detection (magic bytes, SWF 8 gate) | WP-070-01 | 1 | T-MOD-305 | P3 |
+| WP-070-04 | `DefineBitsLossless`(+2): header, padding, palette, channel order | WP-070-01 | 4 | `lossless-layout.ts`, T-MOD-302/309/311/313 | P3 |
+| WP-070-05 | Alpha plane inflate + canonical straight-alpha model (un-premultiply) | WP-070-04 | 3 | `pixel-model.ts`, T-MOD-304/310 | P3 |
+| WP-070-06 | Classification heuristics + manifest recording | WP-070-05 | 3 | `assets/src/images/classify.ts`, T-MOD-306 | P6 |
+| WP-070-07 | Re-encode ladder + mip generation + residual check | WP-070-06 | 5 | `reencode.ts`, `mips.ts`, T-MOD-307 | P6 |
+| WP-070-08 | `.sfa` writer/reader + round-trip test | WP-070-07 | 3 | T-MOD-308 | P6 |
+| WP-070-09 | Texture budget accounting into `budgets.json` | WP-070-07 | 2 | AST-§4 integration | P6 |
+| WP-070-10 | Morph tag decode: headers, bounds, both edge streams, `Offset` check | WP-060-09 | 5 | `morph-def.ts`, `morph-edges.ts`, T-MOD-401/404 | P3 |
+| WP-070-11 | Morph styles: `MORPHFILLSTYLE`, `MORPHGRADIENT`, `MORPHLINESTYLE2` | WP-070-10, WP-060-04 | 4 | `morph-styles.ts`, T-MOD-405/406 | P3 |
+| WP-070-12 | Morph IR: pairing, straight↔curved rounding, ratio-bake decision | WP-070-11 | 3 | `morph-ir.ts`, T-MOD-402/403/407/408 | P3 |
+| WP-070-13 | Image corpus harness (decode parity vs a reference decoder) | WP-070-07 | 4 | CI corpus, parity report | P3 |
+| WP-070-14 | Morph corpus + endpoint/blend goldens | WP-070-12, WP-140-03 | 3 | morph goldens, T-MOD-401 | P3 |
+| WP-070-15 | `assets dump` CLI integration, local PNG previews, sorted manifest + repeat-run golden | WP-060-11, WP-070-05/13/14, WP-080-14, WP-090-11 | 6 | `forge-decompile assets dump`, CLI golden, stable hashes | P3 |
+| | **Total** | | **53** | | |
 
 ## 10. Open items
 

@@ -94,6 +94,11 @@ export interface VectorShape {
     readonly fills: readonly (FillStyle | null)[];
     readonly lines: readonly (LineStyle | null)[];
   };
+  /** Record-boundary trace used by the morph conformance checker; omitted by hand-built IR. */
+  readonly recordTrace?: {
+    readonly moveToEdgeIndices: readonly number[];
+    readonly styleChangeEdgeIndices: readonly number[];
+  };
   readonly paths: readonly FillPath[];
   readonly edges: readonly Edge[];
   readonly strokes: readonly StrokePath[];
@@ -151,6 +156,42 @@ function readFillStyle(c: Cursor, version: ShapeVersion): FillStyle | null {
       );
       return null;
   }
+}
+
+export interface LineStyle2Header {
+  readonly caps: { readonly start: number; readonly end: number };
+  readonly join: number;
+  readonly hasFill: boolean;
+  readonly noHScale: boolean;
+  readonly noVScale: boolean;
+  readonly pixelHinting: boolean;
+  readonly noClose: boolean;
+  readonly miterLimit?: number;
+}
+
+/** Shared LINESTYLE2/MORPHLINESTYLE2 flag and miter parser, in chapter field order. */
+export function readLineStyle2Header(c: Cursor): LineStyle2Header {
+  const startCap = c.ub(2);
+  const join = c.ub(2);
+  const hasFill = c.ub(1) === 1;
+  const noHScale = c.ub(1) === 1;
+  const noVScale = c.ub(1) === 1;
+  const pixelHinting = c.ub(1) === 1;
+  c.ub(5); // reserved bits
+  const noClose = c.ub(1) === 1;
+  const endCap = c.ub(2);
+  // MiterLimitFactor is an unsigned UI16 8.8 value.
+  const miterLimit = join === 2 ? c.u16() / 256 : undefined;
+  return {
+    caps: { start: startCap, end: endCap },
+    join,
+    hasFill,
+    noHScale,
+    noVScale,
+    pixelHinting,
+    noClose,
+    ...(miterLimit !== undefined ? { miterLimit } : {}),
+  };
 }
 
 function readGradient(c: Cursor, version: ShapeVersion, focal: boolean): Gradient {
@@ -257,28 +298,19 @@ function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null
     if (version < 4) {
       lines.push({ width, color: withAlpha ? readRgba(c) : readRgb(c) });
     } else {
-      const startCap = c.ub(2);
-      const join = c.ub(2);
-      const hasFill = c.ub(1) === 1;
-      const noHScale = c.ub(1) === 1;
-      const noVScale = c.ub(1) === 1;
-      const pixelHinting = c.ub(1) === 1;
-      c.ub(5); // reserved
-      const noClose = c.ub(1) === 1;
-      const endCap = c.ub(2);
-      const fill = hasFill ? readFillStyle(c, version) : undefined;
-      const color = hasFill ? { r: 0, g: 0, b: 0, a: 255 } : readRgba(c);
-      const miterLimit = join === 2 ? c.fixed8() : undefined;
+      const header = readLineStyle2Header(c);
+      const fill = header.hasFill ? readFillStyle(c, version) : undefined;
+      const color = header.hasFill ? { r: 0, g: 0, b: 0, a: 255 } : readRgba(c);
       lines.push({
         width,
         color,
-        caps: { start: startCap, end: endCap },
-        join,
-        ...(miterLimit !== undefined ? { miterLimit } : {}),
-        noHScale,
-        noVScale,
-        pixelHinting,
-        noClose,
+        caps: header.caps,
+        join: header.join,
+        ...(header.miterLimit !== undefined ? { miterLimit: header.miterLimit } : {}),
+        noHScale: header.noHScale,
+        noVScale: header.noVScale,
+        pixelHinting: header.pixelHinting,
+        noClose: header.noClose,
         ...(fill ? { fill } : {}),
       });
     }
@@ -303,13 +335,23 @@ export function readShapeWithStyle(
   id: number,
   version: ShapeVersion,
   declaredBounds: Rect,
-  opts: { recomputeBounds?: boolean } = {},
+  opts: {
+    recomputeBounds?: boolean;
+    /** Morph endpoint streams share the already-decoded, paired style tables. */
+    initialStyles?: {
+      readonly fills: readonly (FillStyle | null)[];
+      readonly lines: readonly (LineStyle | null)[];
+    };
+  } = {},
 ): VectorShape {
-  const fills = readFillStyleArray(c, version);
-  const lines = readLineStyleArray(c, version);
+  const fills = opts.initialStyles ? [...opts.initialStyles.fills] : readFillStyleArray(c, version);
+  const lines = opts.initialStyles ? [...opts.initialStyles.lines] : readLineStyleArray(c, version);
 
   let numFillBits = c.ub(4);
   let numLineBits = c.ub(4);
+  // StateNewStyles restarts local indices; keep stable global style tables in the IR.
+  let fillStyleBase = 0;
+  let lineStyleBase = 0;
   if (numFillBits > 16 || numLineBits > 16) {
     c.emit(
       Codes.SHAPE_INDEX_WIDTH_INVALID,
@@ -323,6 +365,8 @@ export function readShapeWithStyle(
   const edges: Edge[] = [];
   const paths: FillPath[] = [];
   const strokes: StrokePath[] = [];
+  const moveToEdgeIndices: number[] = [];
+  const styleChangeEdgeIndices: number[] = [];
   const pen: Pen = { x: 0, y: 0 };
 
   /** One style run: the edges drawn under one style id, from the point it started at. */
@@ -403,6 +447,8 @@ export function readShapeWithStyle(
         reportEmptyMoveTo();
         break; // End record
       }
+      if (moveTo) moveToEdgeIndices.push(edges.length);
+      if (newStyles || lineStyleBit || fillStyle1Bit || fillStyle0Bit) styleChangeEdgeIndices.push(edges.length);
       if (moveTo) {
         const moveBits = c.ub(5);
         reportEmptyMoveTo();
@@ -413,7 +459,8 @@ export function readShapeWithStyle(
         for (const run of [fill0Run, fill1Run, lineRun]) run.start = { x: pen.x, y: pen.y };
       }
       if (fillStyle0Bit) {
-        const next = c.ub(numFillBits);
+        const local = c.ub(numFillBits);
+        const next = local === 0 ? 0 : fillStyleBase + local;
         if (next !== fill0Run.styleId) {
           flushFill(fill0Run);
           fill0Run.styleId = next;
@@ -421,7 +468,8 @@ export function readShapeWithStyle(
         }
       }
       if (fillStyle1Bit) {
-        const next = c.ub(numFillBits);
+        const local = c.ub(numFillBits);
+        const next = local === 0 ? 0 : fillStyleBase + local;
         if (next !== fill1Run.styleId) {
           flushFill(fill1Run);
           fill1Run.styleId = next;
@@ -429,7 +477,8 @@ export function readShapeWithStyle(
         }
       }
       if (lineStyleBit) {
-        const next = c.ub(numLineBits);
+        const local = c.ub(numLineBits);
+        const next = local === 0 ? 0 : lineStyleBase + local;
         if (next !== lineRun.styleId) {
           flushStroke(lineRun);
           lineRun.styleId = next;
@@ -444,12 +493,14 @@ export function readShapeWithStyle(
           c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'StateNewStyles used by DefineShape4 (chapter-reserved)');
         }
         flushAll();
+        // StateNewStyles aligns its style arrays to the next byte and restarts local indexes.
+        c.align();
         const moreFills = readFillStyleArray(c, version);
         const moreLines = readLineStyleArray(c, version);
-        fills.length = 0;
-        fills.push(...moreFills);
-        lines.length = 0;
-        lines.push(...moreLines);
+        fillStyleBase = fills.length - 1;
+        lineStyleBase = lines.length - 1;
+        fills.push(...moreFills.slice(1));
+        lines.push(...moreLines.slice(1));
         numFillBits = c.ub(4);
         numLineBits = c.ub(4);
         if (numFillBits > 16 || numLineBits > 16) {
@@ -571,6 +622,7 @@ export function readShapeWithStyle(
     nonScalingStrokes: false,
     scalingStrokes: false,
     styles: { fills, lines },
+    recordTrace: { moveToEdgeIndices, styleChangeEdgeIndices },
     paths,
     edges,
     strokes,

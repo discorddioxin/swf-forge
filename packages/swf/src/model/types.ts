@@ -8,9 +8,16 @@
  */
 
 import type { TagRef } from '../container/tag-stream.js';
-import type { Rect } from '../io/types.js';
+import type { Cxform, Mat2D, Rect } from '../io/types.js';
 import type { FileAttributesInfo, PasswordState } from '../tags/control.js';
 import type { ActionBlockRef, PlacementOp, RemovalOp } from '../tags/place.js';
+import type { FilterSpec } from '../tags/filters.js';
+import type { VectorShape } from '../tags/shape.js';
+import type { BitmapAssetModel } from '../tags/images.js';
+import type { DefineFontModel } from '../tags/fonts.js';
+import type { MorphShapeModel } from '../tags/morph.js';
+import type { EditTextModel, StaticTextModel } from '../tags/text.js';
+import type { DefineSoundModel, SoundStreamHeadModel, TimelineSoundEvent } from '../tags/sounds.js';
 
 /** `FIXED8_8` as a branded alias, per `CMP` §3 — the raw 8.8 value, not a float. */
 export type Fixed8_8 = number;
@@ -38,12 +45,28 @@ export interface FrameModel {
   /** First `SoundStreamBlock` (19) inside this frame, as a byte range. */
   readonly soundStreamBlock: { readonly offset: number; readonly length: number } | null;
   readonly videoFrames: readonly TagRef[];
+  /** `StartSound` and `StartSound2` scheduling records authored in this frame. */
+  readonly soundEvents: readonly TimelineSoundEvent[];
 }
 
 /** One `SoundStreamHead*` (18/45) with the `SoundStreamBlock`s (19) that follow it. */
+export interface StreamSoundBlockRecord {
+  readonly tag: TagRef;
+  /** Zero-based frame index containing this block, including empty/silent blocks. */
+  readonly frameIndex: number;
+  readonly sampleOffset: number;
+  readonly sampleCount: number;
+  readonly seekSamples: number | null;
+  readonly dataOffset: number;
+  readonly dataLength: number;
+}
+
 export interface StreamSoundSpan {
   readonly headTag: TagRef;
+  readonly head: SoundStreamHeadModel;
   readonly blockTags: readonly TagRef[];
+  readonly blocks: readonly StreamSoundBlockRecord[];
+  readonly sampleCount: number;
 }
 
 export interface StreamSoundModel {
@@ -81,12 +104,91 @@ export interface SpriteModel {
   readonly streamSoundSpans: readonly StreamSoundSpan[];
 }
 
+export type ButtonState = 'up' | 'over' | 'down' | 'hitTest';
+
+export interface ButtonConditions {
+  readonly idleToOverUp: boolean;
+  readonly overUpToIdle: boolean;
+  readonly overUpToOverDown: boolean;
+  readonly overDownToOverUp: boolean;
+  readonly outDownToOverDown: boolean;
+  readonly overDownToOutDown: boolean;
+  readonly outDownToIdle: boolean;
+  readonly idleToOverDown: boolean;
+  readonly overDownToIdle: boolean;
+}
+
+export interface ButtonRecord {
+  readonly states: readonly ButtonState[];
+  readonly depth: number;
+  readonly characterId: number;
+  readonly matrix: Mat2D;
+  readonly cxform: Cxform | null;
+  readonly blendMode: number | null;
+  readonly filters: readonly FilterSpec[] | null;
+  readonly rawFlags: number;
+  readonly tagOffset: number;
+}
+
+export interface ButtonActionRecord {
+  readonly conditions: ButtonConditions;
+  readonly rawConditionWord: number;
+  readonly keyCode: number | null;
+  readonly actionBytes: ActionBlockRef;
+  readonly tagOffset: number;
+  readonly origin: TagRef;
+}
+
+export interface ButtonSoundInfo {
+  readonly rawFlags: number;
+  readonly reserved: number;
+  readonly syncStop: boolean;
+  readonly syncNoMultiple: boolean;
+  readonly inPoint: number | null;
+  readonly outPoint: number | null;
+  readonly loopCount: number | null;
+  readonly envelope: readonly {
+    readonly position44: number;
+    readonly leftLevel: number;
+    readonly rightLevel: number;
+  }[];
+}
+
+export interface ButtonSoundRecord {
+  readonly transition: 'overUpToIdle' | 'idleToOverUp' | 'overUpToOverDown' | 'overDownToOverUp';
+  readonly soundId: number;
+  readonly info: ButtonSoundInfo | null;
+}
+
+export interface ButtonModel {
+  readonly id: number;
+  readonly version: 1 | 2;
+  readonly trackAsMenu: boolean;
+  readonly records: readonly ButtonRecord[];
+  readonly characterCxform: Cxform | null;
+  readonly actions: readonly ButtonActionRecord[];
+  readonly sounds: readonly ButtonSoundRecord[];
+  /** Resolved hit-area bounds in the button's local coordinate space. */
+  readonly hitArea: Rect | null;
+  /** Explicit hitTest geometry wins; otherwise up-state geometry is used. */
+  readonly hitAreaSource: 'hitTest' | 'up' | null;
+  /** Ch.12 keyPress conditions fire without input focus. */
+  readonly keyPressRequiresFocus: false;
+  readonly origin: TagRef;
+}
+
+export interface CharacterAlias {
+  readonly sourceMovieId: string;
+  readonly sourceId: number;
+}
+
 export type CharacterKind =
   | 'shape'
   | 'shape4'
   | 'morphShape'
   | 'sprite'
   | 'button'
+  | 'imported'
   | 'text'
   | 'editText'
   | 'font'
@@ -109,6 +211,25 @@ export interface CharacterModel {
   readonly tagName: string;
   readonly index: TagRef | null;
   readonly sprite: SpriteModel | null;
+  readonly button: ButtonModel | null;
+  /** Decoded shape-local bounds; morph bounds are retained even before morph IR is assembled. */
+  readonly bounds: Rect | null;
+  /** Production vector IR for static DefineShape(1–4) tags; media rasterisation stays lazy. */
+  readonly vectorShape: VectorShape | null;
+  /** Paired start/end vector geometry for morph characters; Ratio remains placement-owned. */
+  readonly morph: MorphShapeModel | null;
+  /** Decoded bitmap tag header and zero-copy compressed payload; pixel decoding stays in `packages/assets`. */
+  readonly bitmap: BitmapAssetModel | null;
+  /** DefineFont2/3 outlines, code mappings and authored metrics; rasterisation stays in `packages/assets`. */
+  readonly font: DefineFontModel | null;
+  /** Authored static glyph runs; advances/matrices stay authoritative and no layout is recomputed. */
+  readonly text: StaticTextModel | null;
+  /** Editable text flags/fields are preserved for later runtime-owned layout. */
+  readonly editText: EditTextModel | null;
+  /** Decoded DefineSound header and zero-copy payload view; codec decoding remains lazy. */
+  readonly sound: DefineSoundModel | null;
+  /** Imported characters alias another movie's dictionary entry without copying its payload. */
+  readonly alias: CharacterAlias | null;
   /**
    * The `binary` asset of a `DefineBinaryData` character — the payload as bytes, never a string
    * (`IMPL-040-R038`, SEC-R003). `null` for every other kind (and for `missing` placeholders).
@@ -139,8 +260,11 @@ export interface ImportEntry {
   readonly name: string;
   /** Character id the alias maps to locally. */
   readonly localId: number;
-  /** False until a resolver matches the URL against another movie. */
+  /** True only when the supplied input set resolves this alias to a source character. */
   readonly applied: boolean;
+  /** Stable content id and dictionary id of the terminal source, null when unresolved. */
+  readonly sourceMovieId: string | null;
+  readonly sourceId: number | null;
 }
 
 export interface MovieControlModel {

@@ -34,7 +34,9 @@ model, and the traps.
 9. Font subsetting and the glyph atlas path (AST-§4/§8).
 
 **Non-goals:** CFF outline extraction (AST-§4's decision; `DefineFont4` degrades to a system-font
-fallback and says so), the runtime layout engine (doc 130 / `packages/text`), and AVM2 text.
+fallback and says so), the runtime layout engine (doc 130 / `packages/text`), and AVM2 text. Phase
+ownership: P3 includes tag/model decode, deterministic WOFF2, and build-time atlas output; P4/P9 own
+renderer fidelity and dynamic text behavior; P6 owns AVM1-dependent glyph reachability/subsetting.
 
 ## 2. Module layout
 
@@ -360,45 +362,46 @@ report lines.
 
 ## 11. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-501` | `DefineFont2` vs `DefineFont3` same-font geometry equality after normalisation (`unitsPerEm` 1024 vs 20480) | F1 |
-| `T-MOD-502` | code maps: ANSI/Shift-JIS/Unicode layouts; wide vs narrow codes; `DefineFontInfo2` language | F1 |
-| `T-MOD-503` | `FontLeading` negative values; ascent/descent unsigned; metrics carried unscaled | F1 |
-| `T-MOD-504` | static text: multi-run fixture (style inheritance), per-run matrix/colour, `TextHeight` scaling | F1 |
-| `T-MOD-505` | static text placement matches a hand-computed table (X/Y offsets as absolutes) | F1 |
-| `T-MOD-506` | `DefineFont`/`2` offset-table base, `nGlyphs` inference, `CodeTableOffset` base | F1 |
-| `T-MOD-507` | HTML subset parser: nesting, unknown tags, entities, quoted/unquoted attributes | F1 |
-| `T-MOD-508` | password/`MaxLength` enforcement in the runtime input path | F2 |
-| `T-MOD-509` | atlas: coverage preserved; 1-px stem; deterministic packing | F1 |
-| `T-MOD-510` | subsetting reachability (static runs, field strings, IR literals); UTF-8 font names | F2 |
-| `T-MOD-511` | `DefineFont4` → `SF0270`, fallback selected, manifest note present | F1 |
-| `T-MOD-512` | `TextBox`/`TEXTRECORD` terminator: zero byte ends the list; `TextRecordType` always 1 | F1 |
-| `T-MOD-513` | `TEXTRECORD` field order with both offsets set (XOffset read before YOffset) — `E-017` | F1 |
-| `T-MOD-514` | `DefineEditText`: all 16 flags; `FontHeight` under `HasFontClass`; `VariableName` verbatim | F1 |
-| `T-MOD-515` | align zones (`NumZoneData = 2`, masks) + CSM cutoffs from the chapter's formulas | F2 |
-| `T-MOD-516` | `CodeTable` unsorted → sorted copy for lookup, raw order kept, `SF0276` | F1 |
-| `T-MOD-517` | device-only font (`NumGlyphs = 0`) with and without `CodeTableOffset` | F1 |
-| `T-MOD-518` | indirect font name resolution recorded as indirect (never as a literal family) | F2 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-501` | `DefineFont2` vs `DefineFont3` same-font geometry equality after normalisation (`unitsPerEm` 1024 vs 20480) | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-502` | code maps: ANSI/Shift-JIS/Unicode layouts; wide vs narrow codes; `DefineFontInfo2` language | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-503` | `FontLeading` negative values; ascent/descent unsigned; metrics carried unscaled | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-504` | static text: multi-run fixture (style inheritance), per-run matrix/colour, `TextHeight` scaling | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-505` | static text placement matches a hand-computed table (X/Y offsets as absolutes) | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-506` | `DefineFont`/`2` offset-table base, `nGlyphs` inference, `CodeTableOffset` base | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-507` | HTML subset parser: nesting, unknown tags, entities, quoted/unquoted attributes | F1 | P9 runtime |
+| `T-MOD-508` | password/`MaxLength` enforcement in the runtime input path | F2 | P9 runtime |
+| `T-MOD-509` | atlas: coverage preserved; 1-px stem; deterministic packing | F1 | P3 build determinism; P4/P9 visual fidelity |
+| `T-MOD-510` | subsetting reachability (static runs, field strings, IR literals); UTF-8 font names | F2 | P6 for AVM1-dependent reachability; P3 decode/code maps |
+| `T-MOD-511` | `DefineFont4` → `SF0270`, fallback selected, manifest note present | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-512` | `TextBox`/`TEXTRECORD` terminator: zero byte ends the list; `TextRecordType` always 1 | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-513` | `TEXTRECORD` field order with both offsets set (XOffset read before YOffset) — `E-017` | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-514` | `DefineEditText`: all 16 flags; `FontHeight` under `HasFontClass`; `VariableName` verbatim | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-515` | align zones (`NumZoneData = 2`, masks) + CSM cutoffs from the chapter's formulas | F2  P3 decode/model | P3 decode/model |
+| `T-MOD-516` | `CodeTable` unsorted → sorted copy for lookup, raw order kept, `SF0276` | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-517` | device-only font (`NumGlyphs = 0`) with and without `CodeTableOffset` | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-518` | indirect font name resolution recorded as indirect (never as a literal family) | F2  P3 decode/model | P3 decode/model |
 
 ## 12. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-080-01 | EM-square model + `DefineFont` v1 (offsets, glyphs, inference) | WP-060-09 | 3 | `em.ts`, `define-font.ts`, T-MOD-506 |
-| WP-080-02 | `DefineFont2`/`DefineFont3` (codes, layout, kerning, flags) | WP-080-01 | 5 | `define-font2.ts`, T-MOD-501/502/503 |
-| WP-080-03 | `DefineFontInfo`/`2` (flags, code maps, language, names) | WP-080-02, WP-010-11 | 3 | `define-font-info.ts`, T-MOD-502/510 |
-| WP-080-04 | `DefineFont4` detection + fallback path | WP-080-02 | 1 | T-MOD-511 |
-| WP-080-05 | `DefineFontName` + licensing capture | WP-080-02 | 1 | `font-name.ts` |
-| WP-080-06 | Metrics model + derivation for v1 fonts | WP-080-02 | 2 | `font-model.ts`, T-MOD-503 |
-| WP-080-07 | `DefineText`/`2` record stream → TextIR | WP-080-06 | 4 | `text-def.ts`, `text-model.ts`, T-MOD-504/505/512/513 |
-| WP-080-08 | `DefineEditText` → TextFieldModel (16 flags, all fields, HTML hand-off) | WP-080-03 | 3 | `edit-text.ts`, T-MOD-514 |
-| WP-080-09 | Align zones + CSM settings (decode, resolve, report) | WP-080-02 | 2 | `align-zones.ts`, `csm-settings.ts`, T-MOD-515 |
-| WP-080-10 | Glyph atlas pipeline (raster, pack, KTX2/`.sfa`) | WP-080-02, WP-070-07 | 5 | `text/src/atlas.ts`, T-MOD-509 |
-| WP-080-11 | Subsetter (static + dynamic reachability) | WP-080-10, WP-050-08 | 3 | `subset.ts`, T-MOD-510 |
-| WP-080-12 | AVM1 layout/measure/HTML parser (runtime) | WP-080-08 | 6 | `text/src/layout.ts`, `measure.ts`, `html.ts`, T-MOD-507/508 |
-| WP-080-13 | Font corpus + IR goldens (v1/v2/v3, device fonts, exotic names) | WP-080-07 | 3 | CI corpus, `inspect --fonts` |
-| | **Total** | | **41** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-080-01 | EM-square model + `DefineFont` v1 (offsets, glyphs, inference) | WP-060-09 | 3 | `em.ts`, `define-font.ts`, T-MOD-506 | P3 |
+| WP-080-02 | `DefineFont2`/`DefineFont3` (codes, layout, kerning, flags) | WP-080-01 | 5 | `define-font2.ts`, T-MOD-501/502/503 | P3 |
+| WP-080-03 | `DefineFontInfo`/`2` (flags, code maps, language, names) | WP-080-02, WP-010-11 | 3 | `define-font-info.ts`, T-MOD-502/510 | P3 |
+| WP-080-04 | `DefineFont4` detection + fallback path | WP-080-02 | 1 | T-MOD-511 | P3 |
+| WP-080-05 | `DefineFontName` + licensing capture | WP-080-02 | 1 | `font-name.ts` | P3 |
+| WP-080-06 | Metrics model + derivation for v1 fonts | WP-080-02 | 2 | `font-model.ts`, T-MOD-503 | P3 |
+| WP-080-07 | `DefineText`/`2` record stream → TextIR | WP-080-06 | 4 | `text-def.ts`, `text-model.ts`, T-MOD-504/505/512/513 | P3 |
+| WP-080-08 | `DefineEditText` → TextFieldModel (16 flags, all fields, HTML hand-off) | WP-080-03 | 3 | `edit-text.ts`, T-MOD-514 | P3 |
+| WP-080-09 | Align zones + CSM settings (decode, resolve, report) | WP-080-02 | 2 | `align-zones.ts`, `csm-settings.ts`, T-MOD-515 | P3 |
+| WP-080-10 | Glyph atlas pipeline (raster, pack, KTX2/`.sfa`) | WP-080-02, WP-070-07 | 5 | `text/src/atlas.ts`, T-MOD-509 | P3 |
+| WP-080-11 | Subsetter (static + dynamic reachability) | WP-080-10, WP-050-08 | 3 | `subset.ts`, T-MOD-510 | P6 |
+| WP-080-12 | AVM1 layout/measure/HTML parser (runtime) | WP-080-08 | 6 | `text/src/layout.ts`, `measure.ts`, `html.ts`, T-MOD-507/508 | P9 |
+| WP-080-13 | Font corpus + IR goldens (v1/v2/v3, device fonts, exotic names) | WP-080-07 | 3 | CI corpus, `inspect --fonts` | P3 |
+| WP-080-14 | Deterministic WOFF2 emitter (stable names, normalized metrics, no timestamps) | WP-080-01/02/06 | 4 | WOFF2 artifact + T-AST-023 | P3 |
+| | **Total** | | **45** | | |
 
 ## 13. Open items
 

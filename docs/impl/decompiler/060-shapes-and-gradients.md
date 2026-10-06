@@ -295,8 +295,10 @@ SHAPE:                                  SHAPEWITHSTYLE:
   `DefineShape2` and `DefineShape3` only"; tolerated in Shape4 with `SF0191`, reported in v1 with
   `SF0184`), the record **first** carries its own `FillStyle0`/`FillStyle1`/`LineStyle` values if those
   state bits are also set, **then** the new `FillStyles`/`LineStyles` arrays and the new
-  `NumFillBits`/`NumLineBits`. The new arrays replace the current ones from that record onward
-  (style indices are *re*-based); pinned by `T-MOD-114`.
+  `NumFillBits`/`NumLineBits`. The new arrays become active from that record onward; the stable VectorShape IR
+  retains earlier entries for already-flushed runs and appends the new entries. Non-zero local indices
+  are rebased by the previous style count, while zero remains the no-style sentinel; pinned by
+  `T-MOD-114` and `T-SWF-006`.
 - **IMPL-060-R025** **All initial style indices are 0** (no fill, no stroke) — the chapter states this
   explicitly. A shape whose first edge arrives before any `StyleChange` therefore draws nothing;
   emitting it anyway (e.g. with a default black fill) is a defect.
@@ -454,26 +456,30 @@ opt-in dedupe pass (WP-060-13) may rewrite indices only when the whole shape is 
 | `T-MOD-121` | focal gradient: `FIXED8` decode (`0xFF00`/`0x0000`/`0x0100`), Shape4-only rule (`SF0195`), clamp at the sampler | F1 |
 | `T-MOD-122` | spread ×3 (pad/reflect/repeat) and interpolation ×2 reach the renderer config and the manifest | F2 |
 | `T-MOD-123` | Appendix A shape walk, asserted at bit level: `FillStyleCount` 0 / `LineStyleCount` 1 (20-twip black line), `NumFillBits` 0 / `NumLineBits` 1, style-change flags `0 1 0 0 1` with `MoveBits` 14 and Δ(4900, 1680), the four 13-bit straight edges, the `End` record, and the six padding bits with **no** byte alignment between records (`T-TST-102`) | F1 |
+| `T-MOD-124` | Production `buildMovieModel` exposes VectorShape + decoded bounds for DefineShape/2/3/4 without a raw-tag reparse | F1 |
+| `T-MOD-125` | `inspect --shapes` reports the model's stable static-shape summary and geometry digest only when requested | F1 |
+| `T-MOD-126` | Shape4 reserved flags preserve the raw byte and emit one `SF0188` per file; pre-SWF-8 use reports `SF0183` | F1 |
+| `T-MOD-127` | `SF0190` fires at the style-array ceiling only for byte-identical fill/line duplicates; distinct styles remain quiet | F1 |
 
 ## 10. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-060-01 | `DefineShape*` headers + bounds + version dispatch | WP-010-09, WP-020-05 | 2 | `define-shape.ts`, T-MOD-118 |
-| WP-060-02 | Style arrays incl. extended counts + 1-based model | WP-060-01 | 3 | `style-arrays.ts`, T-MOD-113 |
-| WP-060-03 | Fill styles (8 kinds) + bitmap fills + matrices | WP-060-02, WP-070-01 | 3 | `fill-style.ts`, T-MOD-104 |
-| WP-060-04 | Gradient structures (Ch.7): flags byte, records, limits, matrix | WP-060-03 | 4 | `gradient.ts`, T-MOD-105/119/120/121 |
-| WP-060-05 | `LINESTYLE`/`LINESTYLE2`: bits, caps, joins, miter model | WP-060-02 | 3 | `line-style.ts`, T-MOD-112/116 |
-| WP-060-06 | Shape record state machine (4 kinds, bit widths) | WP-060-02 | 5 | `shaperecord.ts`, T-MOD-101/102/115 |
-| WP-060-07 | Edge maths: absolute pen, quadratics, quadrant tables | WP-060-06 | 3 | `edge-math.ts` |
-| WP-060-08 | Path building: fill0/fill1 chaining, rewinds, `NoClose` | WP-060-07 | 5 | `path-build.ts`, T-MOD-103/109 |
-| WP-060-09 | Vector IR + quantisation + simplification | WP-060-08 | 4 | `vector-ir.ts`, `simplify.ts`, T-MOD-107/108 |
-| WP-060-10 | Bounds cross-check + reporting | WP-060-09 | 1 | `bounds.ts`, T-MOD-110 |
-| WP-060-11 | Shape corpus harness + IR goldens + import lint | WP-060-09 | 3 | CI corpus, `inspect --shapes` |
-| WP-060-12 | Fill-rule plumbing: `UsesFillWindingRule` → IR → tessellator | WP-060-09, WP-130-04 | 2 | `winding.ts`, T-MOD-111 |
-| WP-060-13 | Style-array ceiling + opt-in dedupe pass (`SF0190`) | WP-060-02 | 2 | dedupe pass + report |
-| WP-060-14 | Spread/interpolation/focal plumbing (IR → manifest → sampler) | WP-060-04, WP-130-04 | 2 | `GradientSpec` handoff, T-MOD-122 |
-| | **Total** | | **42** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-060-01 | `DefineShape*` headers + bounds + version dispatch | WP-010-09, WP-020-05 | 2 | `define-shape.ts`, T-MOD-118/126 | P3 |
+| WP-060-02 | Style arrays incl. extended counts + 1-based model | WP-060-01 | 3 | `style-arrays.ts`, T-MOD-113 | P3 |
+| WP-060-03 | Fill styles (8 kinds) + bitmap fills + matrices | WP-060-02, WP-070-01 | 3 | `fill-style.ts`, T-MOD-104 | P3 |
+| WP-060-04 | Gradient structures (Ch.7): flags byte, records, limits, matrix | WP-060-03 | 4 | `gradient.ts`, T-MOD-105/119/120/121 | P3 |
+| WP-060-05 | `LINESTYLE`/`LINESTYLE2`: bits, caps, joins, miter model | WP-060-02 | 3 | `line-style.ts`, T-MOD-112/116 | P3 |
+| WP-060-06 | Shape record state machine (4 kinds, bit widths) | WP-060-02 | 5 | `shaperecord.ts`, T-MOD-101/102/115 | P3 |
+| WP-060-07 | Edge maths: absolute pen, quadratics, quadrant tables | WP-060-06 | 3 | `edge-math.ts` | P3 |
+| WP-060-08 | Path building: fill0/fill1 chaining, rewinds, `NoClose` | WP-060-07 | 5 | `path-build.ts`, T-MOD-103/109 | P3 |
+| WP-060-09 | Vector IR + quantisation + simplification | WP-060-08 | 4 | `vector-ir.ts`, `simplify.ts`, T-MOD-107/108 | P3 |
+| WP-060-10 | Bounds cross-check + reporting | WP-060-09 | 1 | `bounds.ts`, T-MOD-110 | P3 |
+| WP-060-11 | Shape corpus harness + IR goldens + import lint | WP-060-09 | 3 | CI corpus, `inspect --shapes` | P3 |
+| WP-060-12 | Fill-rule plumbing: `UsesFillWindingRule` → IR → tessellator | WP-060-09, WP-130-04 | 2 | `winding.ts`, T-MOD-111 | P4 |
+| WP-060-13 | Style-array ceiling + opt-in dedupe pass (`SF0190`) | WP-060-02 | 2 | dedupe pass + report, T-MOD-127 | P3 |
+| WP-060-14 | Spread/interpolation/focal plumbing (IR → manifest → sampler) | WP-060-04, WP-130-04 | 2 | `GradientSpec` handoff, T-MOD-122 | P4 |
+| | **Total** | | **42** | | |
 
 ## 11. Open items
 
@@ -528,5 +534,6 @@ practical guard, not a file field.
 | 1.0 | initial | Scoped from Ch.6/Ch.7 structure; record layouts and fill/winding rules marked pending |
 | 1.1 | 2026-10-04 | Ch.6-grounded: tag/version table with per-tag colour types; `FILLSTYLEARRAY`/`LINESTYLEARRAY` extended counts (Shape2+ only) and the 1-based/reserved-index-0 model; all eight `FillStyleType` values with the four bitmap modes; `BitmapMatrix` maps bitmap→shape space (corrects v1.0's "unit gradient space" wording); `LINESTYLE2` exact field order, caps/joins (0/1/2), miter = `MiterLimitFactor × Width`, `NoClose`; `SHAPE` vs `SHAPEWITHSTYLE`; the four `SHAPERECORD` kinds with `NumBits+2` for **all** curved deltas (reclassifies the `NumBits−2` family belief as an extension, not spec); `StyleChange`/`StateNewStyles` ordering; all initial indices 0; `FillStyle0` left / `FillStyle1` right and explicit closure; `DefineShape4` `EdgeBounds` (strokes excluded) + winding/non-scaling flags → IR; `NumEdges` removed as a non-field; `StateChange` `MoveBits`/`SB[MoveBits]` (not `NumBits+2`) and `NoClose` = caps-instead-of-join corrected from the chapter text; `SF0190` dedupe ceiling and `SF0191` reserved-feature use; tests `T-MOD-111`–`118`; WPs 01–13 = 39 d |
 | 1.2 | 2026-10-04 | Ch.7-grounded: §4.3 rewritten with the `GRADIENT`/`FOCALGRADIENT`/`GRADRECORD` structures, the shared spread/interpolation/count byte (read identically in all versions, legacy constraints validated), the 8-vs-15 control-point ceilings, ratio semantics and the chapter's matrix example, `FIXED8` focal point, ordering/duplicate policy, spread ↔ `pad\|reflect\|repeat` and interpolation ↔ `rgb\|linearRgb` plumbing; diagnostics `SF0192`–`SF0195`; tests `T-MOD-119`–`122`; WP-060-04 raised to 4 d and WP-060-14 added (42 d total) |
-| 1.3 | 2026-10-04 | Appendix pass: `T-MOD-123` asserts the Appendix A shape walk end-to-end (style arrays, the `StateLineStyle | StateMoveTo` record, four straight edges, end record, padding) |
-| 1.4 | 2026-10-04 | Tech-spec pass: duplicate rule ids repaired — the `LINESTYLE`/`LINESTYLE2` block and the `SHAPE` block reused `R016`–`R022`, which the gradient block already owned; they are now `R046`–`R052` (no citations existed outside the file) |
+| 1.3 | 2026-10-04 | Appendix and tech-spec pass: `T-MOD-123` pins the Appendix A shape bit walk; duplicate rule ids in the line-style/shape sections are renumbered to `R046`–`R052` (no outside citations existed) |
+| 1.4 | 2026-10-05 | Production `StateNewStyles` now byte-aligns before style arrays and rebases non-zero local fill/line indices into stable IR tables; adds straight/curved bit-width vectors, bitmap-style rebasing, production preview and inspect coverage (`T-MOD-124/125`) |
+| 1.5 | 2026-10-05 | Repeat conformance pass: add executable `T-MOD-116/118/123/126/127` fixtures, extend `T-MOD-113` to Shape2/3/4, and correct the shape-regression citations to match the test registry |

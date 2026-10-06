@@ -307,7 +307,7 @@ function readKnownFilter(c: Cursor, id: number): FilterSpec | null {
 }
 
 /** Reads the count and all filters, retaining the unknown filter's undecodable raw tail. */
-export function readFilterList(c: Cursor): FilterListResult {
+export function readFilterList(c: Cursor, owner = 'PlaceObject3'): FilterListResult {
   const count = c.u8();
   const filters: FilterSpec[] = [];
   for (let i = 0; i < count; i += 1) {
@@ -319,7 +319,7 @@ export function readFilterList(c: Cursor): FilterListResult {
       c.emit(
         Codes.FILTER_ID_UNKNOWN,
         'warning',
-        `unknown PlaceObject3 filter id ${filterId}; ${raw.length} raw byte(s) retained to tag end`,
+        `unknown ${owner} filter id ${filterId}; ${raw.length} raw byte(s) retained to tag end`,
         start,
       );
       filters.push({ kind: 'unknown', filterId, raw });

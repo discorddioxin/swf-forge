@@ -520,10 +520,20 @@ def check_coverage(rows):
 # reported separately from DiagnosticSink emissions.
 DEFERRED_DIAGNOSTIC_WPS = {
     "SF0111": "WP-030-01",
-    "SF0115": "WP-030-06",
-    "SF0118": "WP-030-06",
-    "SF0119": "WP-030-06",
-    "SF0125": "WP-030-06",
+    # P3 implementation gaps remain open in the repeat audit; these are tracked to their actual WPs,
+    # not accepted as complete or hidden in the dev-audit baseline.
+    "SF0262": "WP-070-12",
+    "SF0263": "WP-070-12",
+    "SF0272": "WP-080-07",
+    "SF0273": "WP-080-07",
+    "SF0277": "WP-080-09",
+    "SF0278": "WP-080-09",
+    "SF0279": "WP-080-12",
+    "SF0281": "WP-080-01",
+    "SF0283": "WP-080-03",
+    "SF0284": "WP-080-03",
+    # The P6 transcode ledger consumes these codes; P3 deliberately preserves source codecs.
+    "SF0329": "WP-090-12",
 }
 EXCEPTION_DIAGNOSTIC_WPS = {"SF0016": "WP-010-02"}
 
@@ -1016,11 +1026,16 @@ PROBE_ONLY_KEY_PREFIXES = (
     "dump.frame-keys", "dump.label-keys", "dump.op-shape", "dump.out-", "dump.synth:",
 )
 
+DUMP_FORMAT_VERSION = 4
 DUMP_KEYS = ["format", "formatVersion", "source", "model", "dictionary", "timeline",
              "initActions", "control", "diagnostics"]
 SOURCE_KEYS = ["bytes", "sha256", "compression", "version", "fileLength", "frameRate", "stage"]
-TIMELINE_KEYS = ["declaredFrameCount", "observedFrameCount", "frames", "labels", "streamSoundSpans"]
-FRAME_KEYS = ["index", "label", "ops", "actions", "soundStreamBlock", "videoFrames"]
+TIMELINE_KEYS = ["declaredFrameCount", "observedFrameCount", "frames", "labels", "streamSoundSpans", "implicitScene"]
+FRAME_KEYS = ["index", "label", "ops", "actions", "soundStreamBlock", "soundEvents", "videoFrames"]
+STREAM_SPAN_KEYS = ["head", "format", "sampleRate", "channels", "latencySeek", "sampleCount", "blocks"]
+STREAM_BLOCK_KEYS = ["tag", "sampleOffset", "sampleCount", "seekSamples", "dataOffset", "dataLength"]
+SOUND_EVENT_KEYS = ["tagOffset", "soundId", "className", "info"]
+SOUND_INFO_KEYS = ["reserved", "syncStop", "syncNoMultiple", "inPoint", "outPoint", "loopCount", "envelope"]
 FORBIDDEN_IN_JSON = [r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}", r"/(home|Users|tmp)/", r"\\\\",
                      r"[A-Za-z]:\\\\"]
 
@@ -1039,9 +1054,9 @@ def check_dump(probe_enabled, rows):
         else:
             const = re.search(rf"const\s+{fv.group(1)}\s*(?::[^=]+)?=\s*(\d+)", src)
             fv_value = int(const.group(1)) if const else None
-    if fv_value != 1:
+    if fv_value != DUMP_FORMAT_VERSION:
         report("dump", "dump.format-version", "error",
-               f"{rel(DUMP_SOURCE)} does not set formatVersion 1 (IMPL-040-R045); found {fv_value!r}")
+               f"{rel(DUMP_SOURCE)} does not set formatVersion {DUMP_FORMAT_VERSION} (IMPL-040-R045); found {fv_value!r}")
     if not probe_enabled:
         return {"status": "skipped", "reason": "--no-probe"}
     if not os.path.exists(DUMP_BIN) or not os.path.exists(FIXTURE):
@@ -1086,9 +1101,9 @@ def check_dump(probe_enabled, rows):
     if doc.get("format") != "swf-forge/model-dump":
         report("dump", "dump.format-value", "error",
                f"dump.format is {doc.get('format')!r}, expected 'swf-forge/model-dump'")
-    if doc.get("formatVersion") != 1:
+    if doc.get("formatVersion") != DUMP_FORMAT_VERSION:
         report("dump", "dump.version-value", "error",
-               f"dump.formatVersion is {doc.get('formatVersion')!r}, expected 1")
+               f"dump.formatVersion is {doc.get('formatVersion')!r}, expected {DUMP_FORMAT_VERSION}")
     if list(doc.keys()) != DUMP_KEYS:
         report("dump", "dump.top-level-order", "error",
                f"top-level keys {list(doc.keys())} do not match the documented order {DUMP_KEYS}")
@@ -1110,6 +1125,28 @@ def check_dump(probe_enabled, rows):
             report("dump", "dump.frame-keys", "error",
                    f"frame keys {list(frame.keys())} != {FRAME_KEYS}")
             break
+    for frame in tl.get("frames", []):
+        for event in frame.get("soundEvents", []):
+            if list(event.keys()) != SOUND_EVENT_KEYS:
+                report("dump", "dump.sound-event-keys", "error",
+                       f"sound event keys {list(event.keys())} != {SOUND_EVENT_KEYS}")
+                break
+            info = event.get("info", {})
+            if not isinstance(info, dict) or list(info.keys()) != SOUND_INFO_KEYS:
+                keys = list(info.keys()) if isinstance(info, dict) else type(info).__name__
+                report("dump", "dump.sound-info-keys", "error",
+                       f"sound info keys {keys} != {SOUND_INFO_KEYS}")
+                break
+    for span in tl.get("streamSoundSpans", []):
+        if list(span.keys()) != STREAM_SPAN_KEYS:
+            report("dump", "dump.stream-span-keys", "error",
+                   f"stream span keys {list(span.keys())} != {STREAM_SPAN_KEYS}")
+            break
+        for block in span.get("blocks", []):
+            if list(block.keys()) != STREAM_BLOCK_KEYS:
+                report("dump", "dump.stream-block-keys", "error",
+                       f"stream block keys {list(block.keys())} != {STREAM_BLOCK_KEYS}")
+                break
     for label in tl.get("labels", []):
         if set(label.keys()) != {"name", "frame", "namedAnchor"}:
             report("dump", "dump.label-keys", "error", f"label keys {list(label.keys())} unexpected")
@@ -1153,7 +1190,7 @@ PLACE_OP_KEYS = ["kind", "tag", "index", "depth", "move", "characterId", "name",
                  "tagOffset"]
 REMOVE_OP_KEYS = ["kind", "tag", "index", "depth", "characterId", "tagOffset"]
 TABINDEX_OP_KEYS = ["kind", "index", "depth", "tabIndex", "tagOffset"]
-DICTIONARY_KEYS = ["id", "tag", "tagCode", "tagOffset", "length", "sprite"]
+DICTIONARY_KEYS = ["id", "kind", "tag", "tagCode", "tagOffset", "length", "bounds", "vectorShape", "bitmap", "font", "text", "editText", "sound", "alias", "button", "sprite"]
 SPRITE_KEYS = ["characterName", "declaredFrameCount", "observedFrameCount", "tagCount", "timeline"]
 CONTROL_KEYS = ["background", "backgroundSource", "backgroundChanges", "scenes", "sceneFrameRemap",
                 "labels", "exports", "rootClassName", "imports", "scalingGrids", "tabIndexOps",

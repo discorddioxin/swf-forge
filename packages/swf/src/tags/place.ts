@@ -5,8 +5,8 @@
  * `PlaceObject2`/`3` read one or two flag bytes and then the fields in an order *different* from the
  * flag order. `Ratio` is UI16, not UI8. A matrix in a *move* tag replaces the previous transform.
  *
- * Filters and PlaceObject3 backing fields are decoded here; clip actions are preserved as a bounded
- * byte range (`ActionBlockRef`) for the AVM1 action stage.
+ * Filters and PlaceObject3 backing fields are decoded here; CLIPACTIONS framing is decoded in
+ * `clip-actions.ts`, with each opaque ACTIONRECORD block retained as an `ActionBlockRef` for doc 050.
  */
 
 import { Codes } from '../diagnostics/codes.js';
@@ -14,6 +14,7 @@ import type { Cursor } from '../io/cursor.js';
 import { readCxform, readCxformWithAlpha, readMatrix } from '../io/records.js';
 import type { Cxform, Mat2D, Rgba } from '../io/types.js';
 import { readFilterList, type FilterSpec } from './filters.js';
+import { decodeClipActions, type ClipActions } from './clip-actions.js';
 
 /** Byte range handed to the AVM1 front end (`IMPL-030-R029`). */
 export interface ActionBlockRef {
@@ -47,8 +48,8 @@ export interface PlacementOp {
   readonly rawCacheValue: number | null;
   readonly visible: boolean | null;
   readonly opaqueBackground: Rgba | null;
-  /** Byte range of the CLIPACTIONS block, for doc 050; null when absent. */
-  readonly clipActions: ActionBlockRef | null;
+  /** Decoded CLIPACTIONS envelope; per-record ACTIONRECORDs stay as byte ranges for doc 050. */
+  readonly clipActions: ClipActions | null;
   /** Offset of the tag body, for reports and source maps. */
   readonly tagOffset: number;
 }
@@ -178,10 +179,7 @@ export function decodePlaceObject2(c: Cursor, index: number, tagOffset: number):
     c.emit(Codes.PLACEMENT_NOOP, 'warning', 'PlaceObject* with neither Move nor HasCharacter is a no-op');
   }
 
-  const start = c.offset;
-  const clipActions: ActionBlockRef | null = hasClipActions
-    ? { offset: start, length: Math.max(0, c.limit - start) }
-    : null;
+  const clipActions = hasClipActions ? decodeClipActions(c) : null;
   return { ...base, depth, move, characterId, matrix, cxform, ratio, name, clipDepth, clipActions };
 }
 
@@ -298,10 +296,7 @@ export function decodePlaceObject3(c: Cursor, index: number, tagOffset: number):
   if (opaqueBackground || visible !== null) {
     c.emit(Codes.PLACEOBJECT3_BACKING, 'info', 'PlaceObject3 backing fields present (visible/opaque background)');
   }
-  const start = c.offset;
-  const clipActions: ActionBlockRef | null = hasClipActions
-    ? { offset: start, length: Math.max(0, c.limit - start) }
-    : null;
+  const clipActions = hasClipActions ? decodeClipActions(c) : null;
 
   return {
     ...placementBase(ctx, 'PlaceObject3'),

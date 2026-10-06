@@ -35,6 +35,9 @@ class TagTableParserTests(unittest.TestCase):
         self.assertIn("DefineShape4", definitions)
         self.assertIn("DefineSprite", definitions)
         self.assertNotIn("ShowFrame", definitions)
+        self.assertNotIn("DefineFontInfo2", definitions)
+        self.assertNotIn("DefineFontAlignZones", definitions)
+        self.assertNotIn("DefineFontName", definitions)
 
     def test_in_sprite_set(self):
         in_sprite = tc.parse_set(self.source, "IN_SPRITE")
@@ -85,6 +88,12 @@ class CompletenessTests(unittest.TestCase):
         for name, (disposition, evidence, _note) in tc.DISPOSITIONS.items():
             err = tc.check_evidence(evidence, disposition, name)
             self.assertIsNone(err, f"{name}: {err}")
+
+    def test_p3_decoder_progress_is_not_reported_as_pending(self):
+        for name in ("DefineMorphShape", "DefineMorphShape2", "JPEGTables", "StartSound", "StartSound2", "DefineFont4"):
+            self.assertEqual(tc.DISPOSITIONS[name][0], "decoded", f"{name} has a P3 decoder/fallback path")
+        for name in ("DefineFont", "DefineFontInfo", "DefineFontInfo2", "DefineFontName", "DefineFontAlignZones", "CSMTextSettings"):
+            self.assertTrue(tc.DISPOSITIONS[name][0].startswith("pending:"), f"{name} decoder is still open")
 
 
 if __name__ == "__main__":

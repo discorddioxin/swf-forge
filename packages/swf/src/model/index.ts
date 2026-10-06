@@ -4,6 +4,14 @@ export { buildMovieModel, fallbackId } from './movie.js';
 export type { AssembleTimelineOptions } from './timeline.js';
 export type { BuildMovieOptions } from './movie.js';
 export type {
+  ButtonActionRecord,
+  ButtonConditions,
+  ButtonModel,
+  ButtonRecord,
+  ButtonSoundInfo,
+  ButtonSoundRecord,
+  ButtonState,
+  CharacterAlias,
   CharacterKind,
   CharacterModel,
   DisplayOp,
@@ -17,6 +25,7 @@ export type {
   SetTabIndexOp,
   SpriteModel,
   StageModel,
+  StreamSoundBlockRecord,
   StreamSoundModel,
   StreamSoundSpan,
   TimelineModel,

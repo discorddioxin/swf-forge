@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import {
   Cursor,
   decodePlaceObject,
+  decodePlaceObject2,
   decodePlaceObject3,
   decodeRemoveObject,
   decodeRemoveObject2,
@@ -215,7 +216,8 @@ describe('PlaceObject3 full field order', () => {
     const writer = new ByteWriter();
     writer.u8(0x82).u8(0x7f).u16(4).text('external.Asset').u16(7);
     writer.bytes(allEightFilters()[1]!); // one Blur filter, then BlendMode/BitmapCache/Visible/BackgroundColor
-    writer.u8(4).u8(0).u8(0).bytes([1, 2, 3, 4]).bytes([0xaa, 0xbb]);
+    writer.u8(4).u8(0).u8(0).bytes([1, 2, 3, 4]);
+    writer.u16(0).u32(1).u32(2).u32(1).u8(0).u32(0);
     const bytes = writer.toUint8Array();
     const cursor = new Cursor(bytes);
     const placement = decodePlaceObject3(cursor, 2, 12);
@@ -233,9 +235,23 @@ describe('PlaceObject3 full field order', () => {
       rawCacheValue: 0,
       visible: false,
       opaqueBackground: { r: 1, g: 2, b: 3, a: 4 },
-      clipActions: { length: 2 },
+      clipActions: {
+        raw: { length: 19 },
+        allEvents: { load: true, raw: 1, width: 4 },
+        records: [{ sizeBytes: 1, events: { enterFrame: true, raw: 2, width: 4 }, keyCode: null }],
+        endFlag: 0,
+      },
     });
     expect(cursor.sink.codes()).toContain('SF0116');
+  });
+
+  it('T-MOD-010: HasVisible without HasOpaqueBackground consumes no RGBA tail (E-008)', () => {
+    const cursor = new Cursor(Uint8Array.from([0x00, 0x20, 1, 0, 1]));
+    const placement = decodePlaceObject3(cursor, 0, 0);
+    expect(placement.visible).toBe(true);
+    expect(placement.opaqueBackground).toBeNull();
+    expect(cursor.offset).toBe(cursor.limit);
+    expect(cursor.sink.codes()).not.toContain('SF0013');
   });
 
   it('T-MOD-009 distinguishes HasImage class records from character-id image records', () => {
@@ -249,6 +265,21 @@ describe('PlaceObject3 full field order', () => {
 });
 
 describe('placement depth/clip-depth conventions (SF0112/SF0113)', () => {
+  it('T-MOD-004: PlaceObject2 uses the same clip-depth boundaries as PlaceObject3', () => {
+    const cases = [
+      { clipDepth: 0, reportsEmpty: false },
+      { clipDepth: 1, reportsEmpty: true },
+      { clipDepth: 10, reportsEmpty: true },
+      { clipDepth: 11, reportsEmpty: false },
+    ];
+    for (const { clipDepth, reportsEmpty } of cases) {
+      const cursor = new Cursor(Uint8Array.from([0x42, 10, 0, 1, 0, clipDepth & 0xff, clipDepth >>> 8]));
+      decodePlaceObject2(cursor, 0, 0);
+      expect(cursor.sink.codes().includes('SF0113'), `ClipDepth=${clipDepth}`).toBe(reportsEmpty);
+      expect(cursor.offset).toBe(cursor.limit);
+    }
+  });
+
   it('T-MOD-004: PlaceObject3 reports depth ≥ 16384 (SF0112) like PlaceObject2 does', () => {
     // v2 flags 0, v3 flags 0, Depth = 16384 (0x4000 little-endian).
     const cursor = new Cursor(Uint8Array.from([0x00, 0x00, 0x00, 0x40]));

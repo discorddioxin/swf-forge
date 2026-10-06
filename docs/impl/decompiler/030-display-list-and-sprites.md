@@ -95,15 +95,18 @@ export interface RemovalOp {
 }
 
 export interface ClipActions {
+  readonly reserved: number;                      // top-level reserved word, retained verbatim
   readonly allEvents: ClipEventFlags;             // union of all record flags
   readonly records: readonly ClipActionRecord[];
   readonly endFlagWidth: 2 | 4;                   // UI16 for SWF <= 5, UI32 for SWF >= 6
+  readonly endFlag: number | null;                // zero when present; null when truncated
+  readonly raw: ActionBlockRef;                   // entire CLIPACTIONS body, retained verbatim
 }
 export interface ClipActionRecord {
   readonly events: ClipEventFlags;
   readonly keyCode: number | null;                // present iff keyPress
-  readonly actions: ActionBlockRef;               // byte range; doc 050 decodes it
-  readonly sizeBytes: number;                     // the declared ActionRecordSize, for diagnostics
+  readonly actions: ActionBlockRef;               // ACTIONRECORD bytes incl. ActionEndFlag; doc 050 decodes it
+  readonly sizeBytes: number;                     // declared ActionRecordSize, including KeyCode when present
 }
 ```
 
@@ -114,6 +117,13 @@ couple the op type to the container's record type for no benefit. Likewise `Plac
 is the raw APP-§6 byte (`number | null`), not a named `BlendMode` union: APP-§6's values are
 recorded verbatim, and the named mapping is the renderer's job (GFX-§). `SetTabIndexOp` (doc 040)
 carries the same `tagOffset: number`.
+
+The realised `ClipActions` shape is also explicit: it retains the top-level `reserved` word, the
+union `allEvents`, per-record `events`/`keyCode`/`actions`/`sizeBytes`, the versioned `endFlagWidth`,
+the observed `endFlag` (zero or `null` if truncated), and a raw byte range for the whole body. Each
+`ClipEventFlags` keeps the raw mask, its 2- or 4-byte width, and reserved/version-inapplicable bits.
+The button and clip-action `ActionBlockRef` ranges point directly at ACTIONRECORD bytes; doc 050
+analyzes those ranges without skipping a tag header.
 
 **IMPL-030-R003** `ClipEventFlags` MUST be modelled as explicit booleans in **spec bit order**
 (APP-§10.1), not as a raw mask, and MUST additionally carry `raw` plus `width: 2 | 4`. The width is
@@ -439,7 +449,7 @@ passes). The sprite/sound obligations originally occupied `T-MOD-013`–`015`, w
    without desynchronisation.
 3. Clip actions for SWF 5 and SWF 6+ round-trip, including a record whose `ActionRecordSize` is
    deliberately wrong (`SF0118` path).
-4. `inspect --timeline` output is stable and diffable; `verify` reconstitutes identical frames.
+4. `dump` emits every main/sprite frame as stable, diffable JSON; parsing and re-serializing that JSON preserves identical bytes (`T-MOD-012`, `T-MOD-037`). Full SWF-byte reconstruction by a `verify` verb remains a separate, unimplemented harness feature (doc 140).
 5. Exit criterion for the chapter (**satisfied in v1.2**): every §12 row is settled; none is marked `pending chapter`.
 
 ## 14. Changelog
@@ -452,3 +462,4 @@ passes). The sprite/sound obligations originally occupied `T-MOD-013`–`015`, w
 | 1.3 | 2026-10-04 | Appendix pass: `T-MOD-604` asserts the Appendix A `PlaceObject2` walkthrough (the only upstream byte-level placement example); the sprite/naming/sound obligations move out of `IMPL-040`'s `T-MOD-013`–`036` block to `T-MOD-601`–`604` (`E-023` addendum) |
 | 1.4 | 2026-10-04 | Tech-spec pass: `IMPL-030-R007` was cited in §4.1 but never defined (lost in the Ch.3 intake) — the bullet is now the numbered rule |
 | 1.5 | 2026-10-05 | P2 integrity resolution (R-P2-13): §3 amended to the implemented surface API — `PlacementOp`/`RemovalOp` (and `SetTabIndexOp`, doc 040) carry `tagOffset: number` (byte offset of the tag body) instead of `origin: TagRef`, and `PlacementOp.blendMode` is the raw APP-§6 byte (`number \| null`), with the named mapping left to the renderer; documented deviation, not reworked (precedent: the P1 `definitions` amendment) |
+| 1.6 | 2026-10-05 | P2 repeat-audit correction: document the realized `ClipActions`/`ClipEventFlags` surface (reserved fields, record byte sizes/ranges, end marker, and raw body); replace the stale `inspect --timeline`/`verify` done criterion with the implemented stable `dump` JSON + byte-identical JSON re-serialization (`T-MOD-012/037`); placement and sprite framing obligations now have labeled evidence in the test suite |

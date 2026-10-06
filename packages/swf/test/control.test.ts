@@ -115,7 +115,7 @@ describe('FileAttributes reserved bits and placement', () => {
     expect(legacy.file.sink.codes()).toContain('SF0176');
   });
 
-  it('SF0172: a FileAttributes that is not the first tag is reported (SWF 8+)', () => {
+  it('T-MOD-034: a FileAttributes that is not the first tag is reported (SWF 8+)', () => {
     const attrs = tag(Tag.FileAttributes, u32(0x01));
     // FileAttributes after a ShowFrame: the model-level SF0172 and the stream-level SF0025 both fire.
     const reordered = modelOf(
@@ -130,14 +130,14 @@ describe('FileAttributes reserved bits and placement', () => {
 });
 
 describe('structural: sprite End and FileAttributes-in-sprite', () => {
-  it('SF0173: a sprite body that ends without an End tag is reported', () => {
+  it('T-MOD-011/024: a sprite body that ends without an End tag is reported (SF0173)', () => {
     // DefineSprite 5 declares 1 frame but its body has no trailing End.
     const sprite = tag(Tag.DefineSprite, concat(u16(5), u16(1), tag(Tag.ShowFrame)));
     const file = openSwf(buildSwf({ version: 8, body: concat(sprite, showFrames(1), endTag()), frameCount: 1 }));
     expect(file.sink.codes()).toContain('SF0173');
   });
 
-  it('a well-formed sprite does not trigger SF0173', () => {
+  it('T-MOD-024: a well-formed sprite End does not trigger SF0173', () => {
     const sprite = tag(Tag.DefineSprite, concat(u16(5), u16(1), tag(Tag.ShowFrame), endTag()));
     const file = openSwf(buildSwf({ version: 8, body: concat(sprite, showFrames(1), endTag()), frameCount: 1 }));
     expect(file.sink.codes()).not.toContain('SF0173');

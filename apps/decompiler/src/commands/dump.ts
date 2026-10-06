@@ -24,6 +24,8 @@ export interface DumpRequest {
   readonly strictTimeline?: boolean;
   /** Directory for `model.json`, or null to write nothing. */
   readonly out: string | null;
+  /** Repeatable `URL=FILE` imports for the multi-movie input set. */
+  readonly imports?: readonly string[];
 }
 
 export interface DumpResult {
@@ -40,11 +42,33 @@ function open(request: DumpRequest, io: CliIo): DumpResult | number {
     io.err(`cannot read ${request.file}: ${error instanceof Error ? error.message : String(error)}`);
     return EXIT.unreadable;
   }
-  const unit = openSwfNodeSync(bytes, {
-    mode: request.strict ? 'strict' : 'soft',
+  const openOptions = {
+    mode: request.strict ? ('strict' as const) : ('soft' as const),
     strictLength: request.strictLength ?? false,
+  };
+  const unit = openSwfNodeSync(bytes, openOptions);
+  const imports = new Map<string, SwfFile>();
+  for (const specification of request.imports ?? []) {
+    const separator = specification.indexOf('=');
+    if (separator <= 0 || separator === specification.length - 1) {
+      io.err(`invalid --import ${JSON.stringify(specification)}; expected URL=FILE`);
+      return EXIT.unreadable;
+    }
+    const url = specification.slice(0, separator);
+    const path = specification.slice(separator + 1);
+    let importBytes: Uint8Array;
+    try {
+      importBytes = new Uint8Array(readFileSync(path));
+    } catch (error) {
+      io.err(`cannot read import ${path}: ${error instanceof Error ? error.message : String(error)}`);
+      return EXIT.unreadable;
+    }
+    imports.set(url, openSwfNodeSync(importBytes, openOptions));
+  }
+  const model = buildMovieModel(unit, {
+    strictTimeline: request.strictTimeline ?? false,
+    imports,
   });
-  const model = buildMovieModel(unit, { strictTimeline: request.strictTimeline ?? false });
   return { dump: buildModelDump(unit, model, sha256Hex(bytes)), model, unit };
 }
 

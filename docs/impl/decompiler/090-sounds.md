@@ -29,7 +29,10 @@ framing, and the traps.
 8. The runtime's scheduling data (doc 130/RT-§6): voice priority, envelope, loop points, stream
    offsets.
 
-**Non-goals:** the mixer/DSP and resampler policy (AUD), and any new codec (we decode ADPCM only).
+**Non-goals:** the mixer/DSP, browser playback/scheduling/stream synchronization (P8), and any new codec
+(we decode ADPCM only). P3 owns the decoded sound models and deterministic build/preview assets; P8
+owns playback and real-time behavior. Video is P10 (`IMPL-110`) and does not consume a P3 completion
+claim from this document.
 
 ## 2. Module layout
 
@@ -325,41 +328,41 @@ that spec's runtime conditions (peak guard, stream underrun, sync re-anchor, dev
 The design spec owns `T-AUD-001…027`; this document's obligations use the `1xx` band, so the two
 sets can never be confused in a test report.
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-AUD-101` | ADPCM decode vs reference vectors on 200 packets (bit-exact) | F1 |
-| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet | F1 |
-| `T-AUD-103` | uncompressed 0 vs 3 produce identical PCM (8-bit) and byte-swapped PCM (16-bit) | F1 |
-| `T-AUD-104` | MP3 frame parser: sync, version/layer/rate/bitrate/padding, size formula incl. the 414-byte example | F1 |
-| `T-AUD-105` | MP3 pass-through: bytes unchanged (hash equality), latency trim applied at scheduling | F1 |
-| `T-AUD-106` | stream block → frame offset table with exact sample offsets (silent frames, empty blocks) | F1 |
-| `T-AUD-107` | silent frames advance the timeline; audio stays in sync (`SampleCount = 0` blocks) | F2 |
-| `T-AUD-108` | stream splitting on a second head tag; codec change mid-movie | F1 |
-| `T-AUD-109` | `SOUNDINFO` flag byte (MSB-first), in/out points, loop count, envelope conversion | F1 |
-| `T-AUD-110` | resample determinism: same input → identical bytes across runs | F1 |
-| `T-AUD-111` | chunking at 10 s with exact sample boundaries; loop points survive trimming | F1 |
-| `T-AUD-112` | peak/RMS metadata on fixtures with known amplitude | F1 |
-| `T-AUD-113` | `SoundStreamHead`/`Head2` bit layout (2-byte flags block, `LatencySeek` only for MP3) | F1 |
-| `T-AUD-114` | frame subdivision emulation reproduces the chapter's worked examples (343 and 131) | F2 |
-| `T-AUD-115` | Nellymoser/Speex/reserved formats: correct duration, silent partial, manifest flag | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-AUD-101` | ADPCM decode vs reference vectors on 200 packets (bit-exact) | F1 | P3 decode/build |
+| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet | F1 | P3 decode/build |
+| `T-AUD-103` | uncompressed 0 vs 3 produce identical PCM (8-bit) and byte-swapped PCM (16-bit) | F1 | P3 decode/build |
+| `T-AUD-104` | MP3 frame parser: sync, version/layer/rate/bitrate/padding, size formula incl. the 414-byte example | F1 | P3 decode/build |
+| `T-AUD-105` | MP3 pass-through: bytes unchanged (hash equality), latency trim applied at scheduling | F1 | P3 decode/build |
+| `T-AUD-106` | stream block → frame offset table with exact sample offsets (silent frames, empty blocks) | F1 | P3 decode/build |
+| `T-AUD-107` | silent frames advance the timeline; audio stays in sync (`SampleCount = 0` blocks) | F2 | P3 decode/build |
+| `T-AUD-108` | stream splitting on a second head tag; codec change mid-movie | F1 | P3 decode/build |
+| `T-AUD-109` | `SOUNDINFO` flag byte (MSB-first), in/out points, loop count, envelope conversion | F1 | P3 decode/build |
+| `T-AUD-110` | resample determinism: same input → identical bytes across runs | F1 | P3 decode/build |
+| `T-AUD-111` | chunking at 10 s with exact sample boundaries; loop points survive trimming | F1 | P3 decode/build |
+| `T-AUD-112` | peak/RMS metadata on fixtures with known amplitude | F1 | P3 decode/build |
+| `T-AUD-113` | `SoundStreamHead`/`Head2` bit layout (2-byte flags block, `LatencySeek` only for MP3) | F1 | P3 decode/build |
+| `T-AUD-114` | frame subdivision emulation reproduces the chapter's worked examples (343 and 131) | F2 | P8 runtime |
+| `T-AUD-115` | Nellymoser/Speex/reserved formats: correct duration, silent partial, manifest flag | F1 | P3 decode/build |
 
 ## 10. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-090-01 | `DefineSound` + codec dispatch + lazy payload model | WP-020-05 | 3 | `define-sound.ts`, `codec-detect.ts` |
-| WP-090-02 | ADPCM packet decoder + parity tests | WP-090-01 | 5 | `adpcm.ts`, T-AUD-101/002 |
-| WP-090-03 | Uncompressed (0/3) + PCM emission | WP-090-01 | 2 | `pcm.ts`, T-AUD-103 |
-| WP-090-04 | MP3 frame parser (header fields, size formula, latency) | WP-090-01 | 4 | `mp3-frames.ts`, T-AUD-104 |
-| WP-090-05 | MP3 pass-through + trim metadata | WP-090-04 | 2 | `mp3-pass.ts`, T-AUD-105 |
-| WP-090-06 | Nellymoser/Speex/reserved fallback assets | WP-090-01 | 2 | `nellymoser.ts`, `speex.ts`, T-AUD-115 |
-| WP-090-07 | `SOUNDINFO` + `StartSound`/`StartSound2` scheduling records | WP-090-01, WP-030-09 | 3 | `sound-info.ts`, `start-sound.ts`, T-AUD-109 |
-| WP-090-08 | Stream heads/blocks, MP3STREAMSOUNDDATA, offset table, segmentation | WP-090-01 | 6 | `stream-*.ts`, T-AUD-106/007/008/013 |
-| WP-090-09 | Frame-subdivision emulator (writer/tests) | WP-090-08 | 2 | T-AUD-114 |
-| WP-090-10 | Resample to 48 kHz (deterministic) | WP-090-03 | 3 | `resample.ts`, T-AUD-110 |
-| WP-090-11 | Chunking + loop/trim metadata + peak/RMS | WP-090-10 | 2 | T-AUD-111/012 |
-| WP-090-12 | `budgets.json` audio section + transcode reporting | WP-090-11 | 2 | AST integration |
-| | **Total** | | **36** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-090-01 | `DefineSound` + codec dispatch + lazy payload model | WP-020-05 | 3 | `define-sound.ts`, `codec-detect.ts` | P3 |
+| WP-090-02 | ADPCM packet decoder + parity tests | WP-090-01 | 5 | `adpcm.ts`, T-AUD-101/002 | P3 |
+| WP-090-03 | Uncompressed (0/3) + PCM emission | WP-090-01 | 2 | `pcm.ts`, T-AUD-103 | P3 |
+| WP-090-04 | MP3 frame parser (header fields, size formula, latency) | WP-090-01 | 4 | `mp3-frames.ts`, T-AUD-104 | P3 |
+| WP-090-05 | MP3 pass-through + trim metadata | WP-090-04 | 2 | `mp3-pass.ts`, T-AUD-105 | P3 |
+| WP-090-06 | Nellymoser/Speex/reserved fallback assets | WP-090-01 | 2 | `nellymoser.ts`, `speex.ts`, T-AUD-115 | P3 |
+| WP-090-07 | `SOUNDINFO` + `StartSound`/`StartSound2` scheduling records | WP-090-01, WP-030-09 | 3 | `sound-info.ts`, `start-sound.ts`, T-AUD-109 | P3 |
+| WP-090-08 | Stream heads/blocks, MP3STREAMSOUNDDATA, offset table, segmentation | WP-090-01 | 6 | `stream-*.ts`, T-AUD-106/007/008/013 | P3 |
+| WP-090-09 | Frame-subdivision emulator (writer/tests) | WP-090-08 | 2 | T-AUD-114 | P8 |
+| WP-090-10 | Resample to 48 kHz (deterministic) | WP-090-03 | 3 | `resample.ts`, T-AUD-110 | P3 |
+| WP-090-11 | Chunking + loop/trim metadata + peak/RMS | WP-090-10 | 2 | T-AUD-111/012 | P3 |
+| WP-090-12 | `budgets.json` audio section + transcode reporting | WP-090-11 | 2 | AST integration | P6 |
+| | **Total** | | **36** | | |
 
 ## 11. Open items
 

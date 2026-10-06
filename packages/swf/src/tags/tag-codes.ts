@@ -1,6 +1,7 @@
 /**
- * Tag codes — the subset of Appendix B this package understands, with the two facts the indexer
- * needs: is it a *definition* tag (it introduces a character id) and is it valid inside a sprite.
+ * Tag codes — the subset of Appendix B this package understands, with the facts the indexer needs:
+ * does the tag create a dictionary character, and is it valid inside a sprite. Reference/metadata
+ * tags that merely begin with a character id are not dictionary definitions.
  *
  * The table is deliberately small; `APP-§2` (docs/specs/reference/110-appendices-reference-tables.md)
  * is the full index and the authority. Codes absent here take the unknown-tag path (`SF0104`).
@@ -11,7 +12,7 @@ export interface TagInfo {
   readonly name: string;
   /** SWF version that introduced the tag (Appendix B's first column). */
   readonly since: number;
-  /** True when the tag body starts with a UI16 character id. */
+  /** True when the tag creates a dictionary character (not when it merely references a character id). */
   readonly definition: boolean;
   /** True when the tag is valid inside a DefineSprite timeline (Ch.13's closed set). */
   readonly inSprite: boolean;
@@ -113,6 +114,7 @@ const DEFINITIONS = new Set<number>([
   Tag.DefineBitsLossless,
   Tag.DefineBitsJPEG2,
   Tag.DefineShape2,
+  Tag.DefineShape3,
   Tag.DefineText2,
   Tag.DefineButton2,
   Tag.DefineBitsJPEG3,
@@ -122,13 +124,10 @@ const DEFINITIONS = new Set<number>([
   Tag.DefineMorphShape,
   Tag.DefineFont2,
   Tag.DefineVideoStream,
-  Tag.DefineFontInfo2,
-  Tag.DefineFontAlignZones,
   Tag.DefineFont3,
   Tag.DefineShape4,
   Tag.DefineMorphShape2,
   Tag.DefineBinaryData,
-  Tag.DefineFontName,
   Tag.DefineBitsJPEG4,
   Tag.DefineFont4,
 ]);

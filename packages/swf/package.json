@@ -23,6 +23,9 @@
   "scripts": {
     "build": "tsc -b"
   },
+  "dependencies": {
+    "@swf-forge/audio": "workspace:*"
+  },
   "optionalDependencies": {
     "lzma": "^2.3.2"
   }

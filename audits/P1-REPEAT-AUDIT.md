@@ -1,6 +1,6 @@
 # P1 repeat audit — resolution confirmation
 
-**Date:** 2026-10-05 · **Branch:** `arena/01a10928-swf-forge` · **Auditor:** the same agent,
+**Date:** 2026-10-05 · **Branch:** `arena/01a10cd9-swf-forge` · **Auditor:** the same agent,
 re-reading the tree as an adversarial reviewer
 **Protocol:** `P1-INTEGRITY-AUDIT.md` §8 (ledgers re-run verbatim; a finding is *resolved* only
 when its specific evidence flips). **Mapping:** `P1-RESOLUTION-AUDIT.md` §7 (what must flip).
@@ -210,6 +210,14 @@ deferred to IMPL-140 with an owner.
 | `packages/swf` standalone `tsc --noEmit` | clean | **clean** |
 | `python3 tools/audit_dev.py` | 3 `ownership.stale` (P1) + 56 P3/P5-range "new" | `findings=81 known=81 new=0 fixed=0` — **zero `ownership.stale`, zero new**; shape4 probe 5/5; dump synth clean fixture diagnostic-free. Baseline re-recorded via `--update-baseline` (81 keys; all P3/P5-range) |
 
+**P2 gate-record correction (2026-10-05, annotation only):** the P2 Integrity Audit re-ran the then-current
+suite and found 238/238 assertions passing but the process exiting 1 with three unhandled `AbortError`
+rejections; therefore the P1 row above's bare test count must not be used as exit-code evidence. The
+current checkout's `openSwfAsync` teardown catches the writer and cancellation rejections, and the
+P2 repeat gate now records `corepack pnpm test` at **295/295, 29 files, exit 0** with no unhandled
+rejection (see `audits/P2-REPEAT-AUDIT.md` §4). This corrects the gate evidence without rewriting the
+historical P1 run.
+
 The gate defined in `P1-RESOLUTION-AUDIT.md` §6 — `pnpm typecheck && pnpm lint && pnpm test`
 green tree-wide, no P1-range `ownership.stale`, swf standalone clean, 208+ tests (≥ 15 new
 labelled) — **passes**.
@@ -263,5 +271,10 @@ All deferrals are recorded with owners in doc 020 §12 — none is ownerless:
 - **P1 is closed.** All 13 findings and 5 observations resolved on their specific flips; the
   gate is green tree-wide; the two repeat-audit discoveries were fixed and pinned in the same
   pass.
-- After this file is written, `P1-INTEGRITY-AUDIT.md` and `P1-RESOLUTION-AUDIT.md` move to
-  `audits/archive/` (protocol §8.3). `audits/dev/baseline.json` was re-recorded in this pass.
+- `P1-INTEGRITY-AUDIT.md` and `P1-RESOLUTION-AUDIT.md` are preserved under `audits/archive/` per
+  protocol §8.3. The baseline changes in this branch concern independently resolved P1/P2-era
+  findings; no P3 audit result was hidden by refreshing it.
+
+## 7. Current-tree revalidation — 2026-10-05
+
+The full repository gates were rerun after the P3 follow-up work: `corepack pnpm test` passed 43 files / 382 tests; `typecheck`, `lint`, `build`, `spec:verify`, tag coverage and all 19 Python audit tests passed. The current `audit:dev` run has **0 new findings** (52 current findings against 57 known; five fixed), with P3 diagnostic gaps explicitly assigned to open work packages rather than omitted or hidden in the baseline. No new P1 finding appeared. P1 remains exit-ready for its documented container/index/inspection scope; the P3 exit gaps do not reopen the P1 ledger.

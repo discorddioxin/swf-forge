@@ -9,6 +9,9 @@
 
 import type { SwfFile } from '../container/open.js';
 import type { TagRef } from '../container/tag-stream.js';
+import { Cursor } from '../io/cursor.js';
+import { DiagnosticSink } from '../diagnostics/sink.js';
+import { readRect } from '../io/records.js';
 import { Codes } from '../diagnostics/codes.js';
 import {
   decodeDefineBinaryData,
@@ -30,10 +33,25 @@ import {
   type FileAttributesInfo,
   type PasswordState,
 } from '../tags/control.js';
+import {
+  decodeDefineButton,
+  decodeDefineButton2,
+  decodeDefineButtonCxform,
+  decodeDefineButtonSound,
+} from '../tags/buttons.js';
 import { fnv1a64Hex } from '../io/hash.js';
 import { Tag, tagName } from '../tags/tag-codes.js';
+import { decodeDefineShapeVersion } from '../tags/shape.js';
+import { decodeDefineSound } from '../tags/sounds.js';
+import { decodeDefineBitmap } from '../tags/images.js';
+import { decodeDefineMorphShape } from '../tags/morph.js';
+import { decodeDefineFont2or3 } from '../tags/fonts.js';
+import { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from '../tags/text.js';
 import { openTagCursor, assembleTimeline } from './timeline.js';
+import { matrixIsSingular, transformRect, unionRects } from './buttons.js';
 import type {
+  ButtonModel,
+  CharacterAlias,
   CharacterKind,
   CharacterModel,
   FileAttributesModel,
@@ -53,11 +71,27 @@ export interface BuildMovieOptions {
    * a silent no-op. Off by default — Ch.4 makes the removal a no-op; the flag is for auditing.
    */
   readonly strictTimeline?: boolean;
+  /** External SWFs keyed by their exact published URL; only these files participate in import linking. */
+  readonly imports?: ReadonlyMap<string, SwfFile>;
   /** Overrides the content-derived id (a caller-supplied `sha256:<hex>`, say). */
   readonly id?: string;
 }
 
 const BUTTON_TAGS: ReadonlySet<number> = new Set([Tag.DefineButton, Tag.DefineButton2]);
+const BITMAP_TAGS: ReadonlySet<number> = new Set([
+  Tag.DefineBits,
+  Tag.DefineBitsJPEG2,
+  Tag.DefineBitsJPEG3,
+  Tag.DefineBitsJPEG4,
+  Tag.DefineBitsLossless,
+  Tag.DefineBitsLossless2,
+]);
+const STATIC_SHAPE_TAGS: ReadonlySet<number> = new Set([
+  Tag.DefineShape,
+  Tag.DefineShape2,
+  Tag.DefineShape3,
+  Tag.DefineShape4,
+]);
 
 function characterKindForTag(tagCode: number): Exclude<CharacterKind, 'missing'> {
   switch (tagCode) {
@@ -134,8 +168,18 @@ export function fallbackId(body: Uint8Array, prefix: unknown): string {
   return `fnv1a64:${hash.toString(16).padStart(16, '0')}`;
 }
 
+interface RawImportEntry {
+  readonly url: string;
+  readonly name: string;
+  readonly localId: number;
+  readonly tagCode: number;
+  readonly ignored: boolean;
+  readonly origin: TagRef;
+}
+
 interface ControlPass {
   control: Omit<MovieControlModel, 'labels' | 'tabIndexOps' | 'labelEntries'>;
+  rawImports: RawImportEntry[];
   initActions: InitActionBlock[];
   labels: Map<string, { frame: number; namedAnchor: boolean }[]>;
   labelEntries: { name: string; frame: number; namedAnchor: boolean }[];
@@ -208,6 +252,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
   const exports = new Map<string, number>();
   const exportsById = new Map<number, string>();
   const imports: ImportEntry[] = [];
+  const rawImports: RawImportEntry[] = [];
   const scalingGrids = new Map<number, Rect>();
   /** Shadowed rects from repeated `DefineScalingGrid` tags (last wins; reported per `IMPL-040-R028`). */
   const scalingGridsShadowed: { characterId: number; rect: Rect }[] = [];
@@ -302,9 +347,24 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       }
       case Tag.ImportAssets:
       case Tag.ImportAssets2: {
-        const { url, entries } = decodeImportAssets(c, ref.code);
+        const { url, entries, deprecated } = decodeImportAssets(c, ref.code);
         for (const entry of entries) {
-          imports.push({ url, name: entry.name, localId: entry.id, applied: false });
+          imports.push({
+            url,
+            name: entry.name,
+            localId: entry.id,
+            applied: false,
+            sourceMovieId: null,
+            sourceId: null,
+          });
+          rawImports.push({
+            url,
+            name: entry.name,
+            localId: entry.id,
+            tagCode: ref.code,
+            ignored: deprecated,
+            origin: ref,
+          });
         }
         break;
       }
@@ -526,6 +586,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       binaryData,
     },
     initActions,
+    rawImports,
     labels,
     labelEntries: [...tagLabelEntries, ...sceneLabelEntries],
     protect,
@@ -537,12 +598,423 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
   };
 }
 
+interface LinkageIndex {
+  readonly exports: ReadonlyMap<string, number>;
+  readonly imports: readonly RawImportEntry[];
+}
+
+const linkageCache = new WeakMap<SwfFile, LinkageIndex>();
+
+function stableMovieId(file: SwfFile, override?: string): string {
+  return (
+    override ??
+    (file.sha256.length > 0
+      ? `sha256:${file.sha256}`
+      : fallbackId(file.body, {
+          signature: file.header.compression,
+          version: file.header.version,
+          fileLength: file.header.fileLength,
+          frames: file.header.frameCount,
+        }))
+  );
+}
+
+function isolatedTagCursor(file: SwfFile, ref: TagRef): Cursor {
+  return new Cursor(file.body, ref.offset, ref.offset + ref.length, {
+    mode: 'soft',
+    sink: new DiagnosticSink(),
+    context: 'import resolution',
+    version: file.header.version,
+    tagCode: ref.code,
+  });
+}
+
+/** Build just the dictionary linkage needed to resolve an external movie; no model or actions run. */
+function readLinkageIndex(file: SwfFile): LinkageIndex {
+  const cached = linkageCache.get(file);
+  if (cached !== undefined) return cached;
+  const exports = new Map<string, number>();
+  const imports: RawImportEntry[] = [];
+  for (const ref of file.tagIndex.tags) {
+    if (ref.inSprite !== null) continue;
+    const c = isolatedTagCursor(file, ref);
+    if (ref.code === Tag.ExportAssets || ref.code === Tag.SymbolClass) {
+      const decoded = ref.code === Tag.ExportAssets ? decodeExportAssets(c) : decodeSymbolClass(c);
+      for (const [name, id] of decoded.byName) if (!exports.has(name)) exports.set(name, id);
+    } else if (ref.code === Tag.ImportAssets || ref.code === Tag.ImportAssets2) {
+      const decoded = decodeImportAssets(c, ref.code);
+      for (const entry of decoded.entries) {
+        imports.push({
+          url: decoded.url,
+          name: entry.name,
+          localId: entry.id,
+          tagCode: ref.code,
+          ignored: decoded.deprecated,
+          origin: ref,
+        });
+      }
+    }
+  }
+  const result = { exports, imports };
+  linkageCache.set(file, result);
+  return result;
+}
+
+function normalizeLinkageUrl(value: string): string {
+  return value.replace(/^([A-Za-z][A-Za-z0-9+.-]*):/, (_whole, scheme: string) => `${scheme.toLowerCase()}:`);
+}
+
+function lookupImportFile(inputs: ReadonlyMap<string, SwfFile>, url: string): SwfFile | undefined {
+  const normalized = normalizeLinkageUrl(url);
+  for (const [candidate, file] of inputs) {
+    if (normalizeLinkageUrl(candidate) === normalized) return file;
+  }
+  return undefined;
+}
+
+interface ResolvedSource {
+  readonly state: 'resolved' | 'missing' | 'cycle';
+  readonly movieId: string | null;
+  readonly characterId: number | null;
+  readonly cycleIds?: readonly string[];
+}
+
+function resolveImportedSymbol(
+  url: string,
+  name: string,
+  inputs: ReadonlyMap<string, SwfFile>,
+  active: readonly SwfFile[],
+): ResolvedSource {
+  const target = lookupImportFile(inputs, url);
+  if (!target) return { state: 'missing', movieId: null, characterId: null };
+  if (active.includes(target)) {
+    return {
+      state: 'cycle',
+      movieId: null,
+      characterId: null,
+      cycleIds: [...active, target].map((item) => stableMovieId(item)),
+    };
+  }
+  const linkage = readLinkageIndex(target);
+  const sourceId = linkage.exports.get(name);
+  if (sourceId === undefined) return { state: 'missing', movieId: null, characterId: null };
+
+  let hasDefinition = false;
+  for (let i = target.definitions.length - 1; i >= 0; i -= 1) {
+    if (target.definitions[i]?.id === sourceId) {
+      hasDefinition = true;
+      break;
+    }
+  }
+  if (hasDefinition) {
+    return { state: 'resolved', movieId: stableMovieId(target), characterId: sourceId };
+  }
+
+  let alias: RawImportEntry | undefined;
+  for (let i = linkage.imports.length - 1; i >= 0; i -= 1) {
+    const candidate = linkage.imports[i];
+    if (candidate?.localId === sourceId && !candidate.ignored) {
+      alias = candidate;
+      break;
+    }
+  }
+  if (alias === undefined) return { state: 'missing', movieId: null, characterId: null };
+  return resolveImportedSymbol(alias.url, alias.name, inputs, [...active, target]);
+}
+
+function resolveMovieImports(
+  file: SwfFile,
+  entries: readonly RawImportEntry[],
+  inputs: ReadonlyMap<string, SwfFile>,
+): ImportEntry[] {
+  return entries.map((entry) => {
+    if (entry.ignored) {
+      return {
+        url: entry.url,
+        name: entry.name,
+        localId: entry.localId,
+        applied: false,
+        sourceMovieId: null,
+        sourceId: null,
+      };
+    }
+    const resolved = resolveImportedSymbol(entry.url, entry.name, inputs, [file]);
+    if (resolved.state === 'cycle') {
+      file.sink.emit({
+        code: Codes.IMPORT_ALIAS_CYCLE,
+        severity: 'error',
+        message: `import ${entry.name} from ${entry.url} participates in an alias cycle: ${(resolved.cycleIds ?? []).join(' -> ')}`,
+        offset: entry.origin.headerOffset,
+        context: 'control tags',
+        tagCode: entry.tagCode,
+        characterId: entry.localId,
+      });
+    } else if (resolved.state === 'missing') {
+      file.sink.emit({
+        code: Codes.IMPORT_UNRESOLVED,
+        severity: 'warning',
+        message: `import "${entry.name}" from "${entry.url}" is unresolved; local id ${entry.localId} is a missing placeholder`,
+        offset: entry.origin.headerOffset,
+        context: 'control tags',
+        tagCode: entry.tagCode,
+        characterId: entry.localId,
+      });
+    }
+    return {
+      url: entry.url,
+      name: entry.name,
+      localId: entry.localId,
+      applied: resolved.state === 'resolved',
+      sourceMovieId: resolved.movieId,
+      sourceId: resolved.characterId,
+    };
+  });
+}
+
+function characterBounds(
+  file: SwfFile,
+  definition: SwfFile['definitions'][number],
+  mode: 'soft' | 'strict',
+): Rect | null {
+  const ref = file.tagIndex.tags[definition.tagIndex];
+  if (!ref) return null;
+  const morphTags: ReadonlySet<number> = new Set([Tag.DefineMorphShape, Tag.DefineMorphShape2]);
+  if (!morphTags.has(definition.tagCode)) return null;
+  const c = openTagCursor(file, ref, mode);
+  c.u16();
+  const start = readRect(c);
+  return unionRects([start, readRect(c)]);
+}
+
+function missingCharacter(id: number): CharacterModel {
+  return {
+    id,
+    kind: 'missing',
+    tagCode: null,
+    tagName: 'missing',
+    index: null,
+    sprite: null,
+    button: null,
+    bounds: null,
+    vectorShape: null,
+    morph: null,
+    bitmap: null,
+    font: null,
+    text: null,
+    editText: null,
+    sound: null,
+    alias: null,
+    bytes: null,
+  };
+}
+
+function emitButtonReferenceMissing(file: SwfFile, origin: TagRef, ownerId: number, characterId: number): void {
+  file.sink.emit({
+    code: Codes.UNDEFINED_CHARACTER_REF,
+    severity: 'warning',
+    message: `button ${ownerId} references undefined character ${characterId}; missing placeholder created`,
+    offset: origin.headerOffset,
+    context: 'button character reference',
+    tagCode: origin.code,
+    characterId,
+  });
+}
+
+function emitButtonAuxTargetError(file: SwfFile, origin: TagRef, buttonId: number, message: string): void {
+  file.sink.emit({
+    code: Codes.BUTTON_AUX_TARGET_NOT_BUTTON,
+    severity: 'warning',
+    message,
+    offset: origin.headerOffset,
+    context: 'button auxiliary tag',
+    tagCode: origin.code,
+    characterId: buttonId,
+  });
+}
+
+function assembleButtons(
+  file: SwfFile,
+  topRefs: readonly TagRef[],
+  control: ControlPass['control'],
+  characters: Map<number, CharacterModel>,
+  mode: 'soft' | 'strict',
+): void {
+  const parsed = new Map<
+    number,
+    { definition: ReturnType<typeof decodeDefineButton> | ReturnType<typeof decodeDefineButton2>; origin: TagRef }
+  >();
+  const cxforms = new Map<
+    number,
+    { transform: ReturnType<typeof decodeDefineButtonCxform>['transform']; origin: TagRef }
+  >();
+  const sounds = new Map<number, { records: ReturnType<typeof decodeDefineButtonSound>['sounds']; origin: TagRef }>();
+
+  for (const ref of topRefs) {
+    if (ref.code !== Tag.DefineButton && ref.code !== Tag.DefineButton2) continue;
+    const c = openTagCursor(file, ref, mode);
+    const definition = ref.code === Tag.DefineButton ? decodeDefineButton(c, ref) : decodeDefineButton2(c, ref);
+    parsed.set(definition.id, { definition, origin: ref });
+  }
+
+  for (const ref of topRefs) {
+    if (ref.code === Tag.DefineButtonCxform) {
+      const c = openTagCursor(file, ref, mode);
+      const decoded = decodeDefineButtonCxform(c);
+      const target = parsed.get(decoded.buttonId);
+      if (target === undefined) {
+        emitButtonAuxTargetError(
+          file,
+          ref,
+          decoded.buttonId,
+          `DefineButtonCxform targets non-button character ${decoded.buttonId}`,
+        );
+      } else if (target.definition.version !== 1) {
+        emitButtonAuxTargetError(
+          file,
+          ref,
+          decoded.buttonId,
+          `DefineButtonCxform targets DefineButton2 character ${decoded.buttonId}; the tag applies only to v1 buttons`,
+        );
+      } else {
+        cxforms.set(decoded.buttonId, { transform: decoded.transform, origin: ref });
+      }
+    } else if (ref.code === Tag.DefineButtonSound) {
+      const c = openTagCursor(file, ref, mode);
+      const decoded = decodeDefineButtonSound(c);
+      const target = parsed.get(decoded.buttonId);
+      if (target === undefined) {
+        emitButtonAuxTargetError(
+          file,
+          ref,
+          decoded.buttonId,
+          `DefineButtonSound targets non-button character ${decoded.buttonId}`,
+        );
+      } else {
+        sounds.set(decoded.buttonId, { records: decoded.sounds, origin: ref });
+      }
+    }
+  }
+
+  // Resolve all referenced dictionary ids only after the full dictionary pass.
+  for (const [buttonId, entry] of parsed) {
+    for (const record of entry.definition.records) {
+      const referenced = characters.get(record.characterId);
+      if (referenced === undefined || referenced.kind === 'missing') {
+        emitButtonReferenceMissing(file, entry.origin, buttonId, record.characterId);
+        if (referenced === undefined) characters.set(record.characterId, missingCharacter(record.characterId));
+      }
+    }
+  }
+
+  const soundIds = new Set(
+    [...characters.values()].filter((character) => character.kind === 'sound').map((character) => character.id),
+  );
+  for (const [buttonId, entry] of sounds) {
+    for (const record of entry.records) {
+      if (!soundIds.has(record.soundId)) {
+        file.sink.emit({
+          code: Codes.BUTTON_SOUND_INVALID,
+          severity: 'warning',
+          message: `DefineButtonSound for button ${buttonId} references character ${record.soundId}, which is not a sound`,
+          offset: entry.origin.headerOffset,
+          context: 'button sound reference',
+          tagCode: entry.origin.code,
+          characterId: buttonId,
+        });
+      }
+    }
+  }
+
+  const geometryCache = new Map<number, { bounds: Rect | null; source: 'hitTest' | 'up' | null }>();
+  const activeGeometry = new Set<number>();
+  const computeGeometry = (buttonId: number): { bounds: Rect | null; source: 'hitTest' | 'up' | null } => {
+    const cached = geometryCache.get(buttonId);
+    if (cached !== undefined) return cached;
+    const entry = parsed.get(buttonId);
+    if (entry === undefined || activeGeometry.has(buttonId)) return { bounds: null, source: null };
+    activeGeometry.add(buttonId);
+    const hitRecords = entry.definition.records.filter((record) => record.states.includes('hitTest'));
+    const useRecords =
+      hitRecords.length > 0 ? hitRecords : entry.definition.records.filter((record) => record.states.includes('up'));
+    const source: 'hitTest' | 'up' | null = hitRecords.length > 0 ? 'hitTest' : useRecords.length > 0 ? 'up' : null;
+    const rects: Rect[] = [];
+    for (const record of useRecords) {
+      if (matrixIsSingular(record.matrix)) {
+        file.sink.emit({
+          code: Codes.BUTTON_MATRIX_SINGULAR,
+          severity: 'warning',
+          message: `button ${buttonId} hit-area record at depth ${record.depth} has a singular matrix and is non-interactive`,
+          offset: entry.origin.headerOffset,
+          context: 'button hit-area',
+          tagCode: entry.origin.code,
+          characterId: buttonId,
+        });
+        continue;
+      }
+      const character = characters.get(record.characterId);
+      let childBounds: Rect | null = null;
+      if (character?.kind === 'button') {
+        childBounds = computeGeometry(record.characterId).bounds;
+      } else if (character !== undefined) {
+        childBounds = character.bounds;
+        if (
+          childBounds === null &&
+          (character.kind === 'shape' || character.kind === 'shape4' || character.kind === 'morphShape')
+        ) {
+          const definition = [...file.definitions].reverse().find((candidate) => candidate.id === record.characterId);
+          if (definition !== undefined) {
+            childBounds = characterBounds(file, definition, mode);
+            if (childBounds !== null) characters.set(record.characterId, { ...character, bounds: childBounds });
+          }
+        }
+      }
+      if (childBounds !== null) rects.push(transformRect(childBounds, record.matrix));
+    }
+    activeGeometry.delete(buttonId);
+    const result = { bounds: unionRects(rects), source };
+    geometryCache.set(buttonId, result);
+    return result;
+  };
+
+  for (const [buttonId, entry] of parsed) {
+    const existing = characters.get(buttonId) ?? missingCharacter(buttonId);
+    const geometry = computeGeometry(buttonId);
+    const model: ButtonModel = {
+      id: buttonId,
+      version: entry.definition.version,
+      trackAsMenu: entry.definition.trackAsMenu,
+      records: entry.definition.records,
+      characterCxform: entry.definition.version === 1 ? (cxforms.get(buttonId)?.transform ?? null) : null,
+      actions: entry.definition.actions,
+      sounds: sounds.get(buttonId)?.records ?? [],
+      hitArea: geometry.bounds,
+      hitAreaSource: geometry.source,
+      keyPressRequiresFocus: false,
+      origin: entry.origin,
+    };
+    if (control.attributes?.as3 === true && entry.definition.version === 2 && entry.definition.actionOffset !== 0) {
+      file.sink.emit({
+        code: Codes.BUTTON2_AVM2_ACTIONS,
+        severity: 'warning',
+        message: `DefineButton2 character ${buttonId} has condition actions in an ActionScript 3 file (inert under AVM2)`,
+        offset: entry.origin.headerOffset,
+        context: 'button tag',
+        tagCode: entry.origin.code,
+        characterId: buttonId,
+      });
+    }
+    characters.set(buttonId, { ...existing, button: model, bounds: geometry.bounds ?? existing.bounds });
+  }
+}
+
 function buildSpriteModel(
   file: SwfFile,
   id: number,
   exportName: string | undefined,
   mode: 'soft' | 'strict',
   strictTimeline: boolean,
+  importedCharacterIds: ReadonlySet<number>,
+  soundChannels: (soundId: number) => 1 | 2 | null,
 ): SpriteModel | null {
   const range = file.tagIndex.spriteRanges.get(id);
   if (!range) return null;
@@ -552,6 +1024,8 @@ function buildSpriteModel(
     padToDeclared: true,
     mode,
     strictTimeline,
+    importedCharacterIds,
+    soundChannels,
   });
   return {
     characterId: id,
@@ -569,21 +1043,84 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
   const strictTimeline = options.strictTimeline ?? false;
   const topRefs = file.tagIndex.tags.filter((tag) => tag.inSprite === null);
 
-  const { control, initActions, labels, labelEntries, unknownExportIds, binaryBytes } = collectControl(
-    file,
-    topRefs,
-    mode,
-  );
+  const {
+    control: collectedControl,
+    initActions,
+    labels,
+    labelEntries,
+    unknownExportIds,
+    binaryBytes,
+    rawImports,
+  } = collectControl(file, topRefs, mode);
+  const resolvedImports = resolveMovieImports(file, rawImports, options.imports ?? new Map());
+  const control = { ...collectedControl, imports: resolvedImports };
+  const importedCharacterIds = new Set(resolvedImports.filter((entry) => entry.applied).map((entry) => entry.localId));
   const characters = new Map<number, CharacterModel>();
+  const soundModels = new Map<number, ReturnType<typeof decodeDefineSound>>();
+  for (const definition of file.definitions) {
+    if (definition.tagCode !== Tag.DefineSound) continue;
+    const ref = file.tagIndex.tags[definition.tagIndex];
+    if (ref) soundModels.set(definition.id, decodeDefineSound(openTagCursor(file, ref, mode)));
+  }
+  const soundChannels = (soundId: number): 1 | 2 | null => soundModels.get(soundId)?.channels ?? null;
   for (const definition of file.definitions) {
     const ref = file.tagIndex.tags[definition.tagIndex];
     if (!ref) continue;
     const sprite =
       definition.tagCode === Tag.DefineSprite
-        ? buildSpriteModel(file, definition.id, control.exportsById.get(definition.id), mode, strictTimeline)
+        ? buildSpriteModel(
+            file,
+            definition.id,
+            control.exportsById.get(definition.id),
+            mode,
+            strictTimeline,
+            importedCharacterIds,
+            soundChannels,
+          )
         : null;
     // `IMPL-040-R038`: a `DefineBinaryData` character registers its `binary` asset `{id, bytes}`
     // in the dictionary — payload access is by `Uint8Array` only, never a string (SEC-R003).
+    const vectorShape = STATIC_SHAPE_TAGS.has(definition.tagCode)
+      ? decodeDefineShapeVersion(definition.tagCode, openTagCursor(file, ref, mode)).shape
+      : null;
+    const morph =
+      definition.tagCode === Tag.DefineMorphShape || definition.tagCode === Tag.DefineMorphShape2
+        ? decodeDefineMorphShape(definition.tagCode, openTagCursor(file, ref, mode))
+        : null;
+    const bitmap = BITMAP_TAGS.has(definition.tagCode)
+      ? decodeDefineBitmap(definition.tagCode, openTagCursor(file, ref, mode))
+      : null;
+    const font =
+      definition.tagCode === Tag.DefineFont2 || definition.tagCode === Tag.DefineFont3
+        ? decodeDefineFont2or3(definition.tagCode, openTagCursor(file, ref, mode))
+        : null;
+    if (definition.tagCode === Tag.DefineFont4) {
+      const fontCursor = openTagCursor(file, ref, mode);
+      fontCursor.u16();
+      const flags = fontCursor.u8();
+      if ((flags & 0x04) !== 0) {
+        fontCursor.emit(
+          Codes.FONT_CFF_UNSUPPORTED,
+          'error',
+          `DefineFont4 ${definition.id} contains CFF outlines; glyph conversion is unsupported`,
+        );
+      } else {
+        fontCursor.emit(Codes.FONT_DEVICE_ONLY, 'info', `DefineFont4 ${definition.id} has no embedded CFF outlines`);
+      }
+    }
+    const text =
+      definition.tagCode === Tag.DefineText || definition.tagCode === Tag.DefineText2
+        ? decodeDefineText(definition.tagCode, openTagCursor(file, ref, mode))
+        : null;
+    const editText =
+      definition.tagCode === Tag.DefineEditText ? decodeDefineEditText(openTagCursor(file, ref, mode)) : null;
+    const sound = soundModels.get(definition.id) ?? null;
+    const bounds =
+      vectorShape?.bounds ??
+      text?.bounds ??
+      editText?.bounds ??
+      morph?.startBounds ??
+      characterBounds(file, definition, mode);
     const bytes = definition.tagCode === Tag.DefineBinaryData ? (binaryBytes.get(definition.id) ?? null) : null;
     characters.set(definition.id, {
       id: definition.id,
@@ -592,7 +1129,71 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
       tagName: tagName(definition.tagCode),
       index: ref,
       sprite,
+      button: null,
+      bounds,
+      vectorShape,
+      morph,
+      bitmap,
+      font,
+      text,
+      editText,
+      sound,
+      alias: null,
       bytes,
+    });
+  }
+
+  const embeddedFonts = new Map<number, NonNullable<CharacterModel['font']>>();
+  for (const character of characters.values()) {
+    if (character.font !== null) embeddedFonts.set(character.id, character.font);
+  }
+  for (const [id, character] of characters) {
+    if (character.text === null) continue;
+    const recovered = recoverStaticTextCodes(character.text, embeddedFonts);
+    const origin = character.index;
+    for (const diagnostic of recovered.diagnostics) {
+      file.sink.emit({
+        code: diagnostic.code,
+        severity: 'warning',
+        message: diagnostic.message,
+        offset: origin?.headerOffset ?? 0,
+        context: 'static text glyph mapping',
+        ...(character.tagCode !== null ? { tagCode: character.tagCode } : {}),
+        characterId: id,
+      });
+    }
+    characters.set(id, { ...character, text: recovered.text });
+  }
+
+  // Imported aliases are explicit dictionary entries, but do not copy the source payload.
+  for (const entry of resolvedImports) {
+    if (characters.has(entry.localId)) continue;
+    if (!entry.applied || entry.sourceMovieId === null || entry.sourceId === null) {
+      characters.set(entry.localId, missingCharacter(entry.localId));
+      continue;
+    }
+    const origin =
+      rawImports.find((raw) => raw.localId === entry.localId && raw.name === entry.name && raw.url === entry.url)
+        ?.origin ?? null;
+    const alias: CharacterAlias = { sourceMovieId: entry.sourceMovieId, sourceId: entry.sourceId };
+    characters.set(entry.localId, {
+      id: entry.localId,
+      kind: 'imported',
+      tagCode: null,
+      tagName: 'imported',
+      index: origin,
+      sprite: null,
+      button: null,
+      bounds: null,
+      vectorShape: null,
+      morph: null,
+      bitmap: null,
+      font: null,
+      text: null,
+      editText: null,
+      sound: null,
+      alias,
+      bytes: null,
     });
   }
 
@@ -601,6 +1202,8 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     padToDeclared: true,
     mode,
     strictTimeline,
+    importedCharacterIds,
+    soundChannels,
     onFrameLabel: (name, namedAnchor, frame) => {
       const list = labels.get(name) ?? [];
       if (!list.some((entry) => entry.frame === frame && entry.namedAnchor === namedAnchor)) {
@@ -618,15 +1221,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     for (const frameModel of timeline.frames) {
       for (const op of frameModel.ops) {
         if (op.kind === 'place' && op.characterId !== null && !characters.has(op.characterId)) {
-          characters.set(op.characterId, {
-            id: op.characterId,
-            kind: 'missing',
-            tagCode: null,
-            tagName: 'missing',
-            index: null,
-            sprite: null,
-            bytes: null,
-          });
+          characters.set(op.characterId, missingCharacter(op.characterId));
         }
       }
     }
@@ -635,17 +1230,11 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
   // `missing` placeholder policy as placements (`SF0174` was reported at collection time).
   for (const characterId of unknownExportIds) {
     if (!characters.has(characterId)) {
-      characters.set(characterId, {
-        id: characterId,
-        kind: 'missing',
-        tagCode: null,
-        tagName: 'missing',
-        index: null,
-        sprite: null,
-        bytes: null,
-      });
+      characters.set(characterId, missingCharacter(characterId));
     }
   }
+
+  assembleButtons(file, topRefs, control, characters, mode);
 
   // `IMPL-040-R043`: the tab-index ops live in the frame op lists; the control model mirrors them.
   const tabIndexOps: SetTabIndexOp[] = [];
@@ -661,16 +1250,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     frameRate: file.header.frameRateRaw,
   };
 
-  const id =
-    options.id ??
-    (file.sha256.length > 0
-      ? `sha256:${file.sha256}`
-      : fallbackId(file.body, {
-          signature: file.header.compression,
-          version: file.header.version,
-          fileLength: file.header.fileLength,
-          frames: file.header.frameCount,
-        }));
+  const id = stableMovieId(file, options.id);
 
   return {
     id,

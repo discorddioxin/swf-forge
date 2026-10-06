@@ -8,8 +8,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "build": "tsc -b && pnpm -r --filter \"./apps/**\" build",
-    "typecheck": "tsc -b --force && tsc -p packages/swf/tsconfig.test.json && tsc -p packages/avm1/tsconfig.test.json && tsc -p apps/decompiler/tsconfig.test.json && tsc -p packages/gfx/tsconfig.test.json",
+    "build": "tsc -b && corepack pnpm -r --filter \"./apps/**\" build",
+    "typecheck": "tsc -b --force && tsc -p packages/swf/tsconfig.test.json && tsc -p packages/avm1/tsconfig.test.json && tsc -p apps/decompiler/tsconfig.test.json && tsc -p packages/gfx/tsconfig.test.json && tsc -p packages/audio/tsconfig.test.json && tsc -p packages/assets/tsconfig.test.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fuzz": "vitest run packages/swf/test/fuzz.test.ts",

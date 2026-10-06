@@ -72,10 +72,52 @@ export type {
   StrokePath,
   VectorShape,
 } from './tags/shape.js';
+export { decodeDefineBitmap } from './tags/images.js';
+export type { BitmapAssetModel, BitmapSource, LosslessBitmapFormat } from './tags/images.js';
+export { decodeDefineFont2or3 } from './tags/fonts.js';
+export type { DefineFontModel, FontGlyphModel, FontKerningPair } from './tags/fonts.js';
+export { decodeDefineMorphShape } from './tags/morph.js';
+export type { MorphEdgePair, MorphShapeModel } from './tags/morph.js';
+export { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from './tags/text.js';
+export type {
+  EditTextFlags,
+  EditTextLayoutModel,
+  EditTextModel,
+  StaticTextModel,
+  StaticTextRunModel,
+  TextGlyphModel,
+  TextRecoveryDiagnostic,
+  TextRecoveryResult,
+} from './tags/text.js';
+export {
+  SOUND_SAMPLE_RATES,
+  decodeDefineSound,
+  decodeStartSound,
+  decodeSoundStreamHead,
+  decodeSoundStreamBlock,
+} from './tags/sounds.js';
+export type {
+  DefineSoundModel,
+  SoundEnvelopePoint,
+  SoundFormat,
+  SoundInfoModel,
+  SoundStreamBlockModel,
+  SoundStreamHeadModel,
+  StartSoundModel,
+  TimelineSoundEvent,
+} from './tags/sounds.js';
 
 // ---- model (`CMP` §3, `IMPL-030` §7/§8, `IMPL-040` §5) ------------------------------------------
 export { assembleTimeline, buildMovieModel, fallbackId, openTagCursor } from './model/index.js';
 export type {
+  ButtonActionRecord,
+  ButtonConditions,
+  ButtonModel,
+  ButtonRecord,
+  ButtonSoundInfo,
+  ButtonSoundRecord,
+  ButtonState,
+  CharacterAlias,
   CharacterKind,
   CharacterModel,
   DisplayOp,
@@ -89,14 +131,33 @@ export type {
   SetTabIndexOp,
   SpriteModel,
   StageModel,
+  StreamSoundBlockRecord,
   StreamSoundModel,
   StreamSoundSpan,
   TimelineModel,
 } from './model/index.js';
 export type { AssembleTimelineOptions } from './model/index.js';
 export type { BuildMovieOptions } from './model/index.js';
+export {
+  BUTTON_TRANSITIONS,
+  buttonRecordsForState,
+  buttonTransitionsForTracking,
+  matrixIsSingular,
+  transformRect,
+  unionRects,
+} from './model/buttons.js';
+export type { ButtonTransition } from './model/buttons.js';
 
 // ---- placement and control tags (`IMPL-030`, `IMPL-040`) ----------------------------------------
+export { decodeClipActions, decodeClipEventFlags } from './tags/clip-actions.js';
+export {
+  decodeDefineButton,
+  decodeDefineButton2,
+  decodeButtonRecord,
+  decodeDefineButtonCxform,
+  decodeDefineButtonSound,
+  isDocumentedButtonKeyCode,
+} from './tags/buttons.js';
 export {
   BLEND_MODES,
   decodePlaceObject,
@@ -121,6 +182,8 @@ export {
   decodeSymbolClass,
 } from './tags/control.js';
 export type { ActionBlockRef, PlacementOp, PlacementTag, RemovalOp, TimelineOp } from './tags/place.js';
+export type { ClipActionRecord, ClipActions, ClipEventFlags } from './tags/clip-actions.js';
+export type { ButtonCxformTag, ButtonSoundTag, ParsedButton } from './tags/buttons.js';
 export type {
   BevelFilterSpec,
   BlurFilterSpec,

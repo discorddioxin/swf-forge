@@ -251,4 +251,35 @@ describe('forge-decompile inspect', () => {
     expect(summary.symbols.exports).toEqual([{ id: 2, name: 'mySprite', kind: 'sprite' }]);
     expect(summary.symbols.imports).toEqual([{ name: 'other', url: 'other.swf', localId: 0 }]);
   });
+
+  it('T-MOD-125: --shapes reports the model VectorShape summary and stable geometry digest', () => {
+    const plain = capture();
+    expect(runCli(['inspect', FIXTURE, '--json'], plain.io)).toBe(EXIT.ok);
+    expect('shapes' in (JSON.parse(plain.out.join('\n')) as Record<string, unknown>)).toBe(false);
+
+    const first = capture();
+    expect(runCli(['inspect', FIXTURE, '--json', '--shapes'], first.io)).toBe(EXIT.ok);
+    const summary = JSON.parse(first.out.join('\n')) as {
+      shapes: readonly {
+        id: number;
+        version: number;
+        edgeCount: number;
+        fillPathCount: number;
+        strokePathCount: number;
+        geometrySha256: string;
+      }[];
+    };
+    expect(summary.shapes).toHaveLength(1);
+    expect(summary.shapes[0]).toMatchObject({ id: 1, version: 1, edgeCount: 4, fillPathCount: 0, strokePathCount: 1 });
+    expect(summary.shapes[0]?.geometrySha256).toMatch(/^[a-f0-9]{64}$/);
+
+    const second = capture();
+    expect(runCli(['inspect', FIXTURE, '--json', '--shapes'], second.io)).toBe(EXIT.ok);
+    expect(second.out).toEqual(first.out);
+
+    const human = capture();
+    expect(runCli(['inspect', FIXTURE, '--shapes'], human.io)).toBe(EXIT.ok);
+    expect(human.out.join('\n')).toContain('shapes         1 decoded static VectorShape(s)');
+    expect(human.out.join('\n')).toContain('sha256:');
+  });
 });

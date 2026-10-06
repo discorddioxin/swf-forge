@@ -1,6 +1,6 @@
 # AST — Assets: Bitmaps, Fonts, Video, Manifest, and Archive
 
-**Doc ID:** AST · **Status:** Draft 1.3 · **Normative:** yes
+**Doc ID:** AST · **Status:** Draft 1.4 · **Normative:** yes
 **Depends on:** SWF, CMP, GFX, AUD
 
 ---
@@ -471,6 +471,8 @@ frames, N = `--first-playable-frames`, default 30).
 | T-AST-020 | MSDF vs bitmap atlas comparison at 1× and 4× | F3 |
 | T-AST-021 | Video: frame count/timestamps preserved; SSIM ≥ 0.98 | F3 |
 | T-AST-022 | Screen Video v2 (`CodecID = 6`): decodes with a per-packet palette and the Appendix C fallback (`AST-D11`) | F2 |
+| T-AST-023 | WOFF2 build is deterministic; normalized metrics and stable name table are preserved, with no timestamps/vendor strings | F1 |
+| T-AST-024 | Morph asset export writes deterministic local-bounds start/end previews, paired-edge metadata, and byte-identical repeat bundles | F1 |
 
 ## 10. Decision register
 
@@ -496,3 +498,4 @@ frames, N = `--first-playable-frames`, default 30).
 | 1.1 | 2026-10-04 | Ch.8-grounded: `DefineBitsLossless2` documents formats 3 and 5 only (the v1.0 "format 4 = ARGB4444 premultiplied" line was wrong — premultiplication is the format-5 `ALPHABITMAPDATA` rule and palettes are not premultiplied), palette size = `BitmapColorTableSize + 1`, row padding by pixel unit, JPEG3/4 alpha must inflate to `Width x Height` and needs a JPEG payload, `AlphaDataOffset` is a byte count, `JPEGTables` is single-per-file, plus new `AST-R035` (JPEG reassembly, the erroneous `FFD9 FFD8` prefix, `DeblockParam` recorded-not-applied); errata `E-014` |
 | 1.2 | 2026-10-04 | Diagnostic citations re-pointed to the owning implementation docs: video SSIM `SF0220` -> `SF0249` (`IMPL-110`), byte budget `SF0230` -> `SF0501` and atlas pages `SF0231` -> `SF0502` (`IMPL-120`; the codes previously named are taken by `IMPL-080` font conditions); errata `E-016` |
 | 1.3 | 2026-10-04 | Ch.14 ripple: decision `AST-D11` (Screen Video v2 accepted although the tag's `CodecID` table omits it; per-packet palette with the Appendix C fallback) and test `T-AST-022` added for `IMPL-110` §4.3 |
+| 1.4 | 2026-10-05 | Added `T-AST-024` for deterministic morph endpoint preview bundles from the `forge-decompile assets dump` integration fixture |

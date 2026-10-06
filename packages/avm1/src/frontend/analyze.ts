@@ -8,7 +8,7 @@
  *   try tiling, body scope keys) → buildBlockFrames → simulateFrames → tier → requirements → IR.
  *
  * `analyzeMovie` runs the AVM2 gate first (SF1000, exit 3 per doc 010 §7) and then analyzes every
- * `DoAction`/`DoInitAction`/clip-action block in the dictionary.
+ * `DoAction`/`DoInitAction`/clip-action block plus every button action range in the dictionary.
  */
 
 import type { MovieModel, SwfFile } from '@swf-forge/swf';
@@ -640,20 +640,22 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
   const takeClipActions = (ops: readonly DisplayOp[]): void => {
     for (const op of ops) {
       if (op.kind !== 'place') continue;
-      const ref = op.clipActions;
-      if (ref === null) continue;
-      const bytes = sliceBlock(file, ref);
-      if (bytes === null) continue;
-      blocks.push(
-        analyzeActionBlock({
-          bytes,
-          offsetBase: ref.offset + 4,
-          kind: 'clipEvent',
-          id: `clip_${clipIndex++}`,
-          version: file.version,
-          emit,
-        }),
-      );
+      const clipActions = op.clipActions;
+      if (clipActions === null) continue;
+      for (const record of clipActions.records) {
+        const bytes = sliceActionBytes(file, record.actions);
+        if (bytes === null || bytes.length === 0) continue;
+        blocks.push(
+          analyzeActionBlock({
+            bytes,
+            offsetBase: record.actions.offset,
+            kind: 'clipEvent',
+            id: `clip_${clipIndex++}`,
+            version: file.version,
+            emit,
+          }),
+        );
+      }
       void op.name;
       void op.depth;
     }
@@ -663,6 +665,26 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
     const sprite = character.sprite;
     if (sprite === null) continue;
     for (const frame of sprite.timeline.frames) takeClipActions(frame.ops);
+  }
+
+  // Button v1 arrays and v2 condition handlers (`IMPL-100`) are action blocks in their own right.
+  for (const character of [...model.characters.values()].sort((a, b) => a.id - b.id)) {
+    const button = character.button;
+    if (button === null) continue;
+    button.actions.forEach((entry, index) => {
+      const bytes = sliceActionBytes(file, entry.actionBytes);
+      if (bytes === null || bytes.length === 0) return;
+      blocks.push(
+        analyzeActionBlock({
+          bytes,
+          offsetBase: entry.actionBytes.offset,
+          kind: 'button',
+          id: `button_${button.id}_${index}`,
+          version: file.version,
+          emit,
+        }),
+      );
+    });
   }
 
   // Name recovery over the functions the blocks defined.
@@ -697,5 +719,13 @@ function sliceBlock(file: SwfFile, ref: { readonly offset: number; readonly leng
   const start = ref.offset + 4;
   const end = ref.offset + ref.length;
   if (start < 0 || end > file.body.length || start >= end) return null;
+  return file.body.subarray(start, end);
+}
+
+/** ActionBlockRef ranges from button/clip records already point at their first ACTIONRECORD byte. */
+function sliceActionBytes(file: SwfFile, ref: { readonly offset: number; readonly length: number }): Uint8Array | null {
+  const start = ref.offset;
+  const end = ref.offset + ref.length;
+  if (start < 0 || ref.length < 0 || end > file.body.length || start > end) return null;
   return file.body.subarray(start, end);
 }

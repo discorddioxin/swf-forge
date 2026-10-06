@@ -6,6 +6,7 @@
  * it can be pointed at untrusted content (`SEC` §7).
  */
 
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 import { analyzeMovie, disassembleMovie } from '@swf-forge/avm1';
@@ -28,6 +29,8 @@ export interface InspectRequest {
   readonly tags?: boolean;
   /** `--symbols`: print the export/import name tables in full. */
   readonly symbols?: boolean;
+  /** `--shapes`: report decoded VectorShape summaries without raw-tag reparsing. */
+  readonly shapes?: boolean;
 }
 
 /** The `--actions` payload, computed before the summary so the summary's shape stays `readonly`. */
@@ -72,6 +75,17 @@ export interface InspectSummary {
     readonly offset: number;
     readonly shadowed: boolean;
   }[];
+  /** `--shapes` only: stable decoded IR metadata; geometry remains in the production model. */
+  readonly shapes?: readonly {
+    readonly id: number;
+    readonly version: number;
+    readonly bounds: { readonly xMin: number; readonly xMax: number; readonly yMin: number; readonly yMax: number };
+    readonly fillRule: 'evenOdd' | 'nonZero';
+    readonly edgeCount: number;
+    readonly fillPathCount: number;
+    readonly strokePathCount: number;
+    readonly geometrySha256: string;
+  }[];
   readonly labels: readonly string[];
   /** `--tags` only: the full tag index in file order. */
   readonly tagIndex?: readonly {
@@ -114,7 +128,12 @@ function summarize(
   model: MovieModel,
   path: string,
   sha256: string,
-  options: { readonly tags?: boolean; readonly symbols?: boolean; readonly actions?: InspectActions },
+  options: {
+    readonly tags?: boolean;
+    readonly symbols?: boolean;
+    readonly actions?: InspectActions;
+    readonly shapes?: boolean;
+  },
 ): InspectSummary {
   const histogram = new Map<number, number>();
   for (const tag of file.tagIndex.tags) histogram.set(tag.code, (histogram.get(tag.code) ?? 0) + 1);
@@ -133,6 +152,27 @@ function summarize(
     offset: definition.offset,
     shadowed: lastDefinitionIndex.get(definition.id) !== index,
   }));
+  const shapes =
+    options.shapes === true
+      ? [...model.characters.values()]
+          .filter((character) => character.vectorShape !== null)
+          .sort((a, b) => a.id - b.id)
+          .map((character) => {
+            const shape = character.vectorShape;
+            if (shape === null) return null;
+            return {
+              id: character.id,
+              version: shape.version,
+              bounds: shape.bounds,
+              fillRule: shape.fillRule,
+              edgeCount: shape.edges.length,
+              fillPathCount: shape.paths.length,
+              strokePathCount: shape.strokes.length,
+              geometrySha256: createHash('sha256').update(JSON.stringify(shape), 'utf8').digest('hex'),
+            };
+          })
+          .filter((shape): shape is NonNullable<typeof shape> => shape !== null)
+      : undefined;
   // Export names in id order (WP-020-12: the names are part of the report, not just a count).
   const exports = [...(model.control.exportsById ?? new Map<number, string>()).entries()]
     .sort((a, b) => a[0] - b[0])
@@ -198,6 +238,7 @@ function summarize(
     characters,
     exports,
     definitions,
+    ...(shapes !== undefined ? { shapes } : {}),
     labels: [...model.mainTimeline.labels.keys()].sort(),
     ...(tagIndex !== undefined ? { tagIndex } : {}),
     ...(symbols !== undefined ? { symbols } : {}),
@@ -243,6 +284,14 @@ function render(summary: InspectSummary, verbose: boolean): string[] {
     for (const definition of s.definitions.filter((entry) => duplicateIds.has(entry.id))) {
       lines.push(
         `    #${definition.id}  ${definition.tag} @${definition.offset}${definition.shadowed ? ' (shadowed)' : ' (winner)'}`,
+      );
+    }
+  }
+  if (s.shapes !== undefined) {
+    lines.push(`  shapes         ${s.shapes.length} decoded static VectorShape(s)`);
+    for (const shape of s.shapes) {
+      lines.push(
+        `    #${shape.id} v${shape.version}  ${shape.bounds.xMax - shape.bounds.xMin}x${shape.bounds.yMax - shape.bounds.yMin} twips  ${shape.edgeCount} edge(s), ${shape.fillPathCount} fill path(s), ${shape.strokePathCount} stroke path(s), ${shape.fillRule}  sha256:${shape.geometrySha256.slice(0, 16)}`,
       );
     }
   }
@@ -343,6 +392,7 @@ export function runInspect(request: InspectRequest, io: CliIo): number {
   const summary = summarize(file, model, request.file, sha256, {
     ...(request.tags !== undefined ? { tags: request.tags } : {}),
     ...(request.symbols !== undefined ? { symbols: request.symbols } : {}),
+    ...(request.shapes !== undefined ? { shapes: request.shapes } : {}),
     ...(actions !== undefined ? { actions } : {}),
   });
 

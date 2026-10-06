@@ -7,8 +7,17 @@
  * summary is a view over the same object: one serializer, two renderings, no second source of truth.
  */
 
+import { createHash } from 'node:crypto';
+
 import type {
   ActionBlockRef,
+  BitmapAssetModel,
+  ButtonModel,
+  ButtonConditions,
+  ButtonState,
+  CharacterAlias,
+  ClipActions,
+  ClipEventFlags,
   Cxform,
   Diagnostic,
   DisplayOp,
@@ -21,10 +30,16 @@ import type {
   SwfFile,
   TagRef,
   TimelineModel,
+  VectorShape,
+  DefineSoundModel,
+  DefineFontModel,
+  StaticTextModel,
+  EditTextModel,
+  TimelineSoundEvent,
 } from '@swf-forge/swf';
 
 export const DUMP_FORMAT = 'swf-forge/model-dump';
-export const DUMP_FORMAT_VERSION = 1;
+export const DUMP_FORMAT_VERSION = 4;
 
 export interface DumpTagRef {
   readonly code: number;
@@ -75,6 +90,76 @@ export interface DumpAction {
   readonly length: number;
 }
 
+export interface DumpClipActionRecord {
+  readonly events: ClipEventFlags;
+  readonly keyCode: number | null;
+  readonly actions: DumpAction;
+  readonly sizeBytes: number;
+}
+
+export interface DumpClipActions {
+  readonly reserved: number;
+  readonly allEvents: ClipEventFlags;
+  readonly records: readonly DumpClipActionRecord[];
+  readonly endFlagWidth: 2 | 4;
+  readonly endFlag: number | null;
+  readonly raw: DumpAction;
+}
+
+export interface DumpButtonRecord {
+  readonly states: readonly ButtonState[];
+  readonly depth: number;
+  readonly characterId: number;
+  readonly matrix: DumpMatrix;
+  readonly cxform: DumpCxform | null;
+  readonly blendMode: number | null;
+  readonly filters: readonly DumpFilter[] | null;
+  readonly rawFlags: number;
+  readonly tagOffset: number;
+}
+
+export interface DumpButtonAction {
+  readonly conditions: ButtonConditions;
+  readonly rawConditionWord: number;
+  readonly keyCode: number | null;
+  readonly actions: DumpAction;
+  readonly tagOffset: number;
+  readonly origin: DumpTagRef;
+}
+
+export interface DumpButtonSound {
+  readonly transition: 'overUpToIdle' | 'idleToOverUp' | 'overUpToOverDown' | 'overDownToOverUp';
+  readonly soundId: number;
+  readonly info: {
+    readonly rawFlags: number;
+    readonly reserved: number;
+    readonly syncStop: boolean;
+    readonly syncNoMultiple: boolean;
+    readonly inPoint: number | null;
+    readonly outPoint: number | null;
+    readonly loopCount: number | null;
+    readonly envelope: readonly {
+      readonly position44: number;
+      readonly leftLevel: number;
+      readonly rightLevel: number;
+    }[];
+  } | null;
+}
+
+export interface DumpButton {
+  readonly id: number;
+  readonly version: 1 | 2;
+  readonly trackAsMenu: boolean;
+  readonly records: readonly DumpButtonRecord[];
+  readonly characterCxform: DumpCxform | null;
+  readonly actions: readonly DumpButtonAction[];
+  readonly sounds: readonly DumpButtonSound[];
+  readonly hitArea: DumpRect | null;
+  readonly hitAreaSource: 'hitTest' | 'up' | null;
+  readonly keyPressRequiresFocus: false;
+  readonly origin: DumpTagRef;
+}
+
 type SerializedFilter<F> = F extends unknown
   ? F extends { readonly kind: 'unknown'; readonly raw: Uint8Array }
     ? Omit<F, 'raw'> & { readonly raw: readonly number[] }
@@ -103,7 +188,7 @@ export interface DumpPlacement {
   readonly rawCacheValue: number | null;
   readonly visible: boolean | null;
   readonly opaqueBackground: DumpRgba | null;
-  readonly clipActions: DumpAction | null;
+  readonly clipActions: DumpClipActions | null;
   readonly tagOffset: number;
 }
 
@@ -132,18 +217,52 @@ export interface DumpLabel {
   readonly namedAnchor: boolean;
 }
 
+export interface DumpSoundEvent {
+  readonly tagOffset: number;
+  readonly soundId: number | null;
+  readonly className: string | null;
+  readonly info: {
+    readonly reserved: number;
+    readonly syncStop: boolean;
+    readonly syncNoMultiple: boolean;
+    readonly inPoint: number | null;
+    readonly outPoint: number | null;
+    readonly loopCount: number | null;
+    readonly envelope: readonly {
+      readonly position44: number;
+      readonly leftLevel: number;
+      readonly rightLevel: number;
+    }[];
+  };
+}
+
 export interface DumpFrame {
   readonly index: number;
   readonly label: string | null;
   readonly ops: readonly DumpOp[];
   readonly actions: readonly DumpAction[];
   readonly soundStreamBlock: { readonly offset: number; readonly length: number } | null;
+  readonly soundEvents: readonly DumpSoundEvent[];
   readonly videoFrames: readonly DumpTagRef[];
+}
+
+export interface DumpStreamSoundBlock {
+  readonly tag: DumpTagRef;
+  readonly sampleOffset: number;
+  readonly sampleCount: number;
+  readonly seekSamples: number | null;
+  readonly dataOffset: number;
+  readonly dataLength: number;
 }
 
 export interface DumpStreamSoundSpan {
   readonly head: DumpTagRef;
-  readonly blocks: readonly DumpTagRef[];
+  readonly format: number;
+  readonly sampleRate: number;
+  readonly channels: number;
+  readonly latencySeek: number | null;
+  readonly sampleCount: number;
+  readonly blocks: readonly DumpStreamSoundBlock[];
 }
 
 export interface DumpTimeline {
@@ -169,10 +288,95 @@ export interface DumpSprite {
 
 export interface DumpCharacter {
   readonly id: number;
+  readonly kind: string;
   readonly tag: string;
   readonly tagCode: number | null;
   readonly tagOffset: number | null;
   readonly length: number | null;
+  readonly bounds: DumpRect | null;
+  /** Stable shape IR summary; full geometry stays available through buildMovieModel, not JSON. */
+  readonly vectorShape: {
+    readonly version: number;
+    readonly bounds: DumpRect;
+    readonly fillRule: 'evenOdd' | 'nonZero';
+    readonly edgeCount: number;
+    readonly fillPathCount: number;
+    readonly strokePathCount: number;
+    readonly fillStyleCount: number;
+    readonly lineStyleCount: number;
+    readonly geometrySha256: string;
+  } | null;
+  /** Bitmap header + compressed payload digest; image bytes remain outside JSON. */
+  readonly bitmap: {
+    readonly source: string;
+    readonly payloadBytes: number;
+    readonly payloadSha256: string;
+    readonly alphaBytes: number;
+    readonly alphaSha256: string | null;
+    readonly declaredSize: { readonly width: number; readonly height: number } | null;
+    readonly bitmapFormat: number | null;
+    readonly paletteSize: number | null;
+    readonly alphaDataOffset: number | null;
+    readonly deblocking: number | null;
+    readonly sourcePremultiplied: boolean;
+  } | null;
+  /** Embedded font metadata and stable table digests; outline geometry stays in the typed model. */
+  readonly font: {
+    readonly version: number;
+    readonly name: string;
+    readonly languageCode: number;
+    readonly unitsPerEm: number;
+    readonly italic: boolean;
+    readonly bold: boolean;
+    readonly glyphCount: number;
+    readonly ascent: number | null;
+    readonly descent: number | null;
+    readonly leading: number | null;
+    readonly codeTableSha256: string;
+  } | null;
+  /** Static glyph runs retain authored advances; each glyph has a compact index/advance pair. */
+  readonly text: {
+    readonly version: number;
+    readonly bounds: DumpRect;
+    readonly matrix: DumpMatrix;
+    readonly glyphBits: number;
+    readonly advanceBits: number;
+    readonly runs: readonly {
+      readonly fontId: number | null;
+      readonly color: DumpRgba | null;
+      readonly xOffset: number;
+      readonly yOffset: number;
+      readonly textHeight: number | null;
+      readonly glyphs: readonly { readonly glyphIndex: number; readonly advance: number }[];
+      readonly recoveredText: string | null;
+    }[];
+  } | null;
+  /** Editable text fields preserve all authored flags/fields; runtime behavior is not applied. */
+  readonly editText: {
+    readonly bounds: DumpRect;
+    readonly flags: EditTextModel['flags'];
+    readonly fontId: number | null;
+    readonly fontClass: string | null;
+    readonly fontHeight: number | null;
+    readonly color: DumpRgba | null;
+    readonly maxLength: number | null;
+    readonly layout: EditTextModel['layout'];
+    readonly variableName: string;
+    readonly initialText: string | null;
+  } | null;
+  /** Sound header + compressed payload summary; media bytes remain outside JSON. */
+  readonly sound: {
+    readonly format: number;
+    readonly rateCode: number;
+    readonly sampleRate: number;
+    readonly bitsPerSample: number;
+    readonly channels: number;
+    readonly sampleCount: number;
+    readonly dataBytes: number;
+    readonly dataSha256: string;
+  } | null;
+  readonly alias: CharacterAlias | null;
+  readonly button: DumpButton | null;
   readonly sprite: DumpSprite | null;
 }
 
@@ -201,6 +405,8 @@ export interface DumpControl {
     readonly name: string;
     readonly localId: number;
     readonly applied: boolean;
+    readonly sourceMovieId: string | null;
+    readonly sourceId: number | null;
   }[];
   readonly scalingGrids: readonly { readonly id: number; readonly rect: DumpRect }[];
   /** Rects shadowed by repeated `DefineScalingGrid` tags (last wins; reported, IMPL-040-R028). */
@@ -340,8 +546,166 @@ function rgba(value: Rgba): DumpRgba {
   return { r: value.r, g: value.g, b: value.b, a: value.a };
 }
 
+function vectorShapeSummary(shape: VectorShape | null): DumpCharacter['vectorShape'] {
+  if (shape === null) return null;
+  const canonical = JSON.stringify(shape);
+  return {
+    version: shape.version,
+    bounds: rect(shape.bounds),
+    fillRule: shape.fillRule,
+    edgeCount: shape.edges.length,
+    fillPathCount: shape.paths.length,
+    strokePathCount: shape.strokes.length,
+    fillStyleCount: Math.max(0, shape.styles.fills.length - 1),
+    lineStyleCount: Math.max(0, shape.styles.lines.length - 1),
+    geometrySha256: createHash('sha256').update(canonical, 'utf8').digest('hex'),
+  };
+}
+
+function bitmapSummary(bitmap: BitmapAssetModel | null): DumpCharacter['bitmap'] {
+  if (bitmap === null) return null;
+  return {
+    source: bitmap.source,
+    payloadBytes: bitmap.payload.length,
+    payloadSha256: createHash('sha256').update(bitmap.payload).digest('hex'),
+    alphaBytes: bitmap.alpha?.length ?? 0,
+    alphaSha256: bitmap.alpha === null ? null : createHash('sha256').update(bitmap.alpha).digest('hex'),
+    declaredSize: bitmap.declaredSize,
+    bitmapFormat: bitmap.bitmapFormatCode,
+    paletteSize: bitmap.paletteSize,
+    alphaDataOffset: bitmap.alphaDataOffset,
+    deblocking: bitmap.deblocking,
+    sourcePremultiplied: bitmap.sourcePremultiplied,
+  };
+}
+
+function fontSummary(font: DefineFontModel | null): DumpCharacter['font'] {
+  if (font === null) return null;
+  const codeTable = JSON.stringify(
+    font.glyphs.map((glyph) => ({
+      code: glyph.code,
+      advance: glyph.advance,
+      bounds: glyph.bounds,
+    })),
+  );
+  return {
+    version: font.version,
+    name: font.name,
+    languageCode: font.languageCode,
+    unitsPerEm: font.unitsPerEm,
+    italic: font.italic,
+    bold: font.bold,
+    glyphCount: font.glyphs.length,
+    ascent: font.ascent,
+    descent: font.descent,
+    leading: font.leading,
+    codeTableSha256: createHash('sha256').update(codeTable, 'utf8').digest('hex'),
+  };
+}
+
+function staticTextSummary(text: StaticTextModel | null): DumpCharacter['text'] {
+  if (text === null) return null;
+  return {
+    version: text.version,
+    bounds: rect(text.bounds),
+    matrix: matrix(text.matrix),
+    glyphBits: text.glyphBits,
+    advanceBits: text.advanceBits,
+    runs: text.runs.map((run) => ({
+      fontId: run.fontId,
+      color: run.color === null ? null : rgba(run.color),
+      xOffset: run.xOffset,
+      yOffset: run.yOffset,
+      textHeight: run.textHeight,
+      glyphs: run.glyphs.map((glyph) => ({ glyphIndex: glyph.glyphIndex, advance: glyph.advance })),
+      recoveredText: run.recoveredText,
+    })),
+  };
+}
+
+function editTextSummary(text: EditTextModel | null): DumpCharacter['editText'] {
+  if (text === null) return null;
+  return {
+    bounds: rect(text.bounds),
+    flags: text.flags,
+    fontId: text.fontId,
+    fontClass: text.fontClass,
+    fontHeight: text.fontHeight,
+    color: text.color === null ? null : rgba(text.color),
+    maxLength: text.maxLength,
+    layout: text.layout,
+    variableName: text.variableName,
+    initialText: text.initialText,
+  };
+}
+
+function soundSummary(sound: DefineSoundModel | null): DumpCharacter['sound'] {
+  if (sound === null) return null;
+  return {
+    format: sound.format,
+    rateCode: sound.rateCode,
+    sampleRate: sound.sampleRate,
+    bitsPerSample: sound.bitsPerSample,
+    channels: sound.channels,
+    sampleCount: sound.sampleCount,
+    dataBytes: sound.data.length,
+    dataSha256: createHash('sha256').update(sound.data).digest('hex'),
+  };
+}
+
 function action(value: ActionBlockRef | null): DumpAction | null {
   return value === null ? null : { offset: value.offset, length: value.length };
+}
+
+function clipActionsDump(value: ClipActions | null): DumpClipActions | null {
+  if (value === null) return null;
+  return {
+    reserved: value.reserved,
+    allEvents: value.allEvents,
+    records: value.records.map((record) => ({
+      events: record.events,
+      keyCode: record.keyCode,
+      actions: action(record.actions) ?? { offset: record.actions.offset, length: record.actions.length },
+      sizeBytes: record.sizeBytes,
+    })),
+    endFlagWidth: value.endFlagWidth,
+    endFlag: value.endFlag,
+    raw: { offset: value.raw.offset, length: value.raw.length },
+  };
+}
+
+function buttonDump(value: ButtonModel | null): DumpButton | null {
+  if (value === null) return null;
+  return {
+    id: value.id,
+    version: value.version,
+    trackAsMenu: value.trackAsMenu,
+    records: value.records.map((record) => ({
+      states: record.states,
+      depth: record.depth,
+      characterId: record.characterId,
+      matrix: matrix(record.matrix),
+      cxform: record.cxform === null ? null : cxform(record.cxform),
+      blendMode: record.blendMode,
+      filters: record.filters === null ? null : record.filters.map(filterDump),
+      rawFlags: record.rawFlags,
+      tagOffset: record.tagOffset,
+    })),
+    characterCxform: value.characterCxform === null ? null : cxform(value.characterCxform),
+    actions: value.actions.map((entry) => ({
+      conditions: entry.conditions,
+      rawConditionWord: entry.rawConditionWord,
+      keyCode: entry.keyCode,
+      actions: { offset: entry.actionBytes.offset, length: entry.actionBytes.length },
+      tagOffset: entry.tagOffset,
+      origin: tagRef(entry.origin),
+    })),
+    sounds: value.sounds.map((entry) => ({ ...entry })),
+    hitArea: value.hitArea === null ? null : rect(value.hitArea),
+    hitAreaSource: value.hitAreaSource,
+    keyPressRequiresFocus: value.keyPressRequiresFocus,
+    origin: tagRef(value.origin),
+  };
 }
 
 function filterDump(value: FilterSpec): DumpFilter {
@@ -371,7 +735,7 @@ function opDump(op: DisplayOp): DumpOp {
       rawCacheValue: place.rawCacheValue,
       visible: place.visible,
       opaqueBackground: place.opaqueBackground === null ? null : rgba(place.opaqueBackground),
-      clipActions: action(place.clipActions),
+      clipActions: clipActionsDump(place.clipActions),
       tagOffset: place.tagOffset,
     };
   }
@@ -392,6 +756,27 @@ function opDump(op: DisplayOp): DumpOp {
  * One timeline. `anchors` (the main timeline's label map) supplies `namedAnchor`; sprite timelines have
  * no control block, so their labels report `namedAnchor: false`.
  */
+function soundEventDump(event: TimelineSoundEvent): DumpSoundEvent {
+  return {
+    tagOffset: event.tagOffset,
+    soundId: event.soundId,
+    className: event.className,
+    info: {
+      reserved: event.info.reserved,
+      syncStop: event.info.syncStop,
+      syncNoMultiple: event.info.syncNoMultiple,
+      inPoint: event.info.inPoint,
+      outPoint: event.info.outPoint,
+      loopCount: event.info.loopCount,
+      envelope: event.info.envelope.map((point) => ({
+        position44: point.position44,
+        leftLevel: point.leftLevel,
+        rightLevel: point.rightLevel,
+      })),
+    },
+  };
+}
+
 function timelineDump(
   timeline: TimelineModel,
   anchors?: ReadonlyMap<string, readonly { readonly frame: number; readonly namedAnchor: boolean }[]>,
@@ -416,12 +801,25 @@ function timelineDump(
         frame.soundStreamBlock === null
           ? null
           : { offset: frame.soundStreamBlock.offset, length: frame.soundStreamBlock.length },
+      soundEvents: frame.soundEvents.map(soundEventDump),
       videoFrames: frame.videoFrames.map(tagRef),
     })),
     labels,
     streamSoundSpans: timeline.streamSoundSpans.map((span) => ({
       head: tagRef(span.headTag),
-      blocks: span.blockTags.map(tagRef),
+      format: span.head.format,
+      sampleRate: span.head.sampleRate,
+      channels: span.head.channels,
+      latencySeek: span.head.latencySeek,
+      sampleCount: span.sampleCount,
+      blocks: span.blocks.map((block) => ({
+        tag: tagRef(block.tag),
+        sampleOffset: block.sampleOffset,
+        sampleCount: block.sampleCount,
+        seekSamples: block.seekSamples,
+        dataOffset: block.dataOffset,
+        dataLength: block.dataLength,
+      })),
     })),
     implicitScene: timeline.implicitScene,
   };
@@ -479,6 +877,8 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
       name: entry.name,
       localId: entry.localId,
       applied: entry.applied,
+      sourceMovieId: entry.sourceMovieId,
+      sourceId: entry.sourceId,
     })),
     scalingGrids: [...model.control.scalingGrids.entries()]
       .map(([id, value]) => ({ id, rect: rect(value) }))
@@ -530,10 +930,20 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
     .sort((a, b) => a.id - b.id)
     .map((character) => ({
       id: character.id,
+      kind: character.kind,
       tag: character.tagName,
-      tagCode: character.index?.code ?? null,
+      tagCode: character.index?.code ?? character.tagCode,
       tagOffset: character.index?.headerOffset ?? null,
       length: character.index?.length ?? null,
+      bounds: character.bounds === null ? null : rect(character.bounds),
+      vectorShape: vectorShapeSummary(character.vectorShape),
+      bitmap: bitmapSummary(character.bitmap),
+      font: fontSummary(character.font),
+      text: staticTextSummary(character.text),
+      editText: editTextSummary(character.editText),
+      sound: soundSummary(character.sound),
+      alias: character.alias,
+      button: buttonDump(character.button),
       sprite:
         character.sprite === null
           ? null
@@ -607,7 +1017,7 @@ function describeOp(op: DumpOp, nameOf: (id: number) => string): string {
   if (op.className !== null) parts.push(`class ${op.className}`);
   if (op.blendMode !== null) parts.push(`blend ${op.blendMode}`);
   if (op.visible === false) parts.push('hidden');
-  if (op.clipActions !== null) parts.push(`clipActions @${op.clipActions.offset} ${op.clipActions.length} B`);
+  if (op.clipActions !== null) parts.push(`clipActions @${op.clipActions.raw.offset} ${op.clipActions.raw.length} B`);
   return parts.join(', ');
 }
 
@@ -629,9 +1039,20 @@ export function renderDump(dump: ModelDump, input: string, verbose: boolean): st
   lines.push(`  dictionary    ${dump.dictionary.length} character(s)`);
   for (const character of dump.dictionary) {
     const sprite = character.sprite;
+    const alias = character.alias;
     lines.push(
-      `    #${character.id}  ${character.tag}  @${character.tagOffset} ${character.length} B${sprite === null ? '' : `  ${sprite.characterName} frames=${sprite.declaredFrameCount}/${sprite.observedFrameCount} tags=${sprite.tagCount}`}`,
+      `    #${character.id}  ${character.tag}  @${character.tagOffset} ${character.length} B${sprite === null ? '' : `  ${sprite.characterName} frames=${sprite.declaredFrameCount}/${sprite.observedFrameCount} tags=${sprite.tagCount}`}${alias === null ? '' : `  alias=${alias.sourceMovieId}#${alias.sourceId}`}`,
     );
+    if (character.button !== null) {
+      const button = character.button;
+      const hitArea =
+        button.hitArea === null
+          ? 'none'
+          : `${button.hitArea.xMin},${button.hitArea.yMin}…${button.hitArea.xMax},${button.hitArea.yMax} (${button.hitAreaSource})`;
+      lines.push(
+        `        button v${button.version} ${button.trackAsMenu ? 'menu' : 'push'}: ${button.records.length} record(s), ${button.actions.length} handler(s), ${button.sounds.length} sound(s), hit=${hitArea}`,
+      );
+    }
     if (sprite !== null && verbose) {
       for (const frame of sprite.timeline.frames) {
         lines.push(

@@ -11,7 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { Tag, buildMovieModel, openSwf } from '@swf-forge/swf';
-import { buildSwf, concat, endTag, showFrames, tag } from '@swf-forge/swf/test-support';
+import { ByteWriter, buildSwf, concat, endTag, showFrames, tag, writeRect } from '@swf-forge/swf/test-support';
 
 const FIXTURE = fileURLToPath(new URL('../../../fixtures/appendix-a.swf', import.meta.url));
 
@@ -24,9 +24,13 @@ function asciiZ(text: string): Uint8Array {
   return Uint8Array.from([...text].map((ch) => ch.charCodeAt(0)).concat(0));
 }
 
-/** DefineShape-ish body: a character id and two filler bytes (the model never decodes it). */
+/** A minimal valid DefineShape body; model assembly now decodes static vector geometry. */
 function shapeBody(id: number): Uint8Array {
-  return Uint8Array.from([id & 0xff, (id >>> 8) & 0xff, 0x00, 0x00]);
+  const writer = new ByteWriter();
+  writer.u16(id);
+  writeRect(writer, { xMin: 0, xMax: 100, yMin: 0, yMax: 100 });
+  writer.u8(0).u8(0).bits(0, 4).bits(0, 4).bits(0, 6).align();
+  return writer.toUint8Array();
 }
 
 /** `PlaceObject2` with only `HasCharacter` (an add at that depth). */
@@ -85,6 +89,46 @@ describe('sprite handling', () => {
     expect(ops[1]).toMatchObject({ kind: 'place', depth: 1, characterId: 9 });
     expect(movie.characters.get(9)?.kind).toBe('missing');
     expect(file.sink.codes()).toContain('SF0110');
+  });
+
+  it('T-MOD-603 records independent main and sprite stream-sound spans', () => {
+    const sprite = tag(
+      Tag.DefineSprite,
+      concat(
+        u16(5),
+        u16(1),
+        tag(Tag.SoundStreamHead, Uint8Array.of(0)),
+        tag(Tag.SoundStreamBlock, Uint8Array.of(1, 2)),
+        tag(Tag.ShowFrame),
+        endTag(),
+      ),
+    );
+    const body = concat(
+      sprite,
+      tag(Tag.SoundStreamHead, Uint8Array.of(0)),
+      tag(Tag.SoundStreamBlock, Uint8Array.of(3, 4)),
+      showFrames(1),
+      endTag(),
+    );
+    const model = buildMovieModel(openSwf(buildSwf({ version: 8, body, frameCount: 1 })));
+    const mainSpan = model.mainTimeline.streamSoundSpans[0];
+    const spriteTimeline = model.characters.get(5)?.sprite?.timeline;
+    const spriteSpan = spriteTimeline?.streamSoundSpans[0];
+    expect(model.mainTimeline.streamSoundSpans).toHaveLength(1);
+    expect(mainSpan?.headTag.code).toBe(Tag.SoundStreamHead);
+    expect(mainSpan?.blockTags).toHaveLength(1);
+    expect(spriteTimeline?.streamSoundSpans).toHaveLength(1);
+    expect(spriteSpan?.headTag.inSprite).toBe(5);
+    expect(spriteSpan?.blockTags).toHaveLength(1);
+  });
+
+  it('T-MOD-011: models an empty sprite as a zero-frame timeline', () => {
+    const sprite = tag(Tag.DefineSprite, concat(u16(5), u16(0), endTag()));
+    const file = openSwf(buildSwf({ version: 8, body: concat(sprite, showFrames(1), endTag()), frameCount: 1 }));
+    const model = buildMovieModel(file);
+    expect(model.characters.get(5)?.sprite?.timeline.frames).toEqual([]);
+    expect(model.characters.get(5)?.sprite?.declaredFrameCount).toBe(0);
+    expect(file.sink.codes()).not.toContain('SF0173');
   });
 
   it('T-MOD-604 walks the Appendix A PlaceObject2 (short header, flags, depth, character, empty matrix)', () => {
@@ -239,7 +283,7 @@ describe('movie model', () => {
     expect(placedFile.sink.codes()).not.toContain('SF0166');
   });
 
-  it('models the appendix fixture: stage, background, one frame, one character', () => {
+  it('T-MOD-013 models the appendix fixture: stage, background, one frame, one character', () => {
     const movie = buildMovieModel(openSwf(new Uint8Array(readFileSync(FIXTURE))));
     expect(movie.frameCount).toBe(1);
     expect(movie.stage).toEqual({ widthTwips: 11000, heightTwips: 8000, frameRate: 12 * 256 });
@@ -277,7 +321,7 @@ describe('movie model', () => {
     expect(movie.mainTimeline.declaredFrameCount).toBe(3);
   });
 
-  it('collects scenes, labels, script limits and metadata from control tags', () => {
+  it('T-MOD-019: stores the ScriptLimits override alongside scenes, labels and metadata', () => {
     const sceneData = concat(
       Uint8Array.from([2]), // SceneCount (EncodedU32)
       Uint8Array.from([0]),
@@ -315,11 +359,25 @@ describe('movie model', () => {
     expect(file.sink.codes()).not.toContain('SF0163');
   });
 
-  it('reports a Metadata/HasMetadata disagreement (SF0163)', () => {
+  it('T-MOD-023: reports a Metadata/HasMetadata disagreement (SF0163)', () => {
     const body = concat(tag(Tag.Metadata, asciiZ('<xmp/>')), tag(Tag.ShowFrame), endTag());
     const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
     buildMovieModel(file);
     expect(file.sink.codes()).toContain('SF0163');
+  });
+
+  it('T-MOD-028: repeated Metadata keeps the first value and reports SF0164', () => {
+    const body = concat(
+      tag(Tag.FileAttributes, Uint8Array.from([0x10, 0, 0, 0])),
+      tag(Tag.Metadata, asciiZ('<first/>')),
+      tag(Tag.Metadata, asciiZ('<second/>')),
+      showFrames(1),
+      endTag(),
+    );
+    const file = openSwf(buildSwf({ version: 9, body, frameCount: 1 }));
+    const model = buildMovieModel(file);
+    expect(model.metadata).toEqual({ xmp: '<first/>' });
+    expect(file.sink.codes()).toContain('SF0164');
   });
 });
 
@@ -352,7 +410,28 @@ describe('P2 integrity resolutions', () => {
     expect(movie.characters.get(77)?.kind).toBe('missing');
   });
 
-  it('a trailing FrameLabel after the final ShowFrame forms its own empty labelled frame (R008)', () => {
+  it('T-MOD-016 preserves duplicate export policy and reports both collision kinds', () => {
+    const definitions = concat(
+      tag(Tag.DefineSprite, concat(u16(7), u16(0), endTag())),
+      tag(Tag.DefineSprite, concat(u16(8), u16(0), endTag())),
+    );
+    const exports = tag(
+      Tag.ExportAssets,
+      concat(u16(3), u16(7), asciiZ('OldName'), u16(7), asciiZ('NewName'), u16(8), asciiZ('NewName')),
+    );
+    const file = openSwf(
+      buildSwf({ version: 8, body: concat(definitions, exports, showFrames(1), endTag()), frameCount: 1 }),
+    );
+    const movie = buildMovieModel(file);
+    expect(movie.control.exports.get('OldName')).toBe(7);
+    expect(movie.control.exports.get('NewName')).toBe(7);
+    expect(movie.control.exportsById.get(7)).toBe('NewName');
+    expect(movie.control.exportsById.get(8)).toBe('NewName');
+    expect(file.sink.codes()).toContain('SF0159');
+    expect(file.sink.codes()).toContain('SF0160');
+  });
+
+  it('T-MOD-014: a trailing FrameLabel after the final ShowFrame forms its own empty labelled frame (R008)', () => {
     const body = concat(showFrames(1), tag(Tag.FrameLabel, asciiZ('tail')), endTag());
     const file = openSwf(buildSwf({ version: 8, body, frameCount: 1 }));
     const movie = buildMovieModel(file);
@@ -363,7 +442,7 @@ describe('P2 integrity resolutions', () => {
     expect(movie.mainTimeline.labels.get('tail')).toBe(1);
   });
 
-  it('a mid-timeline FrameLabel still names the frame the next ShowFrame displays (R008 regression)', () => {
+  it('T-MOD-014: a mid-timeline FrameLabel still names the frame the next ShowFrame displays (R008 regression)', () => {
     const body = concat(showFrames(1), tag(Tag.FrameLabel, asciiZ('mid')), showFrames(1), endTag());
     const file = openSwf(buildSwf({ version: 8, body, frameCount: 2 }));
     const movie = buildMovieModel(file);
@@ -373,7 +452,7 @@ describe('P2 integrity resolutions', () => {
     expect(movie.mainTimeline.labels.get('mid')).toBe(1);
   });
 
-  it('a repeated DefineScalingGrid keeps the last rect and reports the shadowed one (R028)', () => {
+  it('T-MOD-020: a repeated DefineScalingGrid keeps the last rect and reports the shadowed one (R028)', () => {
     // Sprite 20 with one frame, the scaling-grid target.
     const sprite = tag(Tag.DefineSprite, concat(u16(20), u16(1), tag(Tag.ShowFrame), endTag()));
     // RECT (IMPL-010-R028): Nbits = ub(5), then the four SB[Nbits] coordinates packed
@@ -388,6 +467,15 @@ describe('P2 integrity resolutions', () => {
     expect(movie.control.scalingGridsShadowed).toEqual([
       { characterId: 20, rect: { xMin: -1, xMax: 0, yMin: -1, yMax: 0 } },
     ]);
+  });
+
+  it('T-MOD-027: SymbolClass id zero populates rootClassName without adding an export', () => {
+    const symbolClass = tag(Tag.SymbolClass, concat(u16(1), u16(0), asciiZ('app.Main')));
+    const model = buildMovieModel(
+      openSwf(buildSwf({ version: 9, body: concat(symbolClass, showFrames(1), endTag()), frameCount: 1 })),
+    );
+    expect(model.control.rootClassName).toBe('app.Main');
+    expect(model.control.exports.size).toBe(0);
   });
 
   it('T-MOD-036: a DefineBinaryData character carries its payload bytes (R038)', () => {

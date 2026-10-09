@@ -9,6 +9,7 @@ import {
   decodeSwfAdpcm,
   decodeSwfPcm,
   encodePcm16Wav,
+  measureAudio,
   parseSwfMp3EventData,
   resamplePcm16,
   silentPcm,
@@ -41,7 +42,19 @@ interface AssetRecord {
   readonly status: 'written' | 'fallback' | 'unsupported';
   readonly sha256: string | null;
   readonly metadata?: Readonly<Record<string, number | string | boolean>>;
+  /** `IMPL-090-R030`/`R031` levels and chunk table; present on every emitted audio asset. */
+  readonly audio?: AssetAudioMeta;
   readonly diagnostics: readonly AssetDiagnostic[];
+}
+
+interface AssetAudioMeta {
+  readonly durationSamples: number;
+  readonly peak: number;
+  readonly rms: number;
+  readonly rmsDbfs: number | null;
+  readonly silent: boolean;
+  readonly belowNullGate: boolean;
+  readonly chunks: readonly { readonly startSample: number; readonly frames: number; readonly peak: number }[];
 }
 
 interface AssetManifest {
@@ -447,9 +460,13 @@ function writeSoundWav(
     readonly metadata?: Readonly<Record<string, number | string | boolean>>;
   } = {},
 ): AssetRecord {
-  const wav = encodePcm16Wav({ channels, sampleRate: options.sampleRate ?? soundSampleRate(sound) });
+  const sampleRate = options.sampleRate ?? soundSampleRate(sound);
+  const wav = encodePcm16Wav({ channels, sampleRate });
   const path = `sound-${character.id}.wav`;
   writeFileSync(join(out, path), wav);
+  // `IMPL-090-R031`: every asset carries peak/RMS and a chunk table. These are flat scalars plus a
+  // compact chunk list so the manifest stays diffable and byte-stable run to run.
+  const measured = measureAudio({ channels, sampleRate });
   return {
     characterId: character.id,
     kind: character.kind,
@@ -459,6 +476,19 @@ function writeSoundWav(
     status: options.status ?? 'written',
     sha256: digest(wav),
     ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+    audio: {
+      durationSamples: measured.durationSamples,
+      peak: measured.levels.peak,
+      rms: measured.levels.rms,
+      rmsDbfs: measured.levels.rmsDbfs,
+      silent: measured.levels.silent,
+      belowNullGate: measured.levels.belowNullGate,
+      chunks: measured.chunks.map((chunk) => ({
+        startSample: chunk.startSample,
+        frames: chunk.frames,
+        peak: chunk.peak,
+      })),
+    },
     diagnostics: options.diagnostics ?? [],
   };
 }

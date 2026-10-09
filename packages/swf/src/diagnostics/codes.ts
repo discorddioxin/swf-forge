@@ -199,7 +199,7 @@ export const Codes = {
   // ---- sound decode/build (090; runtime-only SF0320–SF0323 intentionally omitted) ----------------
   SOUND_MP3_NONCANONICAL: 'SF0300',
   SOUND_FORMAT_RESERVED: 'SF0301',
-  SOUND_PCM_BIG_ENDIAN: 'SF0302',
+  SOUND_PCM_ENDIAN_ASSUMED: 'SF0302',
   SOUND_SPEEX_UNAVAILABLE: 'SF0303',
   SOUND_DATA_TRUNCATED: 'SF0304',
   SOUND_MP3_PARAMETER_CHANGE: 'SF0305',
@@ -642,7 +642,7 @@ const REGISTRY: Record<string, CodeInfo> = {
   SF0302: {
     code: 'SF0302',
     severity: 'info',
-    meaning: 'format 0 16-bit PCM decoded big-endian for deterministic output',
+    meaning: 'uncompressed format 0: byte order is not recorded in the file, little-endian assumed',
   },
   SF0303: {
     code: 'SF0303',

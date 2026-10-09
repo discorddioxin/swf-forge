@@ -710,6 +710,36 @@ compares covering a pair on the image, on the tables, in the interior, both `SOI
 missing-`EOI` tables block, and the negative case that entropy-coded bytes after `SOS` are preserved.
 `removeErroneousMarkers` lives at `packages/assets/src/images/decode.ts`.
 
+## E-030 — "native endian" is not a decodable instruction, and 8-bit PCM is unsigned
+
+**Found in:** Ch.11 `DefineSound` / `SoundData`, restated in `IMPL-090-R006`, implementing P3 C5.
+**What it says:** sound format 0 is *"uncompressed, native-endian"*, and the chapter never states
+the sample representation for `SoundSize = 0` (8-bit).
+**What is wrong:** one omission and one instruction that cannot be followed.
+
+1. **"native-endian"** names the endianness of the *authoring* machine, which is not recoverable
+   from the file. A decoder must pick an order. `REPO-R013` forbids picking the *host's*, because
+   that makes output host-dependent — but it does not say which fixed order to pick, and the choice
+   is not arbitrary: pick wrong and every 16-bit format-0 sound decodes to byte-swapped noise.
+   `ruffle` resolves it by assuming little-endian unconditionally, with the comment *"Cross fingers
+   that it's little endian"* (`core/src/backend/audio/decoders.rs`), routing
+   `UncompressedUnknownEndian` into the same little-endian `PcmDecoder` as format 3. Format 3 exists
+   precisely because format 0 was unusable, and Flash wrote little-endian from SWF 4 onward.
+2. **8-bit sample representation is omitted.** It is **unsigned** (0…255, `0x80` = silence), as in
+   RIFF/WAV and as `ruffle`'s `PcmDecoder` reads it. Nothing in Ch.11 says so, and the symmetric
+   assumption — that 8-bit is two's complement like 16-bit — is wrong in the worst way: it maps
+   silence to full-scale negative and inverts the waveform.
+
+**Resolution:** format 0 and format 3 are decoded identically — 16-bit little-endian, 8-bit
+unsigned expanded as `(byte - 128) * 256`. `SF0302` (info) is reported once per format-0 asset to
+record that the endianness was assumed rather than read. We expand 8-bit by 256 rather than
+`ruffle`'s `(byte - 127) * 128`, which spans half scale; 256 is the standard full-scale expansion
+and these samples go straight into a WAV preview. `IMPL-090-R006` corrected (`IMPL-090` 1.2), and
+`SF0302`'s registry wording — which claimed 8-bit had an endianness — reworded.
+
+**Encoded by:** `T-AUD-103` (`packages/audio/test/media-codecs.test.ts`), which previously pinned
+both defects.
+
 ---
 
 ## Changelog
@@ -728,4 +758,5 @@ missing-`EOI` tables block, and the negative case that entropy-coded bytes after
 | 1.9 | 2026-10-04 | `E-024`: dangling citations repaired (`GFX-D21` -> `GFX-D16`, `RT-R062` -> `RT-R057`…`R059`, `REPO-D09` -> `REPO-D06`), each missing decision/rule written into its owning design spec |
 | 2.0 | 2026-10-04 | Appendix pass: `E-025` (Appendix A's printed tables: `VertLineFlag` type/condition, the swapped hor/vert delta labels, `MoveDelta*` called unsigned, the "first byte ignored" frame-rate prose, the "fill bits" label for padding) and `E-026` (six invented tag names removed from `specs/110` §2 — Appendix B is the index authority) |
 | 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |
+| 2.3 | 2026-10-09 | `E-030`: sound format 0's "native endian" is undecodable — formats 0 and 3 both read little-endian (`ruffle` does the same) — and Ch.11 never states that 8-bit `SoundData` is unsigned, which it is; `IMPL-090-R006` corrected and `SF0302` reworded |
 | 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |

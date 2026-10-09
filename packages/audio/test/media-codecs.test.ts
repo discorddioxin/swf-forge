@@ -15,14 +15,17 @@ function frame(header: readonly number[], length: number): Uint8Array {
 }
 
 describe('SWF event audio codecs', () => {
-  it('T-AUD-103: expands signed 8-bit samples and deinterleaves stereo frames exactly', () => {
-    const mono = decodeSwfPcm(Uint8Array.from([0x80, 0x00, 0x7f]), {
+  it('T-AUD-103: expands 8-bit samples as unsigned, with 0x80 as silence (E-030)', () => {
+    // 8-bit SoundData is unsigned like WAV: 0x80 is the zero crossing, 0x00 is the negative rail.
+    // Read as two's complement — which this decoder did until C5 — 0x80 becomes full-scale
+    // negative and the whole waveform inverts (F-P3-22).
+    const mono = decodeSwfPcm(Uint8Array.from([0x80, 0x00, 0xff]), {
       format: 3,
       bitsPerSample: 8,
       channels: 1,
       sampleCount: 3,
     });
-    expect(Array.from(mono.channels[0] ?? [])).toEqual([-32768, 0, 32512]);
+    expect(Array.from(mono.channels[0] ?? [])).toEqual([0, -32768, 32512]);
 
     const stereo = decodeSwfPcm(Uint8Array.from([0x80, 0x7f, 0x00, 0xff]), {
       format: 3,
@@ -31,17 +34,29 @@ describe('SWF event audio codecs', () => {
       sampleCount: 2,
     });
     expect(stereo.channels.map((channel) => Array.from(channel))).toEqual([
-      [-32768, 0],
-      [32512, -256],
+      [0, -32768],
+      [-256, 32512],
     ]);
   });
 
-  it('T-AUD-103: reads format 0 as deterministic big-endian and format 3 as little-endian', () => {
+  it('T-AUD-103: decodes 8-bit identically for format 0 and format 3', () => {
+    // IMPL-090-R006: endianness cannot apply to a single byte, so the two formats must agree.
+    const bytes = Uint8Array.from([0x00, 0x40, 0x80, 0xc0, 0xff]);
+    const options = { bitsPerSample: 8 as const, channels: 1 as const, sampleCount: 5 };
+
+    expect(decodeSwfPcm(bytes, { ...options, format: 0 }).channels[0]).toEqual(
+      decodeSwfPcm(bytes, { ...options, format: 3 }).channels[0],
+    );
+  });
+
+  it('T-AUD-103: reads 16-bit little-endian for format 3 and for format 0 (E-030)', () => {
+    // Format 0 is nominally "native endian", which names the authoring host and is unreadable
+    // from the file. We fix it to little-endian, as ruffle does; SF0302 records the assumption.
     const options = { bitsPerSample: 16 as const, channels: 1 as const, sampleCount: 2 };
-    const bigEndian = decodeSwfPcm(Uint8Array.from([0x12, 0x34, 0x80, 0x00]), { ...options, format: 0 });
-    const littleEndian = decodeSwfPcm(Uint8Array.from([0x34, 0x12, 0x00, 0x80]), { ...options, format: 3 });
-    expect(Array.from(bigEndian.channels[0] ?? [])).toEqual([0x1234, -32768]);
-    expect(Array.from(littleEndian.channels[0] ?? [])).toEqual([0x1234, -32768]);
+    const bytes = Uint8Array.from([0x34, 0x12, 0x00, 0x80]);
+
+    expect(Array.from(decodeSwfPcm(bytes, { ...options, format: 3 }).channels[0] ?? [])).toEqual([0x1234, -32768]);
+    expect(Array.from(decodeSwfPcm(bytes, { ...options, format: 0 }).channels[0] ?? [])).toEqual([0x1234, -32768]);
   });
 
   it('T-AUD-104/105: parses Layer III header fields and preserves event frame bytes unchanged', () => {

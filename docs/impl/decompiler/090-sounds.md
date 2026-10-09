@@ -70,7 +70,7 @@ asset pass (or the runtime, for streaming) decodes.
 
 | Format | Codec | Min SWF | Notes |
 | --- | --- | --- | --- |
-| 0 | Uncompressed, **native endian** | 1 | 8-bit identical to format 3; 16-bit is host-endian (we always decode big-endian, `SF0302`) |
+| 0 | Uncompressed, **native endian** | 1 | decoded identically to format 3 (little-endian); endianness is assumed, not read (`SF0302`, `E-030`) |
 | 1 | ADPCM | 1 | 2–5-bit codes; block/packet framed (below) |
 | 2 | MP3 | 4 | whole MPEG frames; `5.5 kHz` is not allowed |
 | 3 | Uncompressed, **little-endian** | 4 | preferred; player byte-swaps as needed |
@@ -101,10 +101,12 @@ DefineSound (14, SWF 1):
   sample pairs"). Duration = `SoundSampleCount / effectiveRate`; a payload that decodes to fewer
   samples than declared is padded with silence and reported (`SF0304`); more is truncated with
   `SF0324`. The three checks together are what catches a wrong rate.
-- **IMPL-090-R006** Uncompressed 0 and 3 decode to identical PCM for 8-bit data; for 16-bit data,
-  format 3 is little-endian and format 0 is native-endian. We always decode format 0 as
-  **big-endian** regardless of build host (determinism, REPO-R013) and report `SF0302` (info); this
-  is a documented deviation from the chapter's "native" wording, pinned by `T-AUD-103`.
+- **IMPL-090-R006** Uncompressed 0 and 3 decode **identically**: 16-bit samples little-endian,
+  8-bit samples **unsigned** (`0x80` = silence) expanded as `(byte - 128) * 256`. The chapter calls
+  format 0 "native-endian", which names the authoring host and is not recoverable from the file;
+  `REPO-R013` forbids using the *build* host's order, so one order must be fixed, and little-endian
+  is both what Flash wrote and what `ruffle` assumes. `SF0302` (info) records that the endianness
+  was assumed. See errata `E-030`; pinned by `T-AUD-103`.
 - **IMPL-090-R007** MP3 event payloads are `MP3SOUNDDATA`: `SeekSamples SI16` followed by zero or
   more `MP3FRAME`s. There is **no sample-count field** in the event payload — the count comes from
   `DefineSound.SoundSampleCount`. `SeekSamples` for an event sound is limited to the **encoder
@@ -305,7 +307,7 @@ that spec's runtime conditions (peak guard, stream underrun, sync re-anchor, dev
 | --- | --- | --- |
 | `SF0300` | warning | MP3 with non-canonical rate/size fields (frame headers win) |
 | `SF0301` | error | reserved/unknown sound format (silent stub emitted) |
-| `SF0302` | info | 8-bit PCM treated as little-endian; format 0 decoded big-endian for determinism |
+| `SF0302` | info | uncompressed format 0: byte order is not recorded in the file, little-endian assumed (`E-030`) |
 | `SF0303` | warning | Speex sound: no decoder in this build (silent partial asset) |
 | `SF0304` | warning | payload shorter than `SoundSampleCount` (padded with silence) |
 | `SF0305` | info | MP3 parameter change mid-stream |
@@ -398,3 +400,4 @@ shapes) are **settled** — see §4–§6 and APP-§10.9. The ADPCM "64 samples 
 | --- | --- | --- |
 | 1.0 | initial | Scoped from Ch.11; ADPCM/MP3 stream-block details marked pending with a reference-vector mitigation |
 | 1.1 | 2026-10-04 | Ch.11-grounded: coding-format table with SWF versions and the exact sample rates; `DefineSound` field semantics (`SoundSampleCount` = sample pairs; rate/size/type ignored per codec); **ADPCM packets of one header sample + 4095 codes** (corrects v1.0's "64 samples per block"), bit-packed and unaligned, with a short-final-packet policy, per-packet predictor reset; MP3 `MP3SOUNDDATA` (SeekSamples + frames, no count field) with the honest note that `SoundSampleCount` supplies duration, full frame-header parsing and the integer size formula; Nellymoser/Speex field-ignoring rules; `SOUNDINFO` MSB-first flag byte, `InPoint`/`OutPoint`/`LoopCount` semantics, envelope `Pos44` as a 44-kHz sample position and levels 0…32768; `SoundStreamHead`/`Head2` bit layout with `LatencySeek` only for MP3, advisory playback fields, one block per frame, `MP3STREAMSOUNDDATA` `SampleCount` semantics, the chapter's five-step frame-subdivision algorithm with both worked examples; diagnostics `SF0330`–`SF0332`, `SF0328` reworded; tests `T-AUD-101`–`115`; WPs re-shaped to 12 = 36 d |
+| 1.2 | 2026-10-09 | `E-030` applied: `IMPL-090-R006` rewritten — formats 0 and 3 decode identically (16-bit little-endian, 8-bit unsigned), `SF0302` reworded as an assumption record; the ADPCM delta is IMA's shift accumulation, not the closed form (`F-P3-20`), and the step table's entries 69-71 corrected (`F-P3-19`) |

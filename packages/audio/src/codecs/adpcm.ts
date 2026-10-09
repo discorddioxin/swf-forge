@@ -70,6 +70,29 @@ function clampIndex(value: number): number {
   return Math.max(0, Math.min(88, value));
 }
 
+/**
+ * IMA's delta reconstruction: a base term plus one right-shifted term per set magnitude bit, each
+ * truncated **independently**.
+ *
+ *     delta = step >> (bits - 1)
+ *     for bit k in 0 .. bits - 2:  if magnitude & (1 << k):  delta += step >> (bits - 2 - k)
+ *
+ * This approximates `(magnitude + 0.5) * step / 2^(bits - 2)`, but it is not equal to it, and the
+ * difference is not negligible: across the 89 steps and all code widths, the closed form
+ * `floor(((2*magnitude + 1) * step) / 2^(bits - 1))` disagrees on **884 of 2670** (step, magnitude)
+ * pairs by up to 3 LSB — and because the result feeds a recursive predictor, the error accumulates
+ * rather than averaging out. Every IMA implementation, including `ruffle`'s
+ * `SAMPLE_DELTA_CALCULATOR`, uses the shift form; so must we, or "bit-exact" is meaningless
+ * (`F-P3-20`).
+ */
+function imaDelta(step: number, magnitude: number, bits: AdpcmBitDepth): number {
+  let delta = step >> (bits - 1);
+  for (let bit = 0; bit <= bits - 2; bit += 1) {
+    if (magnitude & (1 << bit)) delta += step >> (bits - 2 - bit);
+  }
+  return delta;
+}
+
 function decodeCode(
   prediction: number,
   index: number,
@@ -79,8 +102,8 @@ function decodeCode(
   const signMask = 1 << (bits - 1);
   const magnitude = code & (signMask - 1);
   const step = SWF_ADPCM_STEP_TABLE[index] ?? 7;
-  // SWF Ch.11's DELTA_FN: the code is sign-magnitude and the division truncates toward zero.
-  const delta = Math.floor(((2 * magnitude + 1) * step) / 2 ** (bits - 1));
+  // The code is sign-magnitude, not two's complement: the top bit is the sign only.
+  const delta = imaDelta(step, magnitude, bits);
   const nextPrediction = clamp16(prediction + (code & signMask ? -delta : delta));
   const indexDelta = SWF_ADPCM_INDEX_TABLES[bits][magnitude] ?? -1;
   return { prediction: nextPrediction, index: clampIndex(index + indexDelta) };

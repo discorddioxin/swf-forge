@@ -1,6 +1,7 @@
 /** Static and editable text tag models (IMPL-080 P3 decode slice). */
 
-import { Codes } from '../diagnostics/codes.js';
+import { Codes, type Code } from '../diagnostics/codes.js';
+import type { Severity } from '../diagnostics/types.js';
 import type { Cursor } from '../io/cursor.js';
 import { readRect, readMatrix } from '../io/records.js';
 import { readRgb, readRgba } from '../io/colour.js';
@@ -81,6 +82,7 @@ export interface EditTextModel {
 
 export interface TextRecoveryDiagnostic {
   readonly code: typeof Codes.FONT_GLYPH_INDEX_INVALID | typeof Codes.FONT_GLYPH_CODE_MISSING;
+  readonly severity: Severity;
   readonly message: string;
 }
 
@@ -88,6 +90,9 @@ export interface TextRecoveryResult {
   readonly text: StaticTextModel;
   readonly diagnostics: readonly TextRecoveryDiagnostic[];
 }
+
+/** Report sink for text recovery, which resolves across tags and so has no single cursor. */
+export type TextRecoveryEmit = (code: Code, severity: Severity, message: string) => void;
 
 /** `DefineText` (11) and `DefineText2` (33), retaining glyph positions and persistent text styles. */
 export function decodeDefineText(tagCode: number, c: Cursor): StaticTextModel {
@@ -156,16 +161,31 @@ export function decodeDefineText(tagCode: number, c: Cursor): StaticTextModel {
 export function recoverStaticTextCodes(
   text: StaticTextModel,
   fonts: ReadonlyMap<number, DefineFontModel>,
+  reporter?: TextRecoveryEmit,
 ): TextRecoveryResult {
   const diagnostics: TextRecoveryDiagnostic[] = [];
+  // Reported at the point of detection rather than handed back for a caller to forward. The
+  // forwarding form let `SF0272`/`SF0273` be computed and then dropped on the floor by any caller
+  // that forgot, and made the emission invisible to the diagnostic-coverage scanner, which reads
+  // literal `Codes.*` tokens at `emit` call sites (F-P3-17).
+  // Bound to a plain identifier called `emit`, and called with literal `Codes.*` tokens, so the
+  // diagnostic-coverage scanner can see the site. `reporter?.(code, …)` would work at runtime and
+  // be invisible to the gate — which is precisely how SF0272/SF0273 sat on the deferred list while
+  // emitting correctly in production (F-P3-17).
+  const emit: TextRecoveryEmit = reporter ?? ((): void => {});
+  const report = (code: TextRecoveryDiagnostic['code'], message: string): void => {
+    diagnostics.push({ code, severity: 'warning', message });
+    if (code === Codes.FONT_GLYPH_INDEX_INVALID) emit(Codes.FONT_GLYPH_INDEX_INVALID, 'warning', message);
+    else emit(Codes.FONT_GLYPH_CODE_MISSING, 'warning', message);
+  };
   const runs = text.runs.map((run, runIndex): StaticTextRunModel => {
     const font = run.fontId === null ? undefined : fonts.get(run.fontId);
     if (font === undefined) {
       if (run.glyphs.length > 0) {
-        diagnostics.push({
-          code: Codes.FONT_GLYPH_CODE_MISSING,
-          message: `text ${text.id} run ${runIndex} references missing font ${run.fontId ?? '(no FontID)'}`,
-        });
+        report(
+          Codes.FONT_GLYPH_CODE_MISSING,
+          `text ${text.id} run ${runIndex} references missing font ${run.fontId ?? '(no FontID)'}`,
+        );
       }
       return { ...run, recoveredText: null };
     }
@@ -192,16 +212,16 @@ export function recoverStaticTextCodes(
       codepoints.push(glyph.code);
     }
     if (invalidIndex) {
-      diagnostics.push({
-        code: Codes.FONT_GLYPH_INDEX_INVALID,
-        message: `text ${text.id} run ${runIndex} contains a glyph index outside font ${font.id}`,
-      });
+      report(
+        Codes.FONT_GLYPH_INDEX_INVALID,
+        `text ${text.id} run ${runIndex} contains a glyph index outside font ${font.id}`,
+      );
     }
     if (missingCode) {
-      diagnostics.push({
-        code: Codes.FONT_GLYPH_CODE_MISSING,
-        message: `text ${text.id} run ${runIndex} contains a glyph without a valid character code`,
-      });
+      report(
+        Codes.FONT_GLYPH_CODE_MISSING,
+        `text ${text.id} run ${runIndex} contains a glyph without a valid character code`,
+      );
     }
     const recoveredText = !invalidIndex && !missingCode && !ambiguous ? String.fromCharCode(...codepoints) : null;
     return { ...run, recoveredText };

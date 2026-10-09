@@ -521,10 +521,7 @@ def check_coverage(rows):
 DEFERRED_DIAGNOSTIC_WPS = {
     # P3 implementation gaps remain open in the repeat audit; these are tracked to their actual WPs,
     # not accepted as complete or hidden in the dev-audit baseline.
-    "SF0272": "WP-080-07",
-    "SF0273": "WP-080-07",
     "SF0279": "WP-080-12",
-    "SF0281": "WP-080-01",
     # The P6 transcode ledger consumes these codes; P3 deliberately preserves source codecs.
     "SF0329": "WP-090-12",
 }

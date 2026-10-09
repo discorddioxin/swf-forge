@@ -102,6 +102,9 @@ export type {
   FontZoneData,
   FontZoneRecord,
 } from './tags/fonts.js';
+// Code maps, EM normalisation and the single metrics derivation (`IMPL-080-R007`/`R010`).
+export { codeToGlyph, deriveFontMetrics, duplicateCodes, normaliseFontUnits } from './fonts/metrics.js';
+export type { DerivedFontMetrics } from './fonts/metrics.js';
 export { decodeDefineMorphShape } from './tags/morph.js';
 export type { MorphEdgePair, MorphShapeModel } from './tags/morph.js';
 // Morph interpolation + the ratio-bake decision (`IMPL-070-R030`-`R032`).

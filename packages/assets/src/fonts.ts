@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import opentype from 'opentype.js';
+import { deriveFontMetrics } from '@swf-forge/swf';
 import type { DefineFontModel, FontGlyphModel, VectorShape } from '@swf-forge/swf';
 
 export interface FontWoff2Result {
@@ -41,19 +42,16 @@ function appendShape(path: opentype.Path, shape: VectorShape | null): void {
   }
 }
 
-function deriveFontMetrics(font: DefineFontModel): { ascender: number; descender: number } {
-  if (font.ascent !== null && font.descent !== null) {
-    return { ascender: font.ascent, descender: -font.descent };
-  }
-  let ascender = 0;
-  let descender = 0;
-  for (const glyph of font.glyphs) {
-    const bounds = glyph.bounds ?? glyph.shape?.recomputedBounds ?? glyph.shape?.bounds;
-    if (bounds === null || bounds === undefined) continue;
-    ascender = Math.max(ascender, -bounds.yMin);
-    descender = Math.min(descender, -bounds.yMax);
-  }
-  return { ascender, descender };
+/**
+ * OpenType ascender/descender from the one derivation in `@swf-forge/swf`.
+ *
+ * `IMPL-080-R007` requires layout and the atlas to be fed the *same* numbers, so this must not be a
+ * second implementation — it is a sign convention adapter. SWF reports descent as a positive
+ * magnitude below the baseline; OpenType's `descender` is negative.
+ */
+function openTypeMetrics(font: DefineFontModel): { ascender: number; descender: number } {
+  const metrics = deriveFontMetrics(font);
+  return { ascender: metrics.ascent, descender: -metrics.descent };
 }
 
 function fallbackAdvance(glyph: FontGlyphModel): number {
@@ -119,7 +117,7 @@ function normalizeSfntTimestamps(bytes: Uint8Array): void {
 }
 
 function makeTrueType(fontModel: DefineFontModel): Uint8Array {
-  const metrics = deriveFontMetrics(fontModel);
+  const metrics = openTypeMetrics(fontModel);
   const fallbackFamily = `SWFFont${fontModel.id}`;
   const familyName = safeName(fontModel.name, fallbackFamily);
   const seenCodes = new Set<number>();
@@ -130,7 +128,11 @@ function makeTrueType(fontModel: DefineFontModel): Uint8Array {
   } else {
     for (const source of sourceGlyphs) {
       const path = new opentype.Path();
-      if (source.shape !== null) appendShape(path, source.shape);
+      // A glyph quarantined by `IMPL-080-R009` (`SF0281`) keeps its index, its advance and its
+      // cmap entry — removing it would renumber every later glyph and break the positional indices
+      // that `DefineText` records reference — but contributes no outline. That is what the
+      // quarantine buys: the defect cannot reach the emitted font, and the text still advances.
+      if (source.shape !== null && !source.quarantined) appendShape(path, source.shape);
       const code = source.code;
       const unicode =
         code !== null && code >= 0 && code <= 0xffff && !(code >= 0xd800 && code <= 0xdfff) ? code : undefined;

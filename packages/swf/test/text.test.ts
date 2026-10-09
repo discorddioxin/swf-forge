@@ -48,8 +48,8 @@ function embeddedFont(): DefineFontModel {
     smallText: false,
     codes: [65, 66],
     glyphs: [
-      { index: 0, code: 65, shape: null, advance: 600, bounds: null },
-      { index: 1, code: 66, shape: null, advance: 610, bounds: null },
+      { index: 0, code: 65, shape: null, advance: 600, bounds: null, quarantined: false },
+      { index: 1, code: 66, shape: null, advance: 610, bounds: null, quarantined: false },
     ],
     ascent: 800,
     descent: 200,
@@ -140,7 +140,7 @@ describe('text tag models', () => {
     expect(recovery.diagnostics).toMatchObject([{ code: 'SF0272' }]);
   });
 
-  it('T-MOD-514/516: decodes all editable-text flag bits, optional fields, and raw variable paths', () => {
+  it('T-MOD-514: decodes all editable-text flag bits, optional fields, and raw variable paths', () => {
     const w = new ByteWriter();
     w.u16(23);
     writeRect(w, { xMin: -10, xMax: 510, yMin: 0, yMax: 300 });

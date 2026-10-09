@@ -355,6 +355,13 @@ export function readShapeWithStyle(
       readonly lines: readonly (LineStyle | null)[];
     };
     /**
+     * `false` when `declaredBounds` is a placeholder the caller invented because the stream has
+     * none — a glyph `SHAPE` carries no `RECT` (`IMPL-080` §4), unlike `SHAPEWITHSTYLE` inside a
+     * `DefineShape`. Comparing a real outline against a placeholder always "disagrees", so the
+     * check is skipped and the recomputed box becomes the shape's bounds (F-P3-18).
+     */
+    boundsAuthored?: boolean;
+    /**
      * Fill-winding rule for callers that do not go through `decodeDefineShapeVersion`.
      *
      * `DefineShape4` carries `UsesFillWindingRule` in its flag byte and the version decoder sets
@@ -597,6 +604,7 @@ export function readShapeWithStyle(
   }
 
   let recomputed: Rect | null = null;
+  const boundsAuthored = opts.boundsAuthored !== false;
   if (opts.recomputeBounds !== false && edges.length > 0) {
     let xMin = Number.POSITIVE_INFINITY;
     let xMax = Number.NEGATIVE_INFINITY;
@@ -619,7 +627,9 @@ export function readShapeWithStyle(
     const computed: Rect = { xMin, xMax, yMin, yMax };
     const dw = Math.abs(computed.xMax - computed.xMin - declaredW) / Math.max(1, declaredW);
     const dh = Math.abs(computed.yMax - computed.yMin - declaredH) / Math.max(1, declaredH);
-    if (dw > 0.01 || dh > 0.01) {
+    if (!boundsAuthored) {
+      recomputed = computed;
+    } else if (dw > 0.01 || dh > 0.01) {
       c.emit(
         Codes.SHAPE_BOUNDS_DISAGREE,
         'warning',
@@ -635,7 +645,9 @@ export function readShapeWithStyle(
     id,
     version,
     rawShape4Flags: null,
-    bounds: declaredBounds,
+    // With no authored RECT the recomputed box *is* the shape's bounds; keeping the caller's
+    // placeholder would report every glyph as zero-sized.
+    bounds: boundsAuthored ? declaredBounds : (recomputed ?? declaredBounds),
     edgeBounds: null,
     recomputedBounds: recomputed,
     fillRule: opts.fillRule ?? 'nonZero',

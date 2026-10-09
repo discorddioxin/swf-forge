@@ -16,6 +16,14 @@ export interface FontGlyphModel {
   readonly shape: VectorShape | null;
   readonly advance: number | null;
   readonly bounds: Rect | null;
+  /**
+   * The glyph breaks `IMPL-080-R009`'s mandatory first fill-style record (`SF0281`).
+   *
+   * The outline is still decoded and still reported — discarding it would lose fidelity on exactly
+   * the content the rule tells us to tolerate — but font emission (WOFF2, the atlas) skips it, so
+   * the quarantine is observable rather than nominal.
+   */
+  readonly quarantined: boolean;
 }
 
 export interface FontKerningPair {
@@ -114,8 +122,74 @@ function decodeUtf8(bytes: Uint8Array): string {
   return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
 }
 
-function glyphShape(raw: Uint8Array, parent: Cursor, fontId: number, glyphIndex: number): VectorShape | null {
-  if (raw.length < 1) return null;
+/**
+ * Check a glyph `SHAPE` against `IMPL-080-R009`'s mandatory first style-change record.
+ *
+ * A conforming glyph opens with a `STYLECHANGERECORD` that sets `StateFillStyle0` with
+ * `FillStyle0 = 1`, declares no new style arrays, and does not touch the line-style fields — the
+ * chapter's way of saying "a glyph is one opaque filled outline and nothing else". Real content
+ * violates it (fill *1* instead of fill 0 is the usual form), so this returns a reason rather than
+ * throwing; the caller reports `SF0281` and marks the glyph.
+ *
+ * An immediate `EndShapeRecord` is **not** a violation: a space glyph has no outline to fill, and
+ * flagging every space in a font would make `SF0281` useless.
+ */
+function glyphStyleViolation(raw: Uint8Array): string | null {
+  let bitPos = 0;
+  const bits = (count: number): number => {
+    let value = 0;
+    for (let i = 0; i < count; i += 1) {
+      const byte = raw[bitPos >>> 3] ?? 0;
+      value = (value << 1) | ((byte >>> (7 - (bitPos & 7))) & 1);
+      bitPos += 1;
+    }
+    return value;
+  };
+  const available = raw.length * 8;
+  const numFillBits = bits(4);
+  bits(4); // NumLineBits
+  if (bitPos + 6 > available) return null; // truncated; the shape decoder reports the read overrun
+  if (bits(1) === 1) return 'begins with an edge record instead of a style change';
+  const newStyles = bits(1);
+  const lineStyle = bits(1);
+  const fillStyle1 = bits(1);
+  const fillStyle0 = bits(1);
+  const moveTo = bits(1);
+  if (newStyles === 0 && lineStyle === 0 && fillStyle1 === 0 && fillStyle0 === 0 && moveTo === 0) {
+    return null; // EndShapeRecord — an empty glyph, legitimately unfilled
+  }
+  if (newStyles === 1) return 'declares new style arrays, which a glyph may not carry';
+  if (lineStyle === 1) return 'uses the line-style fields';
+  if (fillStyle0 !== 1) {
+    return fillStyle1 === 1 ? 'sets StateFillStyle1 instead of StateFillStyle0' : 'does not set StateFillStyle0';
+  }
+  if (moveTo === 1) {
+    const moveBits = bits(5);
+    bits(moveBits);
+    bits(moveBits);
+  }
+  if (bitPos + numFillBits > available) return null;
+  const fill0 = bits(numFillBits);
+  return fill0 === 1 ? null : `sets FillStyle0 = ${fill0}, not 1`;
+}
+
+function glyphShape(
+  raw: Uint8Array,
+  parent: Cursor,
+  fontId: number,
+  glyphIndex: number,
+): { shape: VectorShape | null; quarantined: boolean } {
+  if (raw.length < 1) return { shape: null, quarantined: false };
+  const violation = glyphStyleViolation(raw);
+  if (violation !== null) {
+    // `IMPL-080-R044`: once per font. The sink folds on (code, context, characterId), and `parent`
+    // carries the font tag's context, so later glyphs with the same defect fold into this one.
+    parent.emit(
+      Codes.FONT_GLYPH_FILL_INVALID,
+      'warning',
+      `font ${fontId} glyph ${glyphIndex} ${violation} (IMPL-080-R009); glyph quarantined from font emission`,
+    );
+  }
   // A font glyph is a SHAPE without an ID/RECT/style tables. Supply its mandatory opaque fill-0
   // style and reuse the production SHAPEWITHSTYLE record decoder, whose body begins at NumFillBits.
   const prefix = Uint8Array.from([1, 0, 0, 0, 0, 0]); // one black fill, no line styles
@@ -130,7 +204,23 @@ function glyphShape(raw: Uint8Array, parent: Cursor, fontId: number, glyphIndex:
     tagCode: parent.tagCode ?? 48,
     characterId: fontId,
   });
-  return readShapeWithStyle(c, fontId, 1, { xMin: 0, xMax: 0, yMin: 0, yMax: 0 });
+  const shape = readShapeWithStyle(
+    c,
+    fontId,
+    1,
+    { xMin: 0, xMax: 0, yMin: 0, yMax: 0 },
+    {
+      // A glyph SHAPE has no RECT, so these bounds are a placeholder, not a declaration. Without
+      // saying so, every glyph with an outline "disagrees" with a 0x0 box: SF0187 on every glyph in
+      // every font, and `recomputedBounds` nulled — which is the only bounds source
+      // `IMPL-080-R007`'s metrics fallback has (F-P3-18).
+      boundsAuthored: false,
+      // F-P3-10: glyph streams have no fill-winding flag, so they take `DefineShape1`-`3`'s default
+      // rather than inheriting `readShapeWithStyle`'s `nonZero` placeholder.
+      fillRule: 'evenOdd',
+    },
+  );
+  return { shape, quarantined: violation !== null };
 }
 
 function invalidFont(c: Cursor, message: string): void {
@@ -164,7 +254,7 @@ export function decodeDefineFont2or3(tagCode: number, c: Cursor): DefineFontMode
     invalidFont(c, `CodeTableOffset ${codeTableOffset} falls outside the glyph-shape area`);
   }
   const safeCodeTableStart = Math.min(c.limit, Math.max(c.offset, codeTableStart));
-  const glyphShapes: (VectorShape | null)[] = [];
+  const glyphShapes: { shape: VectorShape | null; quarantined: boolean }[] = [];
   let priorGlyphStart = c.offset;
   for (let index = 0; index < glyphCount; index += 1) {
     const relativeStart = offsets[index] ?? 0;
@@ -173,7 +263,7 @@ export function decodeDefineFont2or3(tagCode: number, c: Cursor): DefineFontMode
     const end = offsetBase + relativeEnd;
     if (start < offsetBase || end < start || end > safeCodeTableStart || start < priorGlyphStart) {
       invalidFont(c, `glyph ${index} has invalid offsets ${relativeStart}…${relativeEnd}`);
-      glyphShapes.push(null);
+      glyphShapes.push({ shape: null, quarantined: false });
       continue;
     }
     const raw = c.bytes.subarray(start, end);
@@ -232,9 +322,10 @@ export function decodeDefineFont2or3(tagCode: number, c: Cursor): DefineFontMode
     glyphs: codes.map((code, index) => ({
       index,
       code,
-      shape: glyphShapes[index] ?? null,
+      shape: glyphShapes[index]?.shape ?? null,
       advance: advances[index] ?? null,
       bounds: bounds[index] ?? null,
+      quarantined: glyphShapes[index]?.quarantined ?? false,
     })),
     codes,
     ascent,
@@ -280,7 +371,7 @@ export function decodeDefineFontV1(c: Cursor): DefineFontV1Model {
       `DefineFont ${id} declares ${glyphCount} glyphs but only ${safeCount} offsets fit the body`,
     );
   }
-  const glyphShapes: (VectorShape | null)[] = [];
+  const glyphShapes: { shape: VectorShape | null; quarantined: boolean }[] = [];
   let priorStart = c.offset;
   const tagEnd = c.limit;
   for (let index = 0; index < safeCount; index += 1) {
@@ -290,32 +381,43 @@ export function decodeDefineFontV1(c: Cursor): DefineFontV1Model {
     const end = Math.min(offsetBase + relativeEnd, tagEnd);
     if (start < offsetBase || end < start || end > tagEnd || start < priorStart) {
       c.emit(Codes.FONT_OFFSET_TABLE_INVALID, 'warning', `DefineFont ${id} glyph ${index} has invalid offsets`);
-      glyphShapes.push(null);
+      glyphShapes.push({ shape: null, quarantined: false });
       continue;
     }
     const raw = c.bytes.subarray(start, end);
     glyphShapes.push(glyphShape(raw, c, id, index));
     priorStart = end;
   }
+  // `IMPL-080-R007`: a v1 font carries no metrics at all — no ascent, descent, leading or advance
+  // table. Everything downstream has to come from glyph bounds, and the report has to say so, or a
+  // reader cannot tell authored metrics from derived ones.
+  c.emit(
+    Codes.FONT_METRICS_DERIVED,
+    'info',
+    `DefineFont ${id} (v1) carries no metrics; ascent, descent, leading and advances derive from glyph bounds`,
+  );
   return {
     id,
     version: 1,
     tagCode: 10,
     glyphCount: safeCount,
-    glyphs: glyphShapes.map((shape, index) => ({
+    glyphs: glyphShapes.map((glyph, index) => ({
       index,
       code: null, // v1 carries no codes; FontInfo fills these in
-      shape,
+      shape: glyph.shape,
       advance: null,
       bounds: null,
+      quarantined: glyph.quarantined,
     })),
   };
 }
 
 /**
  * Apply a `DefineFontInfo`/`Info2` code table to a previously-decoded v1/v2/v3 font model, returning
- * an updated font view. Reports `SF0281` when glyph count disagrees, `SF0276` when codes are
- * unsorted, and `SF0283` when FontInfo2 has WideCodes clear.
+ * an updated font view. Reports `SF0276` when the code table disagrees with the glyph table in
+ * length or ordering (`IMPL-080-R010` — a conflict between the two tags is the same defect class as
+ * an unsorted table) and `SF0283` when `DefineFontInfo2` has `WideCodes` clear. `SF0281` is the
+ * glyph fill-style rule and is reported at glyph-decode time, not here.
  */
 /** Report sink for `applyFontInfo`, which resolves outside any single tag cursor. */
 export type FontInfoEmit = (code: Code, severity: Severity, message: string) => void;
@@ -323,13 +425,16 @@ export type FontInfoEmit = (code: Code, severity: Severity, message: string) => 
 export function applyFontInfo(
   font: DefineFontModel | DefineFontV1Model,
   info: FontInfoModel,
-  emit?: FontInfoEmit,
+  reporter?: FontInfoEmit,
 ): DefineFontModel {
   const flags = info.flags;
+  // A plain binding called `emit`, not `reporter?.(…)`: the optional-call form hides the site from
+  // the diagnostic-coverage scanner, which looks for `emit(Codes.NAME, 'severity'` (F-P3-17).
+  const emit: FontInfoEmit = reporter ?? ((): void => {});
   // IMPL-080-R010: a FontInfo CodeTable must be positionally aligned with the glyph table. A length
   // disagreement is a conflict between the two tags, not an unsorted table — same code, SF0276.
   if (info.codes.length !== font.glyphs.length) {
-    emit?.(
+    emit(
       Codes.FONT_CODE_TABLE_UNSORTED,
       'warning',
       `FontInfo for font ${font.id} carries ${info.codes.length} code(s) for ${font.glyphs.length} glyph(s); codes are aligned by position, extras dropped and gaps left unmapped`,
@@ -339,7 +444,7 @@ export function applyFontInfo(
   const numericCodes = codes.map((c) => (c === null ? 0 : c));
   const unsorted = numericCodes.some((code, i) => i > 0 && code < (numericCodes[i - 1] ?? 0));
   if (unsorted) {
-    emit?.(
+    emit(
       Codes.FONT_CODE_TABLE_UNSORTED,
       'warning',
       `FontInfo for font ${font.id} merged code table is not sorted; a sorted copy is used for lookup and the raw order is kept`,

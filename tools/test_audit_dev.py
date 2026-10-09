@@ -70,16 +70,14 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
                 self.assertIn(wp, packages)
 
     def test_pending_p3_diagnostics_are_owned_by_their_decoder_or_runtime_work_package(self):
-        # P3 checkpoint C1 implemented the font/text auxiliary tags, so SF0277/SF0278 (zone and CSM
-        # target handling) and SF0283/SF0284 (FontInfo2 wide codes, indirect names) now have live
-        # emission sites and are no longer deferred. C3 added the morph IR, so SF0262 (ratio bake
-        # decision) and SF0263 (vertex budget) emit from `shapes/morph-ir.ts` and left the map too.
+        # Checkpoints retire these as they land: C1 took SF0277/SF0278 (zone and CSM targets) and
+        # SF0283/SF0284 (FontInfo2 wide codes, indirect names); C3 took SF0262/SF0263 (morph ratio
+        # bake and vertex budget, `shapes/morph-ir.ts`); C4 took SF0281 (glyph mandatory-fill
+        # quarantine, `tags/fonts.ts`) and SF0272/SF0273, which already emitted at runtime but did
+        # so through a forwarded variable the coverage scanner could not see.
         # What remains is genuinely later work.
         expected = {
-            "SF0272": "WP-080-07",   # static-text glyph index validation — C4
-            "SF0273": "WP-080-07",   # static-text code-table presence — C4
             "SF0279": "WP-080-12",   # HTML subset parser — P9 runtime
-            "SF0281": "WP-080-01",   # glyph mandatory-fill quarantine — C4
             "SF0329": "WP-090-12",   # transcode ledger — P6
         }
         self.assertEqual(dict(audit_dev.DEFERRED_DIAGNOSTIC_WPS), expected)

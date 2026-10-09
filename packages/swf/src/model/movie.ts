@@ -1373,19 +1373,18 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
   }
   for (const [id, character] of characters) {
     if (character.text === null) continue;
-    const recovered = recoverStaticTextCodes(character.text, embeddedFonts);
     const origin = character.index;
-    for (const diagnostic of recovered.diagnostics) {
+    const recovered = recoverStaticTextCodes(character.text, embeddedFonts, (code, severity, message) => {
       file.sink.emit({
-        code: diagnostic.code,
-        severity: 'warning',
-        message: diagnostic.message,
+        code,
+        severity,
+        message,
         offset: origin?.headerOffset ?? 0,
         context: 'static text glyph mapping',
         ...(character.tagCode !== null ? { tagCode: character.tagCode } : {}),
         characterId: id,
       });
-    }
+    });
     characters.set(id, { ...character, text: recovered.text });
   }
 

@@ -19,6 +19,7 @@
     "spec:status": "python3 tools/gen_status.py",
     "audit:dev": "python3 tools/audit_dev.py",
     "tag:coverage": "python3 tools/tag_coverage.py",
+    "adpcm:probe": "python3 tools/adpcm_probe.py",
     "test:audit": "python3 -m unittest discover -s tools -p 'test_*.py'",
     "clean": "rm -rf packages/*/dist apps/*/dist *.tsbuildinfo packages/*/*.tsbuildinfo apps/*/*.tsbuildinfo"
   },

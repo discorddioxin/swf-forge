@@ -1,12 +1,14 @@
 # tools/ — document tooling
 
-Three stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
+Stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
 
 ```bash
 python3 tools/verify_docs.py            # document consistency gate — prints "ISSUES: 0" when clean
 python3 tools/gen_status.py             # regenerates docs/impl/registers/STATUS.md
 python3 tools/audit_dev.py              # code-vs-spec integrity ledger (pnpm audit:dev)
-pnpm test:audit                         # unit tests for the collector's parsers and ownership gates
+python3 tools/tag_coverage.py           # tag-by-tag decode coverage (pnpm tag:coverage)
+python3 tools/adpcm_probe.py FILE.swf   # settles the ADPCM packet length from real files
+pnpm test:audit                         # unit tests for every tool above
 ```
 
 ## `verify_docs.py`
@@ -80,6 +82,40 @@ deterministic and every path it prints is repository-relative (`REPO-R015`).
 production-vs-test distinction, deferred-WP mapping and test-id ownership parsing. The current checks
 and recorded outcomes are in `audits/dev/03-mechanical-checks.md`. CI runs the docs gate, collector
 unit tests and `pnpm audit:dev` after building its runtime probes.
+
+## `adpcm_probe.py`
+
+An evidence-gathering tool for one open question, recorded in `audits/P3-C5-AUDIT.md` §9 and
+`audits/P3-ADPCM-PACKET-LENGTH.md`: does an ADPCM packet emit **4096** samples (`InitialSample`
+plus 4095 coded frames — what `packages/audio` implements) or **4095** (the header sample being a
+predictor seed that is never output — what `ruffle` does)?
+
+The question is decidable without decoding any audio. The two readings need different numbers of
+packets for the same declared `SoundSampleCount`, so they predict different payload lengths:
+
+```
+reading A:  packets = ceil(N / 4096)   codes = N - packets
+reading B:  packets = ceil(N / 4095)   codes = N
+bytes       = ceil((2 + packets*22*channels + codes*codeWidth*channels) / 8)
+```
+
+`A` always predicts fewer bytes. A real payload that is long enough for `A` but **too short for
+`B`** proves `A` outright. The tool scans `DefineSound` and `SoundStreamBlock` payloads, computes
+both predictions, and reports per-asset and corpus-wide verdicts. It also prints the two
+"trailing packet padded out to full" predictions, which is the evidence for the *second* open
+question owned by `T-AUD-102`.
+
+```bash
+python3 tools/adpcm_probe.py --census ~/swfs      # does this corpus contain any ADPCM at all?
+python3 tools/adpcm_probe.py ~/swfs               # verdicts, human-readable
+python3 tools/adpcm_probe.py --json ~/swfs        # same, machine-readable
+python3 tools/adpcm_probe.py --quiet ~/swfs       # only files that yielded a verdict
+```
+
+Accepts files, globs or directories (scanned recursively), and reads uncompressed, zlib and LZMA
+SWFs. `test_adpcm_probe.py` validates it by synthesising SWFs encoded under *each* reading and
+asserting the probe names the right one — the tool is not trusted on the strength of its own
+arithmetic.
 
 ## `gen_status.py`
 

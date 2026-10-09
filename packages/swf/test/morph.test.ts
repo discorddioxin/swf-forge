@@ -123,7 +123,7 @@ describe('morph shape model', () => {
     });
   });
 
-  it('T-MOD-405 reads UI8 morph-gradient count, both matrices, and interleaved endpoint stops', () => {
+  it('T-MOD-405 reads the single MORPHGRADIENT header byte, both matrices, and interleaved endpoint stops', () => {
     const styles = new ByteWriter();
     styles.u8(1).u8(0x10); // one linear morph gradient fill
     const matrix = (x: number, y: number): void => {
@@ -135,7 +135,9 @@ describe('morph shape model', () => {
     };
     matrix(10, -5);
     matrix(20, 7);
-    styles.u8(2).u8(0); // UI8 stop count and shared gradient flags
+    // ONE header byte, laid out like GRADIENT's: spread 2 (repeat), interpolation 1 (linear RGB),
+    // NumGradients 2. Reading a separate UI8 count here would shift every stop by a byte (E-028).
+    styles.u8((2 << 6) | (1 << 4) | 2);
     styles.u8(0).u8(255).u8(0).u8(0).u8(255).u8(0).u8(0).u8(255).u8(0).u8(255);
     styles.u8(255).u8(0).u8(0).u8(255).u8(255).u8(255).u8(255).u8(255).u8(0).u8(255);
     styles.u8(0); // no morph line styles
@@ -150,6 +152,8 @@ describe('morph shape model', () => {
       linear: true,
       matrix: { tx: 10, ty: -5 },
       gradient: {
+        spreadMode: 2,
+        interpolationMode: 1,
         stops: [
           { ratio: 0, color: { r: 255, g: 0, b: 0, a: 255 } },
           { ratio: 255, color: { r: 0, g: 0, b: 255, a: 255 } },
@@ -161,6 +165,8 @@ describe('morph shape model', () => {
       linear: true,
       matrix: { tx: 20, ty: 7 },
       gradient: {
+        spreadMode: 2,
+        interpolationMode: 1,
         stops: [
           { ratio: 0, color: { r: 0, g: 255, b: 0, a: 255 } },
           { ratio: 255, color: { r: 255, g: 255, b: 0, a: 255 } },

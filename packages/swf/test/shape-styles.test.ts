@@ -330,20 +330,31 @@ describe('T-MOD-120 gradient control points', () => {
     expect(codes).toEqual(['SF0189']); // the unused-style note only; no extended-count escape read
   });
 
-  it('reads the 0x0F escape as an extended UI8 count, up to the 15+ ceiling', () => {
-    const stops = Array.from({ length: 20 }, (_, i) => [i * 12, [i, 0, 0, 255]] as const);
-    const { gradient } = gradientOf(4, { type: 0x10, stops });
+  it('reads 15 stops as a literal nibble count, with no escape to a wider field', () => {
+    // 15 is the hard ceiling, not an escape (IMPL-060-R017). Treating 0x0F as a prefix to a UI8
+    // count ate one byte and then read the wrong number of records - see F-P3-12.
+    const stops = Array.from({ length: 15 }, (_, i) => [i * 17, [i, 0, 0, 255]] as const);
+    const { gradient, consumed, bytes } = gradientOf(4, { type: 0x10, stops });
 
-    expect(gradient.stops).toHaveLength(20);
-    expect(gradient.stops.at(-1)?.ratio).toBe(19 * 12);
+    expect(gradient.stops).toHaveLength(15);
+    expect(gradient.stops.at(-1)?.ratio).toBe(14 * 17);
+    // Byte-exactness: the whole tag body is consumed, so no stray count byte was read.
+    expect(consumed).toBe(bytes.length);
   });
 
-  it('flags the extended count as a reserved feature when a pre-v3 shape uses it', () => {
-    const stops = Array.from({ length: 16 }, (_, i) => [i * 16, [i, 0, 0, 255]] as const);
+  it('honours a 9..15 count in a pre-SWF-8 shape and notes the legacy ceiling', () => {
+    const stops = Array.from({ length: 12 }, (_, i) => [i * 20, [i, 0, 0, 255]] as const);
     const { gradient, codes } = gradientOf(2, { type: 0x10, stops });
 
-    expect(gradient.stops).toHaveLength(16);
+    expect(gradient.stops).toHaveLength(12);
     expect(codes).toContain('SF0191');
+  });
+
+  it('stays quiet about the ceiling for a Shape4 gradient above 8 stops', () => {
+    const stops = Array.from({ length: 12 }, (_, i) => [i * 20, [i, 0, 0, 255]] as const);
+    const { codes } = gradientOf(4, { type: 0x10, stops });
+
+    expect(codes).not.toContain('SF0191');
   });
 
   it('errors on NumGradients == 0 and leaves the stream aligned for the next style', () => {

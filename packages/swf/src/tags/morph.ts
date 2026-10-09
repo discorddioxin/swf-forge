@@ -62,11 +62,31 @@ function solid(color: Rgba): FillStyle {
   return { kind: 'solid', color };
 }
 
+/**
+ * `MORPHGRADIENT` — **one** header byte, laid out exactly like `GRADIENT`'s
+ * (`SpreadMode UB[2]`, `InterpolationMode UB[2]`, `NumGradients UB[4]`), then `NumGradients`
+ * interleaved `(StartRatio, StartColor, EndRatio, EndColor)` records.
+ *
+ * `IMPL-070-R025` described a separate `UI8` count *in addition to* R028's flags byte, which would
+ * put the control-point count in the stream twice and shift every morph gradient by one byte. It
+ * cannot be right, and an earlier implementation followed it literally. Corrected in errata
+ * `E-028`; the two readings are byte-identical whenever spread and interpolation are 0, which is
+ * why the defect survived — it only bites on SWF 8 content that sets either mode.
+ */
 function morphGradient(c: Cursor, focal: boolean): { readonly start: Gradient; readonly end: Gradient } {
-  const count = c.u8();
-  const flags = c.u8();
-  const spreadMode = (flags >>> 6) & 0x03;
-  const interpolationMode = (flags >>> 4) & 0x03;
+  const spreadMode = c.ub(2);
+  const interpolationMode = c.ub(2);
+  const count = c.ub(4);
+  if (spreadMode === 3 || interpolationMode >= 2) {
+    c.emit(
+      Codes.SHAPE_GRADIENT_MODE_INVALID,
+      'warning',
+      `reserved morph gradient mode (spread ${spreadMode}, interpolation ${interpolationMode}); value honoured`,
+    );
+  }
+  if (count === 0) {
+    c.emit(Codes.SHAPE_GRADIENT_EMPTY, 'error', 'morph MORPHGRADIENT has no control points; the fill is dropped');
+  }
   const startStops: { ratio: number; color: Rgba }[] = [];
   const endStops: { ratio: number; color: Rgba }[] = [];
   for (let index = 0; index < count; index += 1) {
@@ -264,6 +284,12 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
   const shapeVersion = version === 2 ? 4 : 3;
   const start = readShapeWithStyle(c, id, shapeVersion, startBounds, {
     initialStyles: { fills: fillArrays.start, lines: lineArrays.start },
+    // F-P3-10: neither morph tag has a fill-winding flag. `DefineMorphShape2`'s flag byte carries
+    // only `UsesNonScalingStrokes`/`UsesScalingStrokes` plus six reserved bits, so morph endpoints
+    // follow the same default as `DefineShape1`-`3` — even-odd — rather than inheriting
+    // `readShapeWithStyle`'s `nonZero` placeholder by accident. Stated here so the endpoints and
+    // their static counterparts agree in the IR (`IMPL-070-R031`).
+    fillRule: 'evenOdd',
   });
   const actualEndEdges = c.offset;
   const expectedEndEdges = offsetBase + offset;
@@ -277,6 +303,7 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
   }
   const endRaw = readShapeWithStyle(c, id, shapeVersion, endBounds, {
     initialStyles: { fills: fillArrays.end, lines: lineArrays.end },
+    fillRule: 'evenOdd',
   });
   const startMoves = start.recordTrace?.moveToEdgeIndices ?? [];
   const endMoves = endRaw.recordTrace?.moveToEdgeIndices ?? [];

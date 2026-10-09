@@ -194,15 +194,27 @@ export function readLineStyle2Header(c: Cursor): LineStyle2Header {
   };
 }
 
+/**
+ * `GRADIENT` / `FOCALGRADIENT` header and records (`IMPL-060` §4.3).
+ *
+ * `NumGradients` is the literal low nibble of the single header byte — there is **no** escape to a
+ * wider count. `IMPL-060-R017` is explicit: the field is 4 bits, so 15 is the hard ceiling (1–8 for
+ * `DefineShape`/`2`/`3`, 1–15 for SWF 8+). An earlier implementation treated `0x0F` as an escape to
+ * a `UI8` count, which silently ate one byte and then read the wrong number of records for every
+ * legitimate 15-stop SWF 8 gradient. See the C3 audit, finding F-P3-12.
+ */
 function readGradient(c: Cursor, version: ShapeVersion, focal: boolean): Gradient {
   const spreadMode = c.ub(2);
   const interpolationMode = c.ub(2);
-  let numGradients = c.ub(4);
-  if (numGradients === 0x0f) {
-    if (version < 3) {
-      c.emit(Codes.SHAPE_RESERVED_FEATURE, 'info', 'extended gradient count used by a pre-v3 shape (tolerated)');
-    }
-    numGradients = c.u8();
+  const numGradients = c.ub(4);
+  if (numGradients > 8 && version < 4) {
+    // The 9..15 range arrived with SWF 8 / DefineShape4. Older tags are capped at 8, but the count
+    // is unambiguous, so honour it and note the violation rather than truncating the ramp.
+    c.emit(
+      Codes.SHAPE_RESERVED_FEATURE,
+      'info',
+      `${numGradients} gradient control points in a DefineShape${version} (legacy ceiling is 8); honoured`,
+    );
   }
   if (spreadMode === 3 || interpolationMode >= 2) {
     c.emit(
@@ -342,6 +354,14 @@ export function readShapeWithStyle(
       readonly fills: readonly (FillStyle | null)[];
       readonly lines: readonly (LineStyle | null)[];
     };
+    /**
+     * Fill-winding rule for callers that do not go through `decodeDefineShapeVersion`.
+     *
+     * `DefineShape4` carries `UsesFillWindingRule` in its flag byte and the version decoder sets
+     * the field from it; glyph and morph streams have no such flag, so they state the rule here
+     * instead of inheriting the placeholder (F-P3-10).
+     */
+    fillRule?: 'evenOdd' | 'nonZero';
   } = {},
 ): VectorShape {
   const fills = opts.initialStyles ? [...opts.initialStyles.fills] : readFillStyleArray(c, version);
@@ -618,7 +638,7 @@ export function readShapeWithStyle(
     bounds: declaredBounds,
     edgeBounds: null,
     recomputedBounds: recomputed,
-    fillRule: 'nonZero',
+    fillRule: opts.fillRule ?? 'nonZero',
     nonScalingStrokes: false,
     scalingStrokes: false,
     styles: { fills, lines },

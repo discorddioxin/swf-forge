@@ -635,6 +635,83 @@ superseded by `IMPL-060-R037`: the IR is integer twips.
 symmetry, `-0` folding, idempotence, and the explicit assertion that decoded geometry is already
 quantised. The quantiser lives at `packages/swf/src/shapes/quantise.ts`.
 
+## E-028 — `MORPHGRADIENT`'s header: our own documents gave two wrong answers
+
+**Found in:** `IMPL-070-R025` and `specs/110` §10.7 (both ours, not upstream), implementing P3 C3.
+**What they say:** `IMPL-070-R025` — *"`MORPHGRADIENT` uses a **`UI8` count** (1…8) — not the nibble
+form of Ch.7's `GRADIENT`"*. `specs/110` §10.7 — *"`NumGradients UI8` (1..8), one flags byte (as
+GRADIENT), `MORPHGRADRECORD[]`"*. `IMPL-070-R028` added a third variant, describing the flags as
+existing *"per state"* and requiring an `SF0192`-class report when the two states' modes differ.
+
+**What is wrong:** all three. `MORPHGRADIENT` opens with **one** byte with Ch.7's exact `GRADIENT`
+layout — `SpreadMode UB[2]`, `InterpolationMode UB[2]`, `NumGradients UB[4]` — and nothing else.
+
+- The `UI8`-count reading loses the spread and interpolation modes entirely and reads the count from
+  the wrong bits (a count of 2 with `pad`/`reflect` encodes as `0x92`, which the `UI8` reading sees
+  as 146 records).
+- The count-then-flags reading consumes **one byte too many**. That is the more dangerous error: the
+  gradient itself still decodes, having swallowed the first `MORPHGRADRECORD`'s `StartRatio` as a
+  flags byte, and every subsequent fill style in the array is shifted. The failure surfaces as
+  garbage colours in an unrelated style, far from its cause.
+- "Per state" modes cannot differ, because there is only one header byte for the pair; the
+  `SF0192`-class comparison it mandates has no inputs.
+
+Cross-checked against Ruffle's `read_gradient_flags()` (`swf/src/read.rs`), which both the static and
+the morph paths call, and against `IMPL-060` §4.3 (`IMPL-060-R013`…`R022`) for the static form. The
+chapter's own `MORPHGRADIENT` table is the source of the confusion: it prints `NumGradients` as a
+standalone field without the enclosing bit layout that Ch.7 shows for `GRADIENT`.
+
+**Resolution:** one byte, read with the same code path as the static `GRADIENT` header. The spread
+and interpolation modes belong to the style and are **copied** to both endpoints, never interpolated.
+A reserved mode (value 3) and an empty ramp are reported exactly as the static path reports them.
+`IMPL-070-R025` rewritten, `IMPL-070-R028` withdrawn and restated, `IMPL-070` §6.2 and `specs/110`
+§10.7 layouts corrected (`IMPL-070` 1.2, `specs/110` 1.8).
+
+**Encoded by:** `T-MOD-405` (`packages/swf/test/morph.test.ts`) — the fixture writes `0x92`
+(`spread = 2`, `interpolation = 1`, `count = 2`) and the test asserts both modes on **both**
+endpoints, so a two-byte read cannot pass by consuming a record byte. `morphGradient` lives at
+`packages/swf/src/tags/morph.ts`.
+
+---
+
+## E-029 — the erroneous `FFD9FFD8` pair is not a prefix, and not pre-SWF 8
+
+**Found in:** Ch.8 via SWF19 errata p.138, restated in `IMPL-070-R004`, implementing P3 C3.
+**What it says:** *"Before version 8 of the SWF file format, SWF files could contain an erroneous
+header of 0xFF, 0xD9, 0xFF, 0xD8 before the JPEG SOI marker."*
+**What is wrong:** two things, both of which make a literal implementation fail on real content.
+
+1. **"before the SOI"** — the sequence appears at *any* point before the frame header, not only at
+   the front. It is exactly what `JPEGTables`' trailing `EOI` plus `DefineBits`' leading `SOI` look
+   like once a producer has glued them together, and Flash's decoder skips the pair wherever it
+   lands. A standard decoder stops at the interior `EOI` and returns a blank or truncated image.
+2. **"before version 8"** — the sequence is not version-gated in observed content; SWF 9 files carry
+   it. A version check around the skip reintroduces the bug for later files.
+
+The chapter is also silent on which payload carries the pair. Our own implementation stripped it from
+the `DefineBits` image only, so a pair on the `JPEGTables` side survived the splice and landed
+immediately after the `SOI` we synthesise — the worst position, since every decoder stops there.
+
+A third, smaller divergence: the errata's wording is ambiguous about whether the real `SOI` *follows*
+the pair (`FFD9 FFD8 | FFD8 …`, the literal reading) or whether the pair's own `FFD8` **is** the
+`SOI`. Both byte patterns exist. Ruffle strips all four bytes; our earlier code stripped two. Each is
+correct for one reading and wrong for the other.
+
+**Resolution:** every `FFD9 FFD8` pair ahead of the `SOF`/`SOS` marker is spliced out of the image,
+the `JPEGTables` payload, and the merged stream — with no version check. Bytes at or after the scan
+header are entropy-coded and are left untouched. After the splice, an `SOI` is restored only if one
+is not already present, which accepts both readings without guessing. `SF0258` (info) is reported
+once per asset with the number of pairs removed. `IMPL-070-R004` and `IMPL-070-R005` corrected
+(`IMPL-070` 1.2); `IMPL-070-R005`'s `EOI` removal is now conditional, since chopping two bytes
+unconditionally truncated the last table of a producer that omitted its `EOI`.
+
+**Encoded by:** `T-MOD-301` (`packages/assets/test/bitmap-layout.test.ts`) — merged-stream byte
+compares covering a pair on the image, on the tables, in the interior, both `SOI` readings, the
+missing-`EOI` tables block, and the negative case that entropy-coded bytes after `SOS` are preserved.
+`removeErroneousMarkers` lives at `packages/assets/src/images/decode.ts`.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -651,3 +728,4 @@ quantised. The quantiser lives at `packages/swf/src/shapes/quantise.ts`.
 | 1.9 | 2026-10-04 | `E-024`: dangling citations repaired (`GFX-D21` -> `GFX-D16`, `RT-R062` -> `RT-R057`…`R059`, `REPO-D09` -> `REPO-D06`), each missing decision/rule written into its owning design spec |
 | 2.0 | 2026-10-04 | Appendix pass: `E-025` (Appendix A's printed tables: `VertLineFlag` type/condition, the swapped hor/vert delta labels, `MoveDelta*` called unsigned, the "first byte ignored" frame-rate prose, the "fill bits" label for padding) and `E-026` (six invented tag names removed from `specs/110` §2 — Appendix B is the index authority) |
 | 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |
+| 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |

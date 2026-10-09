@@ -72,10 +72,10 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
     def test_pending_p3_diagnostics_are_owned_by_their_decoder_or_runtime_work_package(self):
         # P3 checkpoint C1 implemented the font/text auxiliary tags, so SF0277/SF0278 (zone and CSM
         # target handling) and SF0283/SF0284 (FontInfo2 wide codes, indirect names) now have live
-        # emission sites and are no longer deferred. What remains is genuinely later work.
+        # emission sites and are no longer deferred. C3 added the morph IR, so SF0262 (ratio bake
+        # decision) and SF0263 (vertex budget) emit from `shapes/morph-ir.ts` and left the map too.
+        # What remains is genuinely later work.
         expected = {
-            "SF0262": "WP-070-12",   # morph ratio baking — C3
-            "SF0263": "WP-070-12",   # morph vertex budget — C3
             "SF0272": "WP-080-07",   # static-text glyph index validation — C4
             "SF0273": "WP-080-07",   # static-text code-table presence — C4
             "SF0279": "WP-080-12",   # HTML subset parser — P9 runtime

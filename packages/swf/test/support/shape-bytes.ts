@@ -90,22 +90,16 @@ export interface GradientSpec {
   readonly stops: readonly (readonly [number, readonly [number, number, number, number]])[];
   /** Raw `FIXED8` word, written verbatim so a test can pin `0xFF00` / `0x0000` / `0x0100`. */
   readonly focalRaw?: number;
-  /** Force the `0x0F` extended-count escape even when the stop count is below 15. */
-  readonly forceExtendedCount?: boolean;
   readonly matrix?: MatrixSpec;
 }
 
 export function writeGradientFill(w: ByteWriter, version: ShapeVersion, spec: GradientSpec): void {
   w.u8(spec.type);
   writeMatrix(w, spec.matrix ?? {});
+  // One header byte: spread, interpolation, then the literal 4-bit count. `NumGradients` has no
+  // escape to a wider field - 15 is the hard ceiling (`IMPL-060-R017`).
   w.bits(spec.spreadMode ?? 0, 2).bits(spec.interpolationMode ?? 0, 2);
-  const extended = spec.forceExtendedCount === true || spec.stops.length >= 0x0f;
-  if (extended) {
-    w.bits(0x0f, 4).align();
-    w.u8(spec.stops.length);
-  } else {
-    w.bits(spec.stops.length, 4).align();
-  }
+  w.bits(spec.stops.length & 0x0f, 4).align();
   for (const [ratio, color] of spec.stops) {
     w.u8(ratio);
     writeColor(w, version, color);

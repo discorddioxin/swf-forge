@@ -104,6 +104,15 @@ export type {
 } from './tags/fonts.js';
 export { decodeDefineMorphShape } from './tags/morph.js';
 export type { MorphEdgePair, MorphShapeModel } from './tags/morph.js';
+// Morph interpolation + the ratio-bake decision (`IMPL-070-R030`-`R032`).
+export { bakeMorphRatios, interpolateMorph, roundTiesToEven } from './shapes/morph-ir.js';
+export type {
+  MorphBakeOptions,
+  MorphBakeResult,
+  MorphBakedFrame,
+  MorphEmit,
+  MorphInterpolateOptions,
+} from './shapes/morph-ir.js';
 export { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from './tags/text.js';
 export type {
   EditTextFlags,

@@ -92,7 +92,13 @@ would not start with `0x78`) and reported (`SF0255`-class, error) rather than sh
 **IMPL-070-R004** JPEG payload rules, applied to tags 6, 21, 35 and 90:
 - the data begins with the **SOI marker `0xFFD8`** and ends with **EOI `0xFFD9`**;
 - a **pre-SWF 8 erroneous header `0xFFD9 0xFFD8`** may precede the SOI and MUST be skipped
-  (`SF0258`, info) — this is the chapter's own bug note, and it appears in real SWF 6/7 content;
+  (`SF0258`, info) — this is the chapter's own bug note, and it appears in real SWF 6/7 content.
+  Two corrections to the chapter's wording apply (`E-029`): the pair occurs **anywhere before the
+  frame header**, not only at the front — it is the seam a producer's own `JPEGTables` glue leaves
+  behind — and it is **not version-gated** in practice, so no SWF-version check may guard the skip.
+  Every occurrence ahead of `SOF`/`SOS` is spliced out; bytes at or after the scan header are
+  entropy-coded data and MUST be left alone. The pair is removed from the `JPEGTables` payload and
+  from the merged stream as well as from the image, and `SF0258` is reported once per asset;
 - a missing EOI is `SF0255` (warning); the image is still handed to the decoder;
 - failing to find an SOI at all means the decoder is given the payload as-is, with the failure
   reported once per asset.
@@ -104,7 +110,9 @@ would not start with `0x78`) and reported (`SF0255`-class, error) rather than sh
 **IMPL-070-R005** `DefineBits` + `JPEGTables` splice: the tables payload supplies the
 Tables/Misc segments the image lacks. Reconstruct as
 `0xFFD8` + *(tables payload with its own SOI and EOI removed)* + *(image payload with its SOI and any
-erroneous prefix removed)*, then decode. A `DefineBits` character with no `JPEGTables` in the file is
+erroneous prefix removed)*, then decode. "Removed" means **removed if present**: a producer that
+omitted the tables' trailing `EOI` must not lose the last two bytes of its final table to an
+unconditional chop. A `DefineBits` character with no `JPEGTables` in the file is
 `SF0251` (error): the asset is preserved but marked undecodable. **Only one `JPEGTables` tag is
 allowed per file**; when several appear, the **first** wins deterministically and `SF0257` (warning)
 names the asset.
@@ -274,7 +282,8 @@ MORPHFILLSTYLE: FillStyleType UI8, then per type:
   solid     (0x00): StartColor RGBA, EndColor RGBA
   gradient  (0x10/0x12/0x13): StartGradientMatrix MATRIX, EndGradientMatrix MATRIX, MORPHGRADIENT
   bitmap    (0x40–0x43): BitmapId UI16, StartBitmapMatrix MATRIX, EndBitmapMatrix MATRIX
-MORPHGRADIENT: NumGradients UI8 (1..8), MORPHGRADRECORD[NumGradients]
+MORPHGRADIENT: SpreadMode UB[2], InterpolationMode UB[2], NumGradients UB[4] (1..8),
+               MORPHGRADRECORD[NumGradients]      // ONE byte, exactly as Ch.7 GRADIENT (E-028)
 MORPHGRADRECORD: StartRatio UI8, StartColor RGBA, EndRatio UI8, EndColor RGBA
 MORPHLINESTYLEARRAY: LineStyleCount UI8 (0xFF → UI16), MORPHLINESTYLE[count] (v1) | MORPHLINESTYLE2[count] (v2)
 MORPHLINESTYLE:  StartWidth UI16, EndWidth UI16, StartColor RGBA, EndColor RGBA
@@ -290,11 +299,15 @@ MORPHLINESTYLE2: StartWidth UI16, EndWidth UI16,
 - **IMPL-070-R024** Morph fill/line style arrays pair start and end **by index**; both arrays use the
   same count and the same `0xFF` extended-count escape as static shapes (R006 in doc 060). `FillStyle`
   index `0` still means "no style" (1-based model, doc 060 §4.1).
-- **IMPL-070-R025** `MORPHGRADIENT` uses a **`UI8` count** (1…8) — not the nibble form of Ch.7's
-  `GRADIENT` — followed by interleaved `(StartRatio, StartColor, EndRatio, EndColor)` records. Both
-  matrices are read before the count. A start/end control-point count mismatch is impossible by
-  construction; a *style-level* mismatch (different ramp lengths between two styles) is `SF0267`
-  (warning) and paired with the shorter list.
+- **IMPL-070-R025** `MORPHGRADIENT` begins with **one** byte laid out exactly like Ch.7's `GRADIENT`
+  header — `SpreadMode UB[2]`, `InterpolationMode UB[2]`, `NumGradients UB[4]` (1…8) — followed by
+  interleaved `(StartRatio, StartColor, EndRatio, EndColor)` records. Both matrices are read before
+  that byte. Earlier revisions of this rule described a separate `UI8` count (optionally *plus* a
+  flags byte); both readings are wrong and desynchronise the style array by one byte — see `E-028`.
+  The spread and interpolation modes are shared by the two endpoints and MUST NOT be interpolated.
+  A start/end control-point count mismatch is impossible by construction; a *style-level* mismatch
+  (different ramp lengths between two styles) is `SF0267` (warning) and paired with the shorter
+  list.
 - **IMPL-070-R026** `MORPHLINESTYLE2` carries **one** flag word and **one** miter limit shared by both
   states, exactly as the chapter's table lists (only the widths and the colours/fill pair vary). The
   flag word uses the LINESTYLE2 layout (doc 060 §4.4), so the same bit-field reader MUST be reused;
@@ -303,9 +316,13 @@ MORPHLINESTYLE2: StartWidth UI16, EndWidth UI16,
 - **IMPL-070-R027** Morph style counts that differ between the two style *kinds* (e.g. a v2 file whose
   fill count and line count disagree, or a `StartEdges` style index pointing past the array) follow
   doc 060's index-validation rules: clamp to 0 and report (`SF0181`), never re-number.
-- **IMPL-070-R028** Morph gradients inherit Ch.7's spread/interpolation flags per state (each
-  `MORPHGRADIENT` has one flags byte, read exactly like `GRADIENT`'s, before the records — see
-  APP-§10.6/§10.7); a difference between the two states' modes is reported (`SF0192`-class).
+- **IMPL-070-R028** Morph gradients inherit Ch.7's spread and interpolation modes from the **single**
+  `MORPHGRADIENT` header byte described in R025, so the two states always agree: the modes are a
+  property of the style, not of an endpoint. The earlier "per state … a difference between the two
+  states' modes is reported (`SF0192`-class)" wording described a condition that cannot arise and
+  implied a second flags byte; it is withdrawn under `E-028`. A **reserved** spread or interpolation
+  mode (value 3) is reported exactly as the static path reports it, and the modes are copied, never
+  interpolated.
 
 ### 6.3 Morph IR and correspondence
 
@@ -408,7 +425,7 @@ so a 300-morph movie produces a readable report rather than 300 identical lines.
 | `T-MOD-402` | morph style pairing on count mismatch (fill/line arrays) | F1 |
 | `T-MOD-403` | degenerate correspondence for unequal edge counts | F1 |
 | `T-MOD-404` | two-stream parse: style changes only in `StartEdges`, the `EndEdges` header byte, an inconsistent `Offset` (`SF0264`) | F1 |
-| `T-MOD-405` | `MORPHGRADIENT`: `UI8` count, start/end matrix order, interleaved `(ratio, colour)` pairs | F1 |
+| `T-MOD-405` | `MORPHGRADIENT`: the single `GRADIENT`-style header byte, start/end matrix order, interleaved `(ratio, colour)` pairs | F1 |
 | `T-MOD-406` | `MORPHLINESTYLE2`: one shared flag word, miter `× StartWidth`/`× EndWidth`, `HasFillFlag` fill pair | F1 |
 | `T-MOD-407` | straight↔curved pairing with odd deltas: rational twips retained, single deterministic rounding | F1 |
 | `T-MOD-408` | morph restriction checks: unequal edge counts, different bitmap ids, missing `MoveTo` counterpart | F2 |
@@ -471,3 +488,4 @@ validate but never depend on (R022), and morph style arrays pair by index (R024)
 | --- | --- | --- |
 | 1.0 | initial | Scoped from Ch.8/Ch.9; pixel-affecting layouts marked pending |
 | 1.1 | 2026-10-04 | Ch.8/Ch.9-grounded rewrite: exact tag bodies for all seven bitmap tags; JPEG SOI/EOI rule with the pre-SWF 8 erroneous `FFD9FFD8` prefix; single-`JPEGTables` splice rule; PNG/GIF exact magic and SWF 8 gate; `AlphaDataOffset` = byte count, alpha unsupported with PNG/GIF; `DeblockParam` 8.8 0–100 %; lossless formats 3/4/5 with palette = size + 1, per-row 32-bit padding by pixel size, `PIX15`/`PIX24` bit fields and XRGB/ARGB order; **`ALPHABITMAPDATA` premultiplied** → canonical straight-alpha with un-premultiply; two-stream morph edge model with the `Offset` hint rule; morph style interleaving incl. `MORPHGRADIENT` (`UI8` count) and `MORPHLINESTYLE2` (one shared flag word, per-state miter); morph restrictions, straight↔curved pairing and rational-twip rounding; diagnostics `SF0250`–`SF0269`; tests `T-MOD-309`–`313` and `T-MOD-404`–`408`; WPs 01–14 = 47 d |
+| 1.2 | 2026-10-09 | P3 C3 corrections: `E-028` — `MORPHGRADIENT` is **one** Ch.7-style `GRADIENT` header byte (`SpreadMode`/`InterpolationMode`/`NumGradients` nibble), not a `UI8` count and not count-then-flags (`IMPL-070-R025` rewritten, §6.2 layout corrected); `E-029` — the erroneous `FFD9FFD8` pair is not restricted to a prefix, not version-gated, and must be removed from the `JPEGTables` payload and the merged stream too (`IMPL-070-R004`); `IMPL-070-R005` tables `EOI` removal made conditional |

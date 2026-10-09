@@ -155,16 +155,87 @@ function concatenate(...parts: readonly Uint8Array[]): Uint8Array {
   return bytes;
 }
 
+/** The pre-SWF 8 erroneous `EOI`+`SOI` pair (`IMPL-070-R004`, SWF19 errata p.138). */
+const ERRONEOUS_MARKER = [0xff, 0xd9, 0xff, 0xd8] as const;
+
+function hasErroneousMarkerAt(bytes: Uint8Array, at: number): boolean {
+  return ERRONEOUS_MARKER.every((byte, index) => bytes[at + index] === byte);
+}
+
+/**
+ * Splice out every erroneous `FFD9 FFD8` pair that appears before the frame header.
+ *
+ * The errata describes the sequence as a *prefix*, but it also turns up in the interior of real
+ * content: the pair is what `JPEGTables`' own `EOI` plus `DefineBits`' own `SOI` look like once a
+ * producer has glued the two together, and Flash's decoder skips it rather than stopping. Standard
+ * decoders stop at the `EOI` and return a blank or truncated image, so the pair has to go.
+ *
+ * The scan stops at the frame header (`SOF`) or the scan (`SOS`): past that point the bytes are
+ * entropy-coded and `FF D9` inside them is data, not a marker (entropy-coded `0xFF` is stuffed as
+ * `FF 00`, but restart markers and a real trailing `EOI` live there too, and rewriting that region
+ * would corrupt the image).
+ */
+function removeErroneousMarkers(bytes: Uint8Array): { readonly bytes: Uint8Array; readonly removed: number } {
+  let current = bytes;
+  let removed = 0;
+  let offset = 0;
+  while (offset + 4 <= current.length) {
+    if (hasErroneousMarkerAt(current, offset)) {
+      current = concatenate(current.subarray(0, offset), current.subarray(offset + 4));
+      removed += 1;
+      continue;
+    }
+    if (current[offset] !== 0xff) break;
+    const marker = current[offset + 1] ?? 0;
+    // Frame header or scan: stop before the entropy-coded data.
+    if (
+      marker === 0xda ||
+      (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc)
+    ) {
+      break;
+    }
+    // Standalone markers carry no payload.
+    if (marker === 0x01 || marker === 0xd8 || marker === 0xd9 || (marker >= 0xd0 && marker <= 0xd7)) {
+      offset += 2;
+      continue;
+    }
+    const length = ((current[offset + 2] ?? 0) << 8) | (current[offset + 3] ?? 0);
+    if (length < 2 || offset + 2 + length > current.length) break;
+    offset += 2 + length;
+  }
+  return { bytes: current, removed };
+}
+
+/**
+ * Strip a `JPEGTables` payload down to the Tables/Misc segments it contributes (`IMPL-070-R005`).
+ *
+ * The block is a complete, image-less JPEG: `SOI`, the quantisation/Huffman tables, `EOI`. Both
+ * wrappers come off before the body is glued in front of the image's scan. The trailing `EOI` is
+ * removed **only if it is there** — chopping two bytes unconditionally silently truncates the last
+ * table of a producer that omitted it.
+ */
+function tablesBody(tables: Uint8Array): Uint8Array {
+  const start = tables[0] === 0xff && tables[1] === 0xd8 ? 2 : 0;
+  const hasEoi = tables.length >= start + 2 && tables.at(-2) === 0xff && tables.at(-1) === 0xd9;
+  return tables.subarray(start, hasEoi ? tables.length - 2 : tables.length);
+}
+
 function normalizeJpeg(
   source: Uint8Array,
   tables: Uint8Array | null,
   requiresTables: boolean,
   diagnostics: BitmapDiagnostic[],
 ): Uint8Array {
-  let image = source;
-  if (image[0] === 0xff && image[1] === 0xd9 && image[2] === 0xff && image[3] === 0xd8) {
-    image = image.subarray(2);
-    diagnostics.push({ code: 'SF0258', severity: 'info', message: 'skipped legacy FFD9 prefix before JPEG SOI' });
+  const cleanedImage = removeErroneousMarkers(source);
+  let image = cleanedImage.bytes;
+  let removed = cleanedImage.removed;
+  // The errata is ambiguous about whether the real `SOI` follows the erroneous pair
+  // (`FFD9 FFD8 | FFD8 ...`, the literal reading) or whether the pair's own `FFD8` is serving as
+  // it (`FFD9 | FFD8 ...`, which is what the bytes look like in some producers). Removing the pair
+  // and restoring an `SOI` only when one is not already there accepts both, with no version check
+  // — the errata claims this is pre-SWF 8 only, but it shows up in later files too.
+  if (removed > 0 && !(image[0] === 0xff && image[1] === 0xd8)) {
+    image = concatenate(Uint8Array.from([0xff, 0xd8]), image);
   }
   if (requiresTables && (tables === null || tables.length < 4)) {
     throw new BitmapDecodeError('SF0251', 'DefineBits has no JPEGTables payload');
@@ -186,16 +257,25 @@ function normalizeJpeg(
       message: 'progressive JPEG payload passed to the configured decoder',
     });
   }
-  if (!requiresTables) return image;
-  if (tables === null || tables.length < 4) {
-    throw new BitmapDecodeError('SF0251', 'DefineBits has no JPEGTables payload');
+  if (requiresTables) {
+    // The tables block gets the same treatment: it is its own SOI/EOI-wrapped JPEG and carries the
+    // erroneous pair just as often as the image does.
+    const cleanedTables = removeErroneousMarkers(tables as Uint8Array);
+    removed += cleanedTables.removed;
+    image = concatenate(Uint8Array.from([0xff, 0xd8]), tablesBody(cleanedTables.bytes), image.subarray(2));
+    // Gluing can create a fresh pair at the seam even when neither half had one.
+    const cleanedMerged = removeErroneousMarkers(image);
+    image = cleanedMerged.bytes;
+    removed += cleanedMerged.removed;
   }
-  const tableSegment = tables.subarray(
-    tables[0] === 0xff && tables[1] === 0xd8 ? 2 : 0,
-    tables.length >= 2 ? tables.length - 2 : tables.length,
-  );
-  const imageSegment = image.subarray(2);
-  return concatenate(Uint8Array.from([0xff, 0xd8]), tableSegment, imageSegment);
+  if (removed > 0) {
+    diagnostics.push({
+      code: 'SF0258',
+      severity: 'info',
+      message: `skipped ${removed} erroneous FFD9FFD8 marker pair(s) in the JPEG stream`,
+    });
+  }
+  return image;
 }
 
 function inflate(bytes: Uint8Array, expectedBytes: number, code: string): Uint8Array {
@@ -486,6 +566,30 @@ export function decodeBitmap(
     });
   }
   return { bitmap, diagnostics };
+}
+
+/**
+ * Splice a `JPEGTables` (tag 8) segment onto a `DefineBits` (tag 6) image, producing a standalone
+ * JPEG stream (`IMPL-070` §3, `T-MOD-301`).
+ *
+ * `DefineBits` carries only the entropy-coded scan; the quantisation and Huffman tables live once
+ * per file in `JPEGTables`. The merged stream is `SOI` + the tables' body (its own `SOI`/`EOI`
+ * stripped) + the image's body (its `SOI` stripped) — concatenating the two files verbatim would
+ * leave an `EOI` in the middle and a second `SOI` after it, which strict decoders reject.
+ *
+ * Also normalises the erroneous `FFD9 FFD8` marker pairs described by `IMPL-070-R004`, on either
+ * half and at the seam.
+ *
+ * Exposed separately from `decodeBitmap` so a test can byte-compare the merged stream rather than
+ * inferring it from the decoded pixels, and so a caller that wants to hand the JPEG to a different
+ * decoder does not have to reimplement the splice.
+ *
+ * `tables === null` normalises the image alone. The "a `DefineBits` character *must* have tables"
+ * rule (`SF0251`) belongs to the tag-6 caller, not to this primitive: tags 21/35/90 carry their own
+ * tables and legitimately pass `null`.
+ */
+export function spliceJpegTables(image: Uint8Array, tables: Uint8Array | null): Uint8Array {
+  return normalizeJpeg(image, tables, tables !== null, []);
 }
 
 /** Deterministic PNG output for the canonical RGBA pixel model. */

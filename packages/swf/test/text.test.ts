@@ -43,6 +43,10 @@ function embeddedFont(): DefineFontModel {
     italic: false,
     bold: false,
     wideCodes: true,
+    shiftJIS: false,
+    ansi: false,
+    smallText: false,
+    codes: [65, 66],
     glyphs: [
       { index: 0, code: 65, shape: null, advance: 600, bounds: null },
       { index: 1, code: 66, shape: null, advance: 610, bounds: null },

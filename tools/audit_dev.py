@@ -519,19 +519,14 @@ def check_coverage(rows):
 # remove its entry; the checker rejects stale mappings. Codes raised as strict exceptions are
 # reported separately from DiagnosticSink emissions.
 DEFERRED_DIAGNOSTIC_WPS = {
-    "SF0111": "WP-030-01",
     # P3 implementation gaps remain open in the repeat audit; these are tracked to their actual WPs,
     # not accepted as complete or hidden in the dev-audit baseline.
     "SF0262": "WP-070-12",
     "SF0263": "WP-070-12",
     "SF0272": "WP-080-07",
     "SF0273": "WP-080-07",
-    "SF0277": "WP-080-09",
-    "SF0278": "WP-080-09",
     "SF0279": "WP-080-12",
     "SF0281": "WP-080-01",
-    "SF0283": "WP-080-03",
-    "SF0284": "WP-080-03",
     # The P6 transcode ledger consumes these codes; P3 deliberately preserves source codecs.
     "SF0329": "WP-090-12",
 }

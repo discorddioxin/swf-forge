@@ -113,7 +113,7 @@ export function applyOps(entries: readonly DisplayEntry[], ops: readonly Timelin
     });
   }
 
-  return [...byDepth.values()].sort((p, q) => (p.depth === q.depth ? p.order - q.order : p.depth - q.order));
+  return [...byDepth.values()].sort((p, q) => (p.depth === q.depth ? p.order - q.order : p.depth - q.depth));
 }
 
 export interface DrawItem {
@@ -140,7 +140,16 @@ export interface FlattenSceneOptions {
   readonly maxDepth?: number;
 }
 
-/** Depth-first flatten of a display list into draw items, parents applied to children. */
+/**
+ * Depth-first flatten of a display list into draw items, parents applied to children.
+ *
+ * `clipDepth` (`IMPL-030` §7, `GFX-R046`) is applied as a *clip range*: a placement with
+ * `clipDepth = c` masks every entry with a depth in `(depth, c]`, which is the semantics the chapter
+ * states. The mask itself is not drawn. The clip is the masker's transformed bounds rectangle —
+ * enough for the static gate and for fixtures whose masks are rectangles, with the stencil upgrade
+ * tracked by `T-GFX-015` (`WP-130-11`); a bounds clip is deliberately conservative about what it
+ * hides, never about what it shows.
+ */
 export function collectDrawItems(
   entries: readonly DisplayEntry[],
   resolve: CharacterResolver,
@@ -149,17 +158,27 @@ export function collectDrawItems(
   const parent = options.transform ?? IDENTITY;
   const maxDepth = options.maxDepth ?? 32;
   const items: DrawItem[] = [];
+  // Masks are expressed as depth ranges over the *sorted* list, so one linear scan suffices.
+  let maskClip: ClipRect | null = null;
+  let maskEndDepth: number | null = null;
 
   for (const entry of entries) {
+    if (maskEndDepth !== null && entry.depth > maskEndDepth) {
+      maskClip = null;
+      maskEndDepth = null;
+    }
     if (!entry.visible || entry.characterId === null) continue;
     const resolved = resolve(entry.characterId);
     if (!resolved) continue;
     const matrix = multiply(parent, entry.matrix);
     const cxform = entry.cxform ?? options.cxform ?? null;
-    let clip = options.clip ?? null;
+    const baseClip = options.clip ?? null;
+    const clip = maskClip ? intersectClip(baseClip, maskClip) : baseClip;
 
-    if (entry.clipDepth !== null && resolved.geometry) {
-      clip = intersectClip(clip, shapeClip(resolved.geometry, matrix));
+    if (entry.clipDepth !== null) {
+      // The masker defines the clip for the following range; it is not rendered itself.
+      maskClip = resolved.geometry ? shapeClip(resolved.geometry, matrix) : null;
+      maskEndDepth = entry.clipDepth;
     }
 
     if (resolved.geometry) {
@@ -180,18 +199,8 @@ export function collectDrawItems(
   return items;
 }
 
-function intersectClip(a: ClipRect | null, b: ClipRect): ClipRect {
-  if (!a) return b;
-  return {
-    x0: Math.max(a.x0, b.x0),
-    y0: Math.max(a.y0, b.y0),
-    x1: Math.min(a.x1, b.x1),
-    y1: Math.min(a.y1, b.y1),
-  };
-}
-
-/** Bounds of a shape's flattened geometry under `matrix`, in device space. */
-function shapeClip(shape: ShapeGeometry, matrix: Transform2D): ClipRect {
+/** Clips a shape to a rectangle (`clipDepth` masks; the bounds-rect approximation of `GFX-R046`). */
+export function shapeClip(shape: ShapeGeometry, matrix: Transform2D): ClipRect {
   let bounds: { x0: number; y0: number; x1: number; y1: number } | null = null;
   const consider = (points: readonly Pt[]): void => {
     const b = pointBounds(points.map((p) => transformPoint(matrix, p)));
@@ -212,4 +221,15 @@ function shapeClip(shape: ShapeGeometry, matrix: Transform2D): ClipRect {
     for (const path of stroke.paths) consider(path.edges.map((edge) => edge.from));
   }
   return bounds ?? { x0: 0, y0: 0, x1: 0, y1: 0 };
+}
+
+/** Intersection of two clip rectangles; `null` means "no clip". */
+export function intersectClip(a: ClipRect | null, b: ClipRect): ClipRect {
+  if (!a) return b;
+  return {
+    x0: Math.max(a.x0, b.x0),
+    y0: Math.max(a.y0, b.y0),
+    x1: Math.min(a.x1, b.x1),
+    y1: Math.min(a.y1, b.y1),
+  };
 }

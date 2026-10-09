@@ -102,7 +102,7 @@ export function shapeToGeometry(id: string, shape: VectorShape): ShapeGeometry {
       startCap: capOf(style.caps?.start),
       endCap: capOf(style.caps?.end),
       join: joinOf(style.join),
-      miterLimit: (style.miterLimit ?? 768) / 256,
+      miterLimit: style.miterLimit ?? 3,
       paint: solidPaint(style.fill ?? null, {
         kind: 'solid',
         r: style.color.r,

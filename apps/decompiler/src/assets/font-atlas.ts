@@ -91,9 +91,12 @@ export function buildFontAtlas(font: DefineFontModel): FontAtlasBuild {
   });
   const estimatedSide = Math.max(512, Math.ceil(Math.sqrt(Math.max(1, renderable.length)) * 56));
   const pageSize = nextPowerOfTwo(Math.min(MAX_PAGE, estimatedSide));
-  const glyphs: FontAtlasGlyph[] = sourceGlyphs.map((glyph) => ({
+  // Glyphs without a mapped character code (v1 fonts with no FontInfo, or malformed files) still
+  // get an atlas slot under a synthetic private-use code so they render if the title indexes them
+  // directly; downstream consumers treat `code > 0xffff` as "unmapped" and never expose it as text.
+  const glyphs: FontAtlasGlyph[] = sourceGlyphs.map((glyph, position) => ({
     index: glyph.index,
-    code: glyph.code,
+    code: glyph.code ?? 0xf0000 + position,
     advance: glyph.advance,
     boundsEm1024:
       glyph.shape === null ? glyph.bounds : scaleRect(glyph.shape.recomputedBounds ?? glyph.shape.bounds, factor),
@@ -147,9 +150,10 @@ export function buildFontAtlas(font: DefineFontModel): FontAtlasBuild {
         page[target + 3] = pixels[source + 3] ?? 0;
       }
     }
+    const syntheticCode = 0xf0000 + sourceGlyphs.findIndex((g) => g.index === item.glyph.index);
     const assignment: FontAtlasGlyph = {
       index: item.glyph.index,
-      code: item.glyph.code,
+      code: item.glyph.code ?? syntheticCode,
       advance: item.glyph.advance,
       boundsEm1024: item.bounds,
       page: pageIndex,

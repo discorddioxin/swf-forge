@@ -65,12 +65,34 @@ export function transformRect(bounds: Rect, matrix: Mat2D): Rect {
   };
 }
 
+/** True when the rectangle has an inverted extent (`xMax < xMin` or `yMax < yMin`) per `SF0111`. */
+export function isRectDegenerate(rect: Rect): boolean {
+  return rect.xMax < rect.xMin || rect.yMax < rect.yMin;
+}
+
+/**
+ * Returns the axis-aligned union of the given rects. `null` when the input list is empty or every
+ * member was degenerate after normalisation. Callers are responsible for emitting `SF0111` when
+ * they had to clamp an inverted input (per `IMPL-010` errata E-001).
+ */
 export function unionRects(rects: readonly Rect[]): Rect | null {
   if (rects.length === 0) return null;
-  return rects.reduce((union, rect) => ({
-    xMin: Math.min(union.xMin, rect.xMin),
-    xMax: Math.max(union.xMax, rect.xMax),
-    yMin: Math.min(union.yMin, rect.yMin),
-    yMax: Math.max(union.yMax, rect.yMax),
-  }));
+  let xMin = Infinity;
+  let xMax = -Infinity;
+  let yMin = Infinity;
+  let yMax = -Infinity;
+  for (const rect of rects) {
+    // Tolerate inverted extents by taking min/max across both corners (a future caller that cares
+    // about the degenerate case calls isRectDegenerate itself before unioning).
+    const rxLo = Math.min(rect.xMin, rect.xMax);
+    const rxHi = Math.max(rect.xMin, rect.xMax);
+    const ryLo = Math.min(rect.yMin, rect.yMax);
+    const ryHi = Math.max(rect.yMin, rect.yMax);
+    if (rxLo < xMin) xMin = rxLo;
+    if (rxHi > xMax) xMax = rxHi;
+    if (ryLo < yMin) yMin = ryLo;
+    if (ryHi > yMax) yMax = ryHi;
+  }
+  if (!Number.isFinite(xMin) || !Number.isFinite(yMin)) return null;
+  return { xMin, xMax, yMin, yMax };
 }

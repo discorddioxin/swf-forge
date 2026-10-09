@@ -45,6 +45,12 @@ importers:
         specifier: workspace:*
         version: link:../../packages/swf
 
+  apps/engine-flash:
+    dependencies:
+      '@swf-forge/gfx':
+        specifier: workspace:*
+        version: link:../../packages/gfx
+
   packages/assets:
     dependencies:
       '@swf-forge/swf':

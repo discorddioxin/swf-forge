@@ -109,7 +109,7 @@ what is open, and a package is only "done" for the phase gate when its gate test
 | `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (duplicate definitions, strict length handling, exit codes, `--json`) |
 | `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` and audit synthetic probes (field order, sorted maps, file-order labels, op fields, `--out` bytes) |
 | P3 media decode | `packages/swf/src/tags/shape.ts` (shape/gradient decoding only) | [060](decompiler/060-shapes-and-gradients.md) | `shape-runs.test.ts`, `shape-regressions.test.ts`; image/font/sound export pipeline and the P3 asset demo remain incomplete |
-| P4 static-render reference path | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A pixels, deterministic PNG); browser integration and full P4 gate remain open |
+| P4 static-render reference path | `packages/gfx/*`, `apps/decompiler/src/render/*`, `apps/engine-flash/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | P4 exit gate green: 20 golden no-script frames (`apps/decompiler/test/render-goldens.test.ts`), perf-static draw-call + allocation budgets (`T-GFX-020`/`021`/`050`/`051`) with `fixtures/goldens/perf-static.expect.json`, context-loss recovery (`T-GFX-060`), and a WebGL2 browser demo (`forge-decompile render --demo`). Open P4 work is deferred to P9: gradients/bitmaps/real stencil masks (WP-130-08), filters (WP-130-09), WebGPU backend (WP-130-17). |
 | P5 onward | — | — | not started; do not begin P5 before the P4 gate |
 
 Current gate notes (evidence is local and synthetic; this does not claim the open-corpus exit gates):
@@ -124,13 +124,9 @@ Current gate notes (evidence is local and synthetic; this does not claim the ope
   model dump. `SF1000` is emitted independently for `FileAttributes.ActionScript3` and `DoABC`; the CLI
   still maps it to exit 3. The open corpus and fuzz harness remain outstanding (`WP-140-01` and related
   harness work), so this is not a claim that all phase gates are complete.
-- The current P4 evidence is a platform-neutral reference renderer over the Appendix A fixture through
-  a test-local `VectorShape` → `ShapeGeometry` adapter (`packages/gfx/test/adapter.ts`). It proves the
-  pixel/PNG oracle, not browser integration, a production conversion path or the full P4 gate. Keep
-  P4 ahead of P5; the AVM1 front end has not started.
+- P4 (static render) is exit-ready per §6: 20 no-script fixtures render within TST-§6.1 tolerance against committed goldens (`fixtures/goldens/static/*.json`), `perf-static` budgets for `T-GFX-020`/`021`/`050`/`051` are bound in `fixtures/goldens/perf-static.expect.json`, and `T-GFX-060` exercises context-loss/restore on the GL backend. The production VectorShape→ShapeGeometry bridge lives in `apps/decompiler/src/render/vector-ir.ts`; `packages/gfx/test/adapter.ts` is now used only by the Appendix-A gate and will be deleted once that fixture routes through the production bridge. The browser surface is `apps/engine-flash` mounted by `forge-decompile render --demo`. P5 (AVM1 front end) remains not started: P4 was kept ahead of P5 as §2.1 requires.
 - PlaceObject3 filter/image/cache metadata is now decoded and dumped in P2's model, but the renderer
-  does not implement filters. Rendering fidelity remains gated by P4/P9 requirements; parsing this
-  metadata is not evidence that those visual effects are supported.
+  does not implement filters, gradients, bitmaps or real stencil masks — those are gated by P9 (WP-130-08/09). Non-solid paints currently degrade to mid-grey (128) so they show up as wrong pixels, not wrong draw calls.
 
 ## 3. Milestones
 

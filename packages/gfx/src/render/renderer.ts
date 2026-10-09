@@ -7,7 +7,7 @@
  * rasterised, which is also what makes non-scaling strokes (`GFX-R031`) expressible.
  */
 
-import { blendPixel, createTarget, toHex, type RasterImage, type Rgba } from '../raster/image.js';
+import { blendPixel, createTarget, toHex, type MutableRgba, type RasterImage, type Rgba } from '../raster/image.js';
 import { fillRun, type ClipRect } from '../raster/scanline.js';
 import { strokePolygons } from '../raster/stroke.js';
 import { flattenPath, isDegenerate } from '../vector/flatten.js';
@@ -26,14 +26,31 @@ export interface FrameOptions {
 /** `c' = clamp(c × m/256 + a)`, the CXFORM arithmetic of `GFX-R0xx` §6.2. */
 export function applyCxform(color: Rgba, cxform: CxformLike | null): Rgba {
   if (!cxform) return color;
-  const channel = (value: number, mult: number, add: number): number =>
-    Math.max(0, Math.min(255, Math.round((value * mult) / 256 + add)));
-  return {
-    r: channel(color.r, cxform.rm, cxform.ra),
-    g: channel(color.g, cxform.gm, cxform.ga),
-    b: channel(color.b, cxform.bm, cxform.ba),
-    a: channel(color.a, cxform.am, cxform.aa),
-  };
+  const out: MutableRgba = { r: 0, g: 0, b: 0, a: 0 };
+  applyCxformInto(color, cxform, out);
+  return out;
+}
+
+/**
+ * Allocation-free CXFORM for hot paths: writes into `out`. Both forms share this one
+ * implementation, so the two renderers cannot drift on colour arithmetic (`T-GFX-072`).
+ */
+export function applyCxformInto(color: Rgba, cxform: CxformLike | null, out: MutableRgba): void {
+  if (!cxform) {
+    out.r = color.r;
+    out.g = color.g;
+    out.b = color.b;
+    out.a = color.a;
+    return;
+  }
+  out.r = channel(color.r, cxform.rm, cxform.ra);
+  out.g = channel(color.g, cxform.gm, cxform.ga);
+  out.b = channel(color.b, cxform.bm, cxform.ba);
+  out.a = channel(color.a, cxform.am, cxform.aa);
+}
+
+function channel(value: number, mult: number, add: number): number {
+  return Math.max(0, Math.min(255, Math.round((value * mult) / 256 + add)));
 }
 
 function transformPolyline(points: readonly Pt[], matrix: Transform2D): Pt[] {

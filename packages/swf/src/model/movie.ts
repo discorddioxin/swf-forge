@@ -45,10 +45,19 @@ import { decodeDefineShapeVersion } from '../tags/shape.js';
 import { decodeDefineSound } from '../tags/sounds.js';
 import { decodeDefineBitmap } from '../tags/images.js';
 import { decodeDefineMorphShape } from '../tags/morph.js';
-import { decodeDefineFont2or3 } from '../tags/fonts.js';
+import {
+  applyFontInfo,
+  decodeCsmTextSettings,
+  decodeDefineFont2or3,
+  decodeDefineFontV1,
+  decodeFontAlignZones,
+  decodeFontInfo,
+  decodeFontName,
+} from '../tags/fonts.js';
+import type { FontInfoEmit } from '../tags/fonts.js';
 import { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from '../tags/text.js';
 import { openTagCursor, assembleTimeline } from './timeline.js';
-import { matrixIsSingular, transformRect, unionRects } from './buttons.js';
+import { matrixIsSingular, transformRect, unionRects, isRectDegenerate } from './buttons.js';
 import type {
   ButtonModel,
   CharacterAlias,
@@ -189,6 +198,7 @@ interface ControlPass {
   binaryData: MovieControlModel['binaryData'];
   unknownExportIds: Set<number>;
   binaryBytes: Map<number, Uint8Array>;
+  jpegTables: Uint8Array | null;
 }
 
 function normalizeScenes(
@@ -279,6 +289,9 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
   let protect: PasswordState | null = null;
   let debuggerTag: MovieControlModel['debugger'] = null;
   let telemetry: MovieControlModel['telemetry'] = null;
+  let jpegTables: Uint8Array | null = null;
+  let jpegTablesCount = 0;
+  let jpegTablesFirstHeader = 0;
   const binaryData: {
     readonly characterId: number;
     readonly reserved: number;
@@ -305,6 +318,22 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
         background = rgb;
         backgroundSource = 'tag';
         backgroundChanges.push({ frame, rgb });
+        break;
+      }
+      case Tag.JPEGTables: {
+        jpegTablesCount += 1;
+        if (jpegTablesCount === 1) {
+          jpegTables = file.body.subarray(ref.offset, ref.offset + ref.length);
+          jpegTablesFirstHeader = ref.headerOffset;
+        } else if (jpegTablesCount === 2) {
+          c.emit(
+            Codes.IMAGE_MULTIPLE_JPEG_TABLES,
+            'warning',
+            `multiple JPEGTables tags (first at offset ${jpegTablesFirstHeader}); first wins`,
+            ref.headerOffset,
+            { context: 'control tags', tagCode: ref.code, characterId: null },
+          );
+        }
         break;
       }
       case Tag.ExportAssets: {
@@ -584,6 +613,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
       debugger: debuggerTag,
       telemetry,
       binaryData,
+      jpegTables,
     },
     initActions,
     rawImports,
@@ -595,6 +625,7 @@ function collectControl(file: SwfFile, topRefs: readonly TagRef[], mode: 'soft' 
     binaryData,
     unknownExportIds,
     binaryBytes,
+    jpegTables,
   };
 }
 
@@ -800,8 +831,13 @@ function missingCharacter(id: number): CharacterModel {
     morph: null,
     bitmap: null,
     font: null,
+    fontV1: null,
+    fontInfo: null,
+    fontAlignZones: null,
+    fontName: null,
     text: null,
     editText: null,
+    csmTextSettings: null,
     sound: null,
     alias: null,
     bytes: null,
@@ -931,7 +967,21 @@ function assembleButtons(
     const cached = geometryCache.get(buttonId);
     if (cached !== undefined) return cached;
     const entry = parsed.get(buttonId);
-    if (entry === undefined || activeGeometry.has(buttonId)) return { bounds: null, source: null };
+    if (entry === undefined) return { bounds: null, source: null };
+    if (activeGeometry.has(buttonId)) {
+      // Self/cyclic hit-area reference (F-P2-02): bail out with a diagnostic instead of infinite
+      // recursion or silently null hit area. The outer depth cap already prevents tag-level loops.
+      file.sink.emit({
+        code: Codes.PLACEMENT_BOUNDS_DEGENERATE,
+        severity: 'warning',
+        message: `button ${buttonId} references itself (or an ancestor) in its hit-area records; hit area cannot be assembled`,
+        offset: entry.origin.headerOffset,
+        context: 'button hit-area',
+        tagCode: entry.origin.code,
+        characterId: buttonId,
+      });
+      return { bounds: null, source: null };
+    }
     activeGeometry.add(buttonId);
     const hitRecords = entry.definition.records.filter((record) => record.states.includes('hitTest'));
     const useRecords =
@@ -968,10 +1018,37 @@ function assembleButtons(
           }
         }
       }
-      if (childBounds !== null) rects.push(transformRect(childBounds, record.matrix));
+      if (childBounds !== null) {
+        const transformed = transformRect(childBounds, record.matrix);
+        if (isRectDegenerate(transformed)) {
+          file.sink.emit({
+            code: Codes.PLACEMENT_BOUNDS_DEGENERATE,
+            severity: 'warning',
+            message: `button ${buttonId} hit-area record at depth ${record.depth} produced a degenerate RECT after transform; record excluded from hit area`,
+            offset: entry.origin.headerOffset,
+            context: 'button hit-area',
+            tagCode: entry.origin.code,
+            characterId: buttonId,
+          });
+        } else {
+          rects.push(transformed);
+        }
+      }
     }
     activeGeometry.delete(buttonId);
-    const result = { bounds: unionRects(rects), source };
+    const union = unionRects(rects);
+    if (source !== null && useRecords.length > 0 && union === null) {
+      file.sink.emit({
+        code: Codes.PLACEMENT_BOUNDS_DEGENERATE,
+        severity: 'warning',
+        message: `button ${buttonId} hit-area records did not produce a usable RECT (all degenerate); hit area is null`,
+        offset: entry.origin.headerOffset,
+        context: 'button hit-area',
+        tagCode: entry.origin.code,
+        characterId: buttonId,
+      });
+    }
+    const result = { bounds: union, source };
     geometryCache.set(buttonId, result);
     return result;
   };
@@ -1051,7 +1128,9 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     unknownExportIds,
     binaryBytes,
     rawImports,
+    jpegTables: collectedJpegTables,
   } = collectControl(file, topRefs, mode);
+  void collectedJpegTables; // surfaced via control.jpegTables below
   const resolvedImports = resolveMovieImports(file, rawImports, options.imports ?? new Map());
   const control = { ...collectedControl, imports: resolvedImports };
   const importedCharacterIds = new Set(resolvedImports.filter((entry) => entry.applied).map((entry) => entry.localId));
@@ -1063,6 +1142,53 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     if (ref) soundModels.set(definition.id, decodeDefineSound(openTagCursor(file, ref, mode)));
   }
   const soundChannels = (soundId: number): 1 | 2 | null => soundModels.get(soundId)?.channels ?? null;
+
+  // Pre-pass: collect auxiliary font/text metadata tags (FontInfo/Info2, FontName, AlignZones,
+  // CSMTextSettings) keyed by their target id. Tags may appear either before or after their
+  // target, so we reconcile below on the second pass (IMPL-080-R037).
+  type FontInfoT = import('../tags/fonts.js').FontInfoModel;
+  type FontNameT = import('../tags/fonts.js').FontNameModel;
+  type FontAlignT = import('../tags/fonts.js').FontAlignZonesModel;
+  type CsmT = import('../tags/fonts.js').CsmTextSettingsModel;
+  type FontV1T = import('../tags/fonts.js').DefineFontV1Model;
+  const fontInfoById = new Map<number, { model: FontInfoT; refHeaderOffset: number }>();
+  const fontNameById = new Map<number, FontNameT>();
+  const fontAlignZonesById = new Map<number, FontAlignT>();
+  const csmByTextId = new Map<number, CsmT>();
+  const fontV1ById = new Map<number, FontV1T>();
+  for (const ref of file.tagIndex.tags) {
+    if (ref.inSprite !== null) continue;
+    switch (ref.code) {
+      case Tag.DefineFont: {
+        const model = decodeDefineFontV1(openTagCursor(file, ref, mode));
+        fontV1ById.set(model.id, model);
+        break;
+      }
+      case Tag.DefineFontInfo:
+      case Tag.DefineFontInfo2: {
+        const model = decodeFontInfo(ref.code, openTagCursor(file, ref, mode));
+        if (!fontInfoById.has(model.id)) fontInfoById.set(model.id, { model, refHeaderOffset: ref.headerOffset });
+        break;
+      }
+      case Tag.DefineFontName: {
+        const m = decodeFontName(openTagCursor(file, ref, mode));
+        fontNameById.set(m.id, m);
+        break;
+      }
+      case Tag.DefineFontAlignZones: {
+        const m = decodeFontAlignZones(openTagCursor(file, ref, mode));
+        fontAlignZonesById.set(m.id, m);
+        break;
+      }
+      case Tag.CSMTextSettings: {
+        const m = decodeCsmTextSettings(openTagCursor(file, ref, mode));
+        csmByTextId.set(m.textId, m);
+        break;
+      }
+      default:
+        break;
+    }
+  }
   for (const definition of file.definitions) {
     const ref = file.tagIndex.tags[definition.tagIndex];
     if (!ref) continue;
@@ -1090,10 +1216,32 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     const bitmap = BITMAP_TAGS.has(definition.tagCode)
       ? decodeDefineBitmap(definition.tagCode, openTagCursor(file, ref, mode))
       : null;
-    const font =
-      definition.tagCode === Tag.DefineFont2 || definition.tagCode === Tag.DefineFont3
-        ? decodeDefineFont2or3(definition.tagCode, openTagCursor(file, ref, mode))
-        : null;
+    let font: import('../tags/fonts.js').DefineFontModel | null = null;
+    const infoRefOffset = fontInfoById.get(definition.id)?.refHeaderOffset ?? ref.headerOffset;
+    const fontInfoEmit: FontInfoEmit = (code, severity, message) => {
+      file.sink.emit({
+        code,
+        severity,
+        message,
+        offset: infoRefOffset,
+        context: 'font info',
+        tagCode: Tag.DefineFontInfo,
+        characterId: definition.id,
+      });
+    };
+    const infoEntry = fontInfoById.get(definition.id) ?? null;
+    const infoModel = infoEntry?.model ?? null;
+    if (definition.tagCode === Tag.DefineFont2 || definition.tagCode === Tag.DefineFont3) {
+      const model = decodeDefineFont2or3(definition.tagCode, openTagCursor(file, ref, mode));
+      font = infoModel !== null ? applyFontInfo(model, infoModel, fontInfoEmit) : model;
+    } else if (definition.tagCode === Tag.DefineFont) {
+      const v1 = fontV1ById.get(definition.id) ?? null;
+      if (v1 !== null && infoModel !== null) font = applyFontInfo(v1, infoModel, fontInfoEmit);
+    }
+    const fontV1 = definition.tagCode === Tag.DefineFont ? (fontV1ById.get(definition.id) ?? null) : null;
+    const fontInfo = infoModel;
+    const fontAlignZones = fontAlignZonesById.get(definition.id) ?? null;
+    const fontName = fontNameById.get(definition.id) ?? null;
     if (definition.tagCode === Tag.DefineFont4) {
       const fontCursor = openTagCursor(file, ref, mode);
       fontCursor.u16();
@@ -1108,12 +1256,40 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
         fontCursor.emit(Codes.FONT_DEVICE_ONLY, 'info', `DefineFont4 ${definition.id} has no embedded CFF outlines`);
       }
     }
+    if (fontAlignZones !== null && definition.tagCode !== Tag.DefineFont3) {
+      file.sink.emit({
+        code: Codes.FONT_HINT_TARGET_INVALID,
+        severity: 'warning',
+        message: `DefineFontAlignZones targets character ${definition.id} which is not DefineFont3; zones recorded but not applied`,
+        offset: ref.headerOffset,
+        context: 'font zones',
+        tagCode: Tag.DefineFontAlignZones,
+        characterId: definition.id,
+      });
+    }
     const text =
       definition.tagCode === Tag.DefineText || definition.tagCode === Tag.DefineText2
         ? decodeDefineText(definition.tagCode, openTagCursor(file, ref, mode))
         : null;
     const editText =
       definition.tagCode === Tag.DefineEditText ? decodeDefineEditText(openTagCursor(file, ref, mode)) : null;
+    const csmTextSettings = csmByTextId.get(definition.id) ?? null;
+    if (
+      csmTextSettings !== null &&
+      definition.tagCode !== Tag.DefineText &&
+      definition.tagCode !== Tag.DefineText2 &&
+      definition.tagCode !== Tag.DefineEditText
+    ) {
+      file.sink.emit({
+        code: Codes.FONT_HINT_TARGET_INVALID,
+        severity: 'warning',
+        message: `CSMTextSettings targets character ${definition.id} which is not a text/edit-text character; recorded but ignored`,
+        offset: ref.headerOffset,
+        context: 'CSM text settings',
+        tagCode: Tag.CSMTextSettings,
+        characterId: definition.id,
+      });
+    }
     const sound = soundModels.get(definition.id) ?? null;
     const bounds =
       vectorShape?.bounds ??
@@ -1135,11 +1311,59 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
       morph,
       bitmap,
       font,
+      fontV1,
+      fontInfo,
+      fontAlignZones,
+      fontName,
       text,
       editText,
+      csmTextSettings,
       sound,
       alias: null,
       bytes,
+    });
+  }
+
+  // IMPL-080-R037: an auxiliary font/text tag whose target is absent from the dictionary is ignored
+  // with SF0278, de-duplicated by id. Resolution happens here (end of parse) because a tag may
+  // legally precede the tag it modifies.
+  for (const [targetId] of fontAlignZonesById) {
+    if (characters.has(targetId)) continue;
+    file.sink.emit({
+      code: Codes.FONT_HINT_TARGET_INVALID,
+      severity: 'warning',
+      message: `DefineFontAlignZones targets undefined character ${targetId}; the tag is ignored`,
+      offset: 0,
+      context: 'font zones',
+      tagCode: Tag.DefineFontAlignZones,
+      characterId: targetId,
+    });
+  }
+  for (const [targetId] of csmByTextId) {
+    if (characters.has(targetId)) continue;
+    file.sink.emit({
+      code: Codes.FONT_HINT_TARGET_INVALID,
+      severity: 'warning',
+      message: `CSMTextSettings targets undefined character ${targetId}; the tag is ignored`,
+      offset: 0,
+      context: 'CSM text settings',
+      tagCode: Tag.CSMTextSettings,
+      characterId: targetId,
+    });
+  }
+  // IMPL-080-R035: zones are recorded verbatim and never used to snap glyphs — the browser
+  // rasteriser owns hinting. Report once per font that carries them so the manifest can say so.
+  for (const [targetId, zones] of fontAlignZonesById) {
+    const character = characters.get(targetId);
+    if (character === undefined || character.tagCode !== Tag.DefineFont3) continue;
+    file.sink.emit({
+      code: Codes.FONT_HINTING_IGNORED,
+      severity: 'info',
+      message: `font ${targetId} carries ${zones.zones.length} alignment zone record(s); recorded verbatim and not applied (the rasteriser owns hinting)`,
+      offset: character.index?.headerOffset ?? 0,
+      context: 'font zones',
+      tagCode: Tag.DefineFontAlignZones,
+      characterId: targetId,
     });
   }
 
@@ -1189,8 +1413,13 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
       morph: null,
       bitmap: null,
       font: null,
+      fontV1: null,
+      fontInfo: null,
+      fontAlignZones: null,
+      fontName: null,
       text: null,
       editText: null,
+      csmTextSettings: null,
       sound: null,
       alias,
       bytes: null,

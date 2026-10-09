@@ -1,7 +1,7 @@
 # IMPL STATUS — implementation-spec coverage
 
 **Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.
-**Snapshot:** 2026-10-06 · source: `docs/impl/**/*.md`
+**Snapshot:** 2026-10-09 · source: `docs/impl/**/*.md`
 
 State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =
 chapter-independent · ⏳ partial = open items remain (each listed in that document's §Open items).

@@ -26,6 +26,22 @@ export interface FillRunOptions {
   readonly clip?: ClipRect;
   /** Extra alpha multiplier (1 by default); colour alpha is applied on top. */
   readonly alpha?: number;
+  /**
+   * Reusable crossing storage (`T-GFX-021`). With a scratch, `fillRun` allocates nothing on the
+   * hot path: crossing objects are pooled and kept sorted as they are inserted.
+   */
+  readonly scratch?: FillScratch;
+}
+
+/** Pooled crossing list; entries grow only while the deepest row seen grows. */
+export interface FillScratch {
+  crossings: Crossing[];
+  count: number;
+  growths: number;
+}
+
+export function createFillScratch(): FillScratch {
+  return { crossings: [], count: 0, growths: 0 };
 }
 
 /** Vertical samples per pixel row. */
@@ -56,13 +72,16 @@ export function fillRun(
   const rowEnd = Math.min(image.height, Math.ceil(clip.y1));
   coverage.fill(0);
 
-  const crossings: Crossing[] = [];
+  const scratch = options.scratch;
+  const crossings: Crossing[] = scratch ? scratch.crossings : [];
   let touched = false;
+  if (scratch) scratch.count = 0;
 
   for (let sy = rowStart * SUB; sy < rowEnd * SUB; sy += 1) {
     const y = (sy + 0.5) / SUB;
     if (y < clip.y0 || y >= clip.y1) continue;
-    crossings.length = 0;
+    if (scratch) scratch.count = 0;
+    else crossings.length = 0;
 
     for (const polygon of polygons) {
       const n = polygon.length;
@@ -75,15 +94,19 @@ export function fillRun(
         const yMax = a.y < b.y ? b.y : a.y;
         if (y < yMin || y >= yMax) continue;
         const t = (y - a.y) / (b.y - a.y);
-        crossings.push({ x: a.x + t * (b.x - a.x), dir: b.y > a.y ? 1 : -1 });
+        const x = a.x + t * (b.x - a.x);
+        const dir: 1 | -1 = b.y > a.y ? 1 : -1;
+        if (scratch) insertCrossing(scratch, x, dir);
+        else crossings.push({ x, dir });
       }
     }
 
-    if (crossings.length < 2) continue;
-    crossings.sort((p, q) => p.x - q.x);
+    const total = scratch ? scratch.count : crossings.length;
+    if (total < 2) continue;
+    if (!scratch) crossings.sort((p, q) => p.x - q.x);
 
     let winding = 0;
-    for (let i = 0; i < crossings.length - 1; i += 1) {
+    for (let i = 0; i < total - 1; i += 1) {
       const crossing = crossings[i];
       const next = crossings[i + 1];
       if (!crossing || !next) continue;
@@ -106,6 +129,38 @@ export function fillRun(
       blendPixel(image, x, y, color, Math.min(1, c) * alphaScale);
     }
   }
+}
+
+/**
+ * Inserts one crossing into the pooled, sorted list. Insertion keeps the pool allocation-free; the
+ * per-row crossing count is small (a handful per shape), so the O(n²) worst case is not a concern
+ * and the property that matters — no allocation — holds.
+ */
+function insertCrossing(scratch: FillScratch, x: number, dir: 1 | -1): void {
+  const n = scratch.count;
+  let index = n;
+  while (index > 0) {
+    const previous = scratch.crossings[index - 1];
+    if (previous === undefined || previous.x <= x) break;
+    index -= 1;
+  }
+  if (scratch.crossings[n] === undefined) {
+    scratch.crossings[n] = { x: 0, dir: 1 };
+    scratch.growths += 1;
+  }
+  for (let at = n; at > index; at -= 1) {
+    const source = scratch.crossings[at - 1];
+    const destination = scratch.crossings[at];
+    if (!source || !destination) continue;
+    destination.x = source.x;
+    destination.dir = source.dir;
+  }
+  const slot = scratch.crossings[index];
+  if (slot) {
+    slot.x = x;
+    slot.dir = dir;
+  }
+  scratch.count = n + 1;
 }
 
 /** Adds an x-span at one sub-row to the coverage plane; `true` when anything was touched. */

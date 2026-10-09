@@ -20,11 +20,13 @@ import {
   segmentsForQuadratic,
   strokePolygons,
   type DrawPath,
+  type DrawItem,
   type Pt,
   type ShapeGeometry,
 } from '@swf-forge/gfx';
 
 const WHITE = { r: 255, g: 255, b: 255, a: 255 };
+const IDENTITY_MATRIX = { a: 1, b: 0, c: 0, d: 1, tx: 0, ty: 0 };
 const RED = { r: 255, g: 0, b: 0, a: 255 };
 const BLACK = { r: 0, g: 0, b: 0, a: 255 };
 
@@ -283,6 +285,40 @@ describe('strokes', () => {
     expect(readPixel(round.image, 8, 52)).toEqual(WHITE);
   });
 
+  it('T-GFX-004: a hairline (width 0) renders as exactly one device pixel row', () => {
+    const hairline: ShapeGeometry = {
+      id: 'hairline',
+      fills: [],
+      strokes: [
+        {
+          paths: [
+            {
+              ...linePath([
+                { x: 10, y: 50.5 },
+                { x: 90, y: 50.5 },
+              ]),
+              closed: false,
+            },
+          ],
+          width: 0, // `GFX-R030`: 0 means hairline, resolved to one device pixel, not invisible
+          startCap: 'butt',
+          endCap: 'butt',
+          join: 'miter',
+          miterLimit: 3,
+          paint: { kind: 'solid', ...BLACK },
+          noClose: true,
+        },
+      ],
+    };
+    const items: DrawItem[] = [{ shape: hairline, matrix: IDENTITY_MATRIX, cxform: null, clip: null, depth: 1 }];
+    const image = renderFrame(items, { width: 100, height: 100, background: 0xffffff });
+    expect(readPixel(image, 50, 50)).toEqual(BLACK); // the single covered row
+    expect(readPixel(image, 50, 49)).toEqual(WHITE); // never widened by scaling
+    expect(readPixel(image, 50, 51)).toEqual(WHITE);
+    expect(readPixel(image, 9, 50)).toEqual(WHITE); // butt caps: no extension along the path
+    expect(readPixel(image, 89, 50)).toEqual(BLACK);
+  });
+
   it('honours the miter limit: a low limit bevels the corner', () => {
     const corner = [
       { x: 20, y: 20 },
@@ -314,6 +350,27 @@ describe('strokes', () => {
     expect(readPixel(beveled.image, 62, 18).r).toBeGreaterThan(0); // the chord crosses this pixel
     expect(readPixel(beveled.image, 62, 18).r).toBeLessThan(255);
     expect(readPixel(mitered.image, 64, 17)).toEqual(WHITE); // the miter does not overshoot its tip
+  });
+});
+
+describe('composition', () => {
+  it('T-GFX-005: adjacent fills sharing an edge leave no seam', () => {
+    const left = rectangleGeometry('left', 20, 20, 50, 60);
+    const right = rectangleGeometry('right', 50, 20, 80, 60);
+    const image = renderFrame(
+      [
+        { shape: left, matrix: IDENTITY_MATRIX, cxform: null, clip: null, depth: 1 },
+        { shape: right, matrix: IDENTITY_MATRIX, cxform: null, clip: null, depth: 2 },
+      ],
+      { width: 100, height: 100, background: 0xffffff },
+    );
+    // The shared column is covered by both quads; a seam would leave the background showing.
+    for (let y = 25; y < 55; y += 1) {
+      expect(readPixel(image, 49, y).r).toBe(255);
+      expect(readPixel(image, 50, y).r).toBe(255);
+    }
+    expect(readPixel(image, 19, 40)).toEqual(WHITE);
+    expect(readPixel(image, 80, 40)).toEqual(WHITE);
   });
 });
 

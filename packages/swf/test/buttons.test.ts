@@ -488,3 +488,49 @@ describe('button auxiliary tags', () => {
     });
   });
 });
+
+describe('P2 audit regressions (T-MOD-841 / T-MOD-842)', () => {
+  // F-P2-01: SF0111 must be emitted when a button record's transformed child bounds are degenerate
+  // (e.g. a singular/reflective matrix over a shape collapses an axis) AND for self-cycles
+  // (F-P2-02).
+  it('T-MOD-841 emits SF0111 for a self-cyclic button (button references itself via a record)', () => {
+    // Button 20 has a single record that places character 20 (itself) at depth 1.
+    const cyclic = tag(
+      Tag.DefineButton2,
+      buttonV2Body(20, [buttonRecordV2(0x08, 20, 1)]), // 0x08 = hitTest
+    );
+    const file = openSwf(
+      buildSwf({
+        version: 8,
+        body: concat(cyclic, showFrames(1), endTag()),
+        frameCount: 1,
+      }),
+    );
+    const model = buildMovieModel(file);
+    expect(model.characters.get(20)?.button?.hitArea).toBeNull();
+    expect(file.sink.codes()).toContain('SF0111');
+  });
+
+  it('T-MOD-842 emits SF0111 when button hit-area assembly resolves to no usable rect (all records filtered out)', () => {
+    // Singular-matrix records are filtered out (SF0131), leaving the rects[] list empty; when
+    // source is nonetheless requested (useRecords non-empty but every entry singular), we raise
+    // SF0111 and leave hitArea null.
+    const singular = singularMatrix();
+    const file = openSwf(
+      buildSwf({
+        version: 8,
+        body: concat(
+          tag(Tag.DefineShape, shapeBody(1, { xMin: 0, xMax: 10, yMin: 0, yMax: 10 })),
+          tag(Tag.DefineButton2, buttonV2Body(21, [buttonRecordV2(0x08, 1, 1, { matrix: singular })])),
+          showFrames(1),
+          endTag(),
+        ),
+        frameCount: 1,
+      }),
+    );
+    const model = buildMovieModel(file);
+    expect(file.sink.codes()).toContain('SF0131'); // singular matrix warning
+    expect(file.sink.codes()).toContain('SF0111'); // every record unusable
+    expect(model.characters.get(21)?.button?.hitArea).toBeNull();
+  });
+});

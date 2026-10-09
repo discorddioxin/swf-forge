@@ -170,7 +170,10 @@ export function recoverStaticTextCodes(
       return { ...run, recoveredText: null };
     }
     const frequencies = new Map<number, number>();
-    for (const glyph of font.glyphs) frequencies.set(glyph.code, (frequencies.get(glyph.code) ?? 0) + 1);
+    for (const glyph of font.glyphs) {
+      if (glyph.code === null) continue;
+      frequencies.set(glyph.code, (frequencies.get(glyph.code) ?? 0) + 1);
+    }
     let invalidIndex = false;
     let missingCode = false;
     let ambiguous = false;
@@ -181,7 +184,7 @@ export function recoverStaticTextCodes(
         invalidIndex = true;
         continue;
       }
-      if (!Number.isInteger(glyph.code) || glyph.code < 0 || glyph.code > 0xffff) {
+      if (glyph.code === null || !Number.isInteger(glyph.code) || glyph.code < 0 || glyph.code > 0xffff) {
         missingCode = true;
         continue;
       }

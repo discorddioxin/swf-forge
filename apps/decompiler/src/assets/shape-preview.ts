@@ -260,7 +260,7 @@ export function renderShapePreview(
       startCap: style.caps?.start === 1 ? 'butt' : style.caps?.start === 2 ? 'square' : 'round',
       endCap: style.caps?.end === 1 ? 'butt' : style.caps?.end === 2 ? 'square' : 'round',
       join: style.join === 1 ? 'bevel' : style.join === 2 ? 'miter' : 'round',
-      miterLimit: (style.miterLimit ?? 768) / 256,
+      miterLimit: style.miterLimit ?? 3,
       closed: stroke.closed && !(style.noClose ?? false),
     });
     const group = strokeGroups.get(stroke.styleId) ?? [];

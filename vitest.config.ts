@@ -10,6 +10,7 @@ export default defineConfig({
       '@swf-forge/swf/node': r('packages/swf/src/node/index.ts'),
       '@swf-forge/swf': r('packages/swf/src/index.ts'),
       '@swf-forge/decompiler': r('apps/decompiler/src/cli.ts'),
+      '@swf-forge/gfx/test-support': r('packages/gfx/src/test-support/index.ts'),
       '@swf-forge/gfx': r('packages/gfx/src/index.ts'),
       '@swf-forge/avm1': r('packages/avm1/src/index.ts'),
     },

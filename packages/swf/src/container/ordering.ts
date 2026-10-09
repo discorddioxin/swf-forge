@@ -18,7 +18,7 @@
 import { Codes } from '../diagnostics/codes.js';
 import type { DiagnosticSink } from '../diagnostics/sink.js';
 import { Cursor } from '../io/cursor.js';
-import { readCxformWithAlpha } from '../io/records.js';
+import { readCxformWithAlpha, readMatrix } from '../io/records.js';
 import { tagName } from '../tags/tag-codes.js';
 import type { TagRef, TagStreamResult } from './tag-stream.js';
 
@@ -41,16 +41,13 @@ function skipString(body: Uint8Array, off: number): number {
 }
 
 /**
- * Byte length of a `MATRIX` whose flag byte sits at `off` (Ch.1 §MATRIX): `HasScale`/`HasRotate`
- * are `FB[16]` pairs, `HasMove` an `FB[14]` pair — each pair is 4 bytes.
+ * Advances a cursor past a `MATRIX` using the real variable-width reader (`IMPL-010`). Used by
+ * the button-record walker so ordering reference extraction stays in sync with
+ * `decodeButtonRecord` — a fixed 13-byte estimate misaligns for wide translate fields, which
+ * produces spurious `SF0026` reports.
  */
-function matrixLengthAt(body: Uint8Array, off: number): number {
-  const flags = body[off] ?? 0;
-  let len = 1;
-  if (flags & 0x01) len += 4;
-  if (flags & 0x02) len += 4;
-  if (flags & 0x04) len += 4;
-  return len;
+function skipMatrix(c: Cursor): void {
+  readMatrix(c);
 }
 
 /**
@@ -104,35 +101,41 @@ function characterRefs(body: Uint8Array, tag: TagRef): number[] | null {
       return [u16At(body, o)];
     }
     case 7: {
-      // DefineButton (v1): records of flag byte, CharacterID, PlaceDepth, MATRIX.
+      // DefineButton (v1): ButtonId UI16, then records of (flag, CharacterID, PlaceDepth, MATRIX).
+      // Walk with the real Matrix reader (fixed estimates drift on wide translate fields, which
+      // would turn later bytes into spurious CharacterIDs and false SF0026 reports).
       const refs: number[] = [];
-      let pos = o;
-      for (;;) {
-        if (pos >= body.length) return null;
-        const flag = body[pos] ?? 0;
+      const c = new Cursor(body, o + 2, body.length, { mode: 'soft' }); // skip ButtonId
+      while (c.offset < body.length) {
+        const flag = c.u8();
         if (flag === 0) return refs;
-        refs.push(u16At(body, pos + 1));
-        pos += 5 + matrixLengthAt(body, pos + 5);
+        refs.push(c.u16());
+        c.u16(); // PlaceDepth
+        skipMatrix(c);
       }
+      return null;
     }
     case 34: {
-      // DefineButton2 (v2): header (Id, flags, ActionOffset), then records with a CXFORMWITHALPHA
-      // after the matrix and optional filter/blend tails. Filter-bearing records stop the walk.
+      // DefineButton2 (v2): header (Id, reserved, ActionOffset UI16), then records of flag,
+      // CharacterID, PlaceDepth, MATRIX, CXFORMWITHALPHA?, FilterList?, BlendMode?.
+      // We mirror `decodeButtonRecord`'s exact layout (see `tags/buttons.ts`): HasFilterList
+      // (0x10) terminates the record for ordering purposes (FILTERLIST layout is doc-030-owned
+      // and contains no further character refs to dictionary ids), and we read the matrix and
+      // cxform with the same readers the decoder uses.
       const refs: number[] = [];
-      let pos = o + 4;
-      for (;;) {
-        if (pos >= body.length) return null;
-        const flag = body[pos] ?? 0;
+      const c = new Cursor(body, o + 5, body.length, { mode: 'soft' }); // skip ButtonId(u16) + flags(u8) + ActionOffset(u16)
+      while (c.offset < body.length) {
+        const flag = c.u8();
         if (flag === 0) return refs;
-        if (flag & 0x10) return refs; // FILTERLIST — layout owned by doc 030, skipped here
-        refs.push(u16At(body, pos + 1));
-        let next = pos + 5 + matrixLengthAt(body, pos + 5);
-        const cursor = new Cursor(body, next, Math.min(body.length, next + 16), { mode: 'soft' });
-        readCxformWithAlpha(cursor);
-        next = cursor.offset;
-        if (flag & 0x20) next += 1; // BlendMode
-        pos = next;
+        if (flag & 0x10) return refs; // FILTERLIST — no further dictionary refs in this record
+        refs.push(c.u16());
+        c.u16(); // PlaceDepth
+        skipMatrix(c);
+        // CXFORMWITHALPHA is present for v2 records unconditionally (Ch.13).
+        readCxformWithAlpha(c);
+        if (flag & 0x20) c.u8(); // BlendMode byte
       }
+      return null;
     }
     case 11: {
       // DefineText: NumTextRecords UI16, then TEXTRECORDs (style, [text, FontId]).

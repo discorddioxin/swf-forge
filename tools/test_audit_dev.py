@@ -70,34 +70,36 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
                 self.assertIn(wp, packages)
 
     def test_pending_p3_diagnostics_are_owned_by_their_decoder_or_runtime_work_package(self):
+        # P3 checkpoint C1 implemented the font/text auxiliary tags, so SF0277/SF0278 (zone and CSM
+        # target handling) and SF0283/SF0284 (FontInfo2 wide codes, indirect names) now have live
+        # emission sites and are no longer deferred. What remains is genuinely later work.
         expected = {
-            "SF0262": "WP-070-12",
-            "SF0263": "WP-070-12",
-            "SF0272": "WP-080-07",
-            "SF0273": "WP-080-07",
-            "SF0277": "WP-080-09",
-            "SF0278": "WP-080-09",
-            "SF0279": "WP-080-12",
-            "SF0281": "WP-080-01",
-            "SF0283": "WP-080-03",
-            "SF0284": "WP-080-03",
+            "SF0262": "WP-070-12",   # morph ratio baking — C3
+            "SF0263": "WP-070-12",   # morph vertex budget — C3
+            "SF0272": "WP-080-07",   # static-text glyph index validation — C4
+            "SF0273": "WP-080-07",   # static-text code-table presence — C4
+            "SF0279": "WP-080-12",   # HTML subset parser — P9 runtime
+            "SF0281": "WP-080-01",   # glyph mandatory-fill quarantine — C4
+            "SF0329": "WP-090-12",   # transcode ledger — P6
         }
-        self.assertEqual({code: audit_dev.DEFERRED_DIAGNOSTIC_WPS.get(code) for code in expected}, expected)
+        self.assertEqual(dict(audit_dev.DEFERRED_DIAGNOSTIC_WPS), expected)
 
     def test_deferred_mapping_becomes_stale_when_the_code_is_emitted(self):
-        # SF0111 remains deferred for the renderer; the synthetic scenario pretends it now has a
-        # production emission site, which must flag the mapping as stale.
+        # Pick a code that is genuinely still deferred and pretend it has gained a production
+        # emission site; the checker must flag the now-stale mapping. Reading the code out of the
+        # live map (instead of hard-coding one) keeps this test correct as checkpoints land.
+        code = next(iter(sorted(audit_dev.DEFERRED_DIAGNOSTIC_WPS)))
         coverage = audit_dev.check_emission_ownership(
-            {"SF0111": {"severity": "warning", "meaning": "test"}},
-            {"PLACEMENT_BOUNDS_DEGENERATE": "SF0111"},
+            {code: {"severity": "warning", "meaning": "test"}},
+            {"SYNTHETIC_DEFERRED_CODE": code},
             {},
-            {"SF0111"},
+            {code},
             set(),
-            {"SF0111": ["packages/swf/src/model/timeline.ts:1"]},
+            {code: ["packages/swf/src/model/timeline.ts:1"]},
             {},
         )
         self.assertEqual(coverage[0]["status"], "emitted")
-        self.assertIn("ownership.stale:SF0111", {item["key"] for item in audit_dev.findings})
+        self.assertIn(f"ownership.stale:{code}", {item["key"] for item in audit_dev.findings})
 
     def test_test_ids_in_work_package_rows_are_attributed_to_that_wp(self):
         owners = audit_dev.test_work_package_owners()

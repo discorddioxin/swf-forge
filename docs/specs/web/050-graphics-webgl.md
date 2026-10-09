@@ -942,6 +942,8 @@ draw MUST be skipped rather than corrupting the frame buffer.
 | --- | --- | --- |
 | T-GFX-001 | Solid rectangle at integer position: exact pixels | F1 |
 | T-GFX-002 | Multiple fills with `stateNewStyles`, holes (even-odd vs nonzero) | F1 |
+| T-GFX-003 | (reserved — roadmap P4 table previously listed this id; no behaviour was specified; intentionally left vacant so reuse is explicit) | — |
+| T-GFX-004 | Hairline stroke (width 0) renders as exactly one device-pixel row/column regardless of transform scale (`GFX-R030`) | F1 |
 | T-GFX-005 | Adjacent fills sharing an edge: seam within tolerance | F3 |
 | T-GFX-006 | Drawing API: open trail fills closed; `clear()` erases only drawing | F2 |
 | T-GFX-010 | Radial + focal gradient ramp vs oracle (sampled grid) | F3 |
@@ -960,6 +962,9 @@ draw MUST be skipped rather than corrupting the frame buffer.
 | T-GFX-060 | Context loss / restore (RT-§5.9): caches rebuild, no crash | F1 |
 | T-GFX-061 | Quality mode switch does not change geometry or hit tests | F2 |
 | T-GFX-062 | Button hit area: no `ButtonStateHitTest` record ⇒ union of the `up` geometry with each record's matrix applied (`GFX-D16`) | F2 |
+| T-GFX-070 | Static-scene bundle (`swf-forge/static-scene` v1): round-trip serialise/parse, validation errors, out-of-range frames | F1 |
+| T-GFX-071 | Static-scene builder: sprite flattening, playhead wrap, matrix twips→px, clip rect quantisation | F1 |
+| T-GFX-072 | CPU and GPU paths consume the same `ShapeRun`/`MeshRun` contour list (one geometry, two backends) — triangle/vertex parity per run | F1 |
 
 ## 19. Decision register
 

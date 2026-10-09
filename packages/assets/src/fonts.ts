@@ -130,11 +130,10 @@ function makeTrueType(fontModel: DefineFontModel): Uint8Array {
   } else {
     for (const source of sourceGlyphs) {
       const path = new opentype.Path();
-      appendShape(path, source.shape);
+      if (source.shape !== null) appendShape(path, source.shape);
+      const code = source.code;
       const unicode =
-        source.code >= 0 && source.code <= 0xffff && !(source.code >= 0xd800 && source.code <= 0xdfff)
-          ? source.code
-          : undefined;
+        code !== null && code >= 0 && code <= 0xffff && !(code >= 0xd800 && code <= 0xdfff) ? code : undefined;
       const mapped = unicode !== undefined && !seenCodes.has(unicode);
       if (mapped && unicode !== undefined) seenCodes.add(unicode);
       const options: opentype.GlyphOptions = {

@@ -23,6 +23,14 @@ export interface Rgba extends Rgb {
   readonly a: number;
 }
 
+/** A colour object the caller may write into (hot paths reuse one instead of allocating). */
+export interface MutableRgba {
+  r: number;
+  g: number;
+  b: number;
+  a: number;
+}
+
 /** Image + reusable coverage plane, so a frame does not allocate per fill run. */
 export interface RasterTarget {
   readonly image: RasterImage;

@@ -1,0 +1,53 @@
+{
+  "format": "swf-forge/render-manifest",
+  "formatVersion": 1,
+  "source": {
+    "bytes": 110,
+    "sha256": "sha256:db3408b458091bc026c6b262c75777cf209ce029f15b3b59bdb4bf66db66fec4",
+    "frameCount": 3
+  },
+  "stage": {
+    "width": 200,
+    "height": 150,
+    "background": 16777215,
+    "frameRate": 3072
+  },
+  "report": {
+    "frames": 3,
+    "items": 2,
+    "shapes": 1,
+    "sprites": 0,
+    "unsupportedPaints": 0,
+    "maxNesting": 0
+  },
+  "scene": {
+    "path": "scene.json",
+    "sha256": "230d428cdafa5330d106a98a312aeea2f3bdf29c7657861aaa7c22867701c8f6"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "rgba": "af2f1ac801bc95793012afd2154c3fec76b5360975796cc36391476647ade530",
+      "png": "d26a691c7ac16b46c0f23c2413d73f3ef67fcadcc298aa8ed0ea83c58372b5c2",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 1,
+      "rgba": "357c26adb55a69a46b85e21e0c29c7b7728a6905e67e6921a5655f4c6feeaf18",
+      "png": "b27641ab0bc8ddd1020efecd8346ab29a2acdad8490afc15a98c8932d89524e5",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 2,
+      "rgba": "b717e2fa172082651a1e1145d9f269f9e34d9ca75346669de64b4bbbb369a834",
+      "png": "367cfb389f6d083c09d36db6cb51678c839e8be27afbb756f0e7fc61e0a4d292",
+      "drawCalls": 0,
+      "vertices": 0,
+      "bytes": 120223
+    }
+  ]
+}

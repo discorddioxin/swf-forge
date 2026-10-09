@@ -92,8 +92,15 @@ class CompletenessTests(unittest.TestCase):
     def test_p3_decoder_progress_is_not_reported_as_pending(self):
         for name in ("DefineMorphShape", "DefineMorphShape2", "JPEGTables", "StartSound", "StartSound2", "DefineFont4"):
             self.assertEqual(tc.DISPOSITIONS[name][0], "decoded", f"{name} has a P3 decoder/fallback path")
+        # P3 checkpoint C1 closed the font/text auxiliary-tag gap: every one of these now has a
+        # real decoder plus a model-side resolve pass, so none may regress to `pending`.
         for name in ("DefineFont", "DefineFontInfo", "DefineFontInfo2", "DefineFontName", "DefineFontAlignZones", "CSMTextSettings"):
-            self.assertTrue(tc.DISPOSITIONS[name][0].startswith("pending:"), f"{name} decoder is still open")
+            self.assertEqual(tc.DISPOSITIONS[name][0], "decoded", f"{name} decoder landed in P3 C1")
+
+    def test_only_out_of_phase_tags_remain_pending(self):
+        """After C1 the only pending tag is the P11 video stream; fonts/text are fully dispositioned."""
+        pending = sorted(n for n, (d, _e, _o) in tc.DISPOSITIONS.items() if d.startswith("pending:"))
+        self.assertEqual(pending, ["DefineVideoStream"])
 
 
 if __name__ == "__main__":

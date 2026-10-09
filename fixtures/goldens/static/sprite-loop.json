@@ -1,0 +1,69 @@
+{
+  "format": "swf-forge/render-manifest",
+  "formatVersion": 1,
+  "source": {
+    "bytes": 161,
+    "sha256": "sha256:e11ea4408b247c610903e8585091b549c17d32e70cfed942868ab6aaea4a4829",
+    "frameCount": 5
+  },
+  "stage": {
+    "width": 200,
+    "height": 150,
+    "background": 16777215,
+    "frameRate": 3072
+  },
+  "report": {
+    "frames": 5,
+    "items": 5,
+    "shapes": 2,
+    "sprites": 5,
+    "unsupportedPaints": 0,
+    "maxNesting": 1
+  },
+  "scene": {
+    "path": "scene.json",
+    "sha256": "1a2de2a7a398216d256ac97d037b1614725d72f54441d7ad1b84de8b1bdaa648"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "rgba": "85b54defa34d4eabb4a33a1574cf1fe401e5924101463fafaf3a97baa214c05a",
+      "png": "fe48b6d6fe20fa37d4dd52418bea66dc17ce72052bed603511e12b186a92e9c9",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 1,
+      "rgba": "12e2f9a953d6a72772113e7563197c968f0d42f4f3e59344d97861d4e34f32aa",
+      "png": "a384f63e10fe75eb138b6772385584e0061f7bc889b093c79a4fa46587f68bf0",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 2,
+      "rgba": "85b54defa34d4eabb4a33a1574cf1fe401e5924101463fafaf3a97baa214c05a",
+      "png": "fe48b6d6fe20fa37d4dd52418bea66dc17ce72052bed603511e12b186a92e9c9",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 3,
+      "rgba": "12e2f9a953d6a72772113e7563197c968f0d42f4f3e59344d97861d4e34f32aa",
+      "png": "a384f63e10fe75eb138b6772385584e0061f7bc889b093c79a4fa46587f68bf0",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    },
+    {
+      "index": 4,
+      "rgba": "85b54defa34d4eabb4a33a1574cf1fe401e5924101463fafaf3a97baa214c05a",
+      "png": "fe48b6d6fe20fa37d4dd52418bea66dc17ce72052bed603511e12b186a92e9c9",
+      "drawCalls": 1,
+      "vertices": 5,
+      "bytes": 120223
+    }
+  ]
+}

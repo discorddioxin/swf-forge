@@ -14,7 +14,14 @@ import type { ActionBlockRef, PlacementOp, RemovalOp } from '../tags/place.js';
 import type { FilterSpec } from '../tags/filters.js';
 import type { VectorShape } from '../tags/shape.js';
 import type { BitmapAssetModel } from '../tags/images.js';
-import type { DefineFontModel } from '../tags/fonts.js';
+import type {
+  CsmTextSettingsModel,
+  DefineFontModel,
+  DefineFontV1Model,
+  FontAlignZonesModel,
+  FontInfoModel,
+  FontNameModel,
+} from '../tags/fonts.js';
 import type { MorphShapeModel } from '../tags/morph.js';
 import type { EditTextModel, StaticTextModel } from '../tags/text.js';
 import type { DefineSoundModel, SoundStreamHeadModel, TimelineSoundEvent } from '../tags/sounds.js';
@@ -220,12 +227,25 @@ export interface CharacterModel {
   readonly morph: MorphShapeModel | null;
   /** Decoded bitmap tag header and zero-copy compressed payload; pixel decoding stays in `packages/assets`. */
   readonly bitmap: BitmapAssetModel | null;
-  /** DefineFont2/3 outlines, code mappings and authored metrics; rasterisation stays in `packages/assets`. */
+  /**
+   * DefineFont2/3 outlines, code mappings and authored metrics; after C1 this is also the resolved
+   * view for DefineFont v1 + FontInfo/Info2. Rasterisation stays in `packages/assets`.
+   */
   readonly font: DefineFontModel | null;
+  /** DefineFont (10) v1 pre-Info view, kept so Info code-table overrides can be inspected. Null once resolved. */
+  readonly fontV1: DefineFontV1Model | null;
+  /** DefineFontInfo/Info2 for this font, when provided before resolve. */
+  readonly fontInfo: FontInfoModel | null;
+  /** DefineFontAlignZones records, keyed by font id (one record per zone set; multiple per file is reported). */
+  readonly fontAlignZones: FontAlignZonesModel | null;
+  /** DefineFontName (licensing) for this font id. */
+  readonly fontName: FontNameModel | null;
   /** Authored static glyph runs; advances/matrices stay authoritative and no layout is recomputed. */
   readonly text: StaticTextModel | null;
   /** Editable text flags/fields are preserved for later runtime-owned layout. */
   readonly editText: EditTextModel | null;
+  /** CSMTextSettings (74) targeting this text/edit-text character, if any. */
+  readonly csmTextSettings: CsmTextSettingsModel | null;
   /** Decoded DefineSound header and zero-copy payload view; codec decoding remains lazy. */
   readonly sound: DefineSoundModel | null;
   /** Imported characters alias another movie's dictionary entry without copying its payload. */
@@ -320,6 +340,11 @@ export interface MovieControlModel {
     readonly length: number;
     readonly digest: string;
   }[];
+  /**
+   * The first `JPEGTables` (8) payload surfaced here so bitmap decoding doesn't need a second tag
+   * scan. Multiple tables report `SF0257` and the first wins, matching asset-dump policy.
+   */
+  readonly jpegTables: Uint8Array | null;
 }
 
 /** One SWF file, ready for the pipeline (`CMP` §3, `IMPL-040-R043`). */

@@ -1,6 +1,8 @@
 /** Embedded quadratic font outlines for DefineFont2/3 (IMPL-080 P3 decode slice). */
 
 import { Codes } from '../diagnostics/codes.js';
+import type { Code } from '../diagnostics/codes.js';
+import type { Severity } from '../diagnostics/types.js';
 import { Cursor } from '../io/cursor.js';
 import { readRect } from '../io/records.js';
 import type { Rect } from '../io/types.js';
@@ -9,7 +11,8 @@ import { readShapeWithStyle, type VectorShape } from './shape.js';
 
 export interface FontGlyphModel {
   readonly index: number;
-  readonly code: number;
+  /** Character code from the authoritative code table (Font2/3 own codes or FontInfo-overridden); null for v1-without-Info. */
+  readonly code: number | null;
   readonly shape: VectorShape | null;
   readonly advance: number | null;
   readonly bounds: Rect | null;
@@ -19,6 +22,16 @@ export interface FontKerningPair {
   readonly leftCode: number;
   readonly rightCode: number;
   readonly adjustment: number;
+}
+
+/** DefineFont (10, v1): inferred glyph count from UI16 offset table, no name/code table/layout. */
+export interface DefineFontV1Model {
+  readonly id: number;
+  readonly version: 1;
+  readonly tagCode: 10;
+  /** Glyph count inferred from the offset table (per IMPL-080-R008). */
+  readonly glyphCount: number;
+  readonly glyphs: readonly FontGlyphModel[];
 }
 
 export interface DefineFontModel {
@@ -31,11 +44,70 @@ export interface DefineFontModel {
   readonly italic: boolean;
   readonly bold: boolean;
   readonly wideCodes: boolean;
+  readonly shiftJIS: boolean;
+  readonly ansi: boolean;
+  readonly smallText: boolean;
   readonly glyphs: readonly FontGlyphModel[];
+  /** Glyph index → character code (from Font2/3 own code table; may be superseded by FontInfo). */
+  readonly codes: readonly number[];
   readonly ascent: number | null;
   readonly descent: number | null;
   readonly leading: number | null;
   readonly kerning: readonly FontKerningPair[];
+}
+
+/** DefineFontInfo (13) / DefineFontInfo2 (62) code tables + name + encoding flags. */
+export interface FontInfoModel {
+  readonly id: number;
+  readonly tagCode: 13 | 62;
+  readonly version: 1 | 2;
+  readonly name: string;
+  readonly flags: {
+    readonly smallText: boolean;
+    readonly shiftJIS: boolean;
+    readonly ansi: boolean;
+    readonly italic: boolean;
+    readonly bold: boolean;
+    readonly wideCodes: boolean;
+  };
+  readonly languageCode: number | null; // null for v1; always present for v2
+  readonly codes: readonly number[];
+}
+
+/** DefineFontName (88) — PostScript name + copyright for licensing reports. */
+export interface FontNameModel {
+  readonly id: number;
+  readonly fontName: string;
+  readonly copyright: string;
+}
+
+/** One ZONEDATA alignment coordinate + range pair. */
+export interface FontZoneData {
+  readonly alignmentCoordinate: number;
+  readonly range: number;
+}
+
+/** ZONERECORD per DefineFontAlignZones. */
+export interface FontZoneRecord {
+  readonly zones: readonly FontZoneData[];
+  readonly zoneMaskY: boolean;
+  readonly zoneMaskX: boolean;
+}
+
+/** DefineFontAlignZones (73) — raw hinting records (recorded; renderer owns hinting). */
+export interface FontAlignZonesModel {
+  readonly id: number;
+  readonly csmTableHint: number;
+  readonly zones: readonly FontZoneRecord[];
+}
+
+/** CSMTextSettings (74) — advanced rendering parameters for a text/edit-text character. */
+export interface CsmTextSettingsModel {
+  readonly textId: number;
+  readonly useFlashType: number;
+  readonly gridFit: number;
+  readonly thickness: number;
+  readonly sharpness: number;
 }
 
 function decodeUtf8(bytes: Uint8Array): string {
@@ -80,6 +152,9 @@ export function decodeDefineFont2or3(tagCode: number, c: Cursor): DefineFontMode
   const wideOffsets = (flags & 0x08) !== 0;
   const wideCodes = (flags & 0x04) !== 0;
   const hasLayout = (flags & 0x80) !== 0;
+  const shiftJIS = (flags & 0x40) !== 0;
+  const smallText = (flags & 0x20) !== 0;
+  const ansi = (flags & 0x10) !== 0;
   const offsetBase = c.offset;
   const offsets: number[] = [];
   for (let index = 0; index < glyphCount; index += 1) offsets.push(wideOffsets ? c.u32() : c.u16());
@@ -161,9 +236,288 @@ export function decodeDefineFont2or3(tagCode: number, c: Cursor): DefineFontMode
       advance: advances[index] ?? null,
       bounds: bounds[index] ?? null,
     })),
+    codes,
     ascent,
     descent,
     leading,
     kerning,
+    shiftJIS,
+    ansi,
+    smallText,
+  };
+}
+
+/**
+ * `DefineFont` (10, v1) — UI16 OffsetTable[numGlyphs] followed by GlyphShapeTable. The glyph count is
+ * inferred from the first offset (IMP-080-R008: offsets[0]/2 == count of entries preceding the shapes).
+ * V1 carries no code table or metrics; those come from `DefineFontInfo`/`Info2` (resolved later).
+ */
+export function decodeDefineFontV1(c: Cursor): DefineFontV1Model {
+  const id = c.u16();
+  const offsetBase = c.offset;
+  // Peek first UI16 to infer count.
+  if (c.limit - c.offset < 2) {
+    c.emit(Codes.FONT_OFFSET_TABLE_INVALID, 'warning', `DefineFont ${id} has no offset table`);
+    return { id, version: 1, tagCode: 10, glyphCount: 0, glyphs: [] };
+  }
+  const firstOffset = c.u16();
+  if ((firstOffset & 1) !== 0 || firstOffset < 2) {
+    c.emit(
+      Codes.FONT_OFFSET_TABLE_INVALID,
+      'warning',
+      `DefineFont ${id} first offset ${firstOffset} is inconsistent with a UI16 offset table`,
+    );
+  }
+  const glyphCount = Math.max(0, Math.floor(firstOffset / 2));
+  c.seek(offsetBase);
+  const offsets: number[] = [];
+  const safeCount = Math.min(glyphCount, Math.floor((c.limit - c.offset) / 2));
+  for (let index = 0; index < safeCount; index += 1) offsets.push(c.u16());
+  if (safeCount < glyphCount) {
+    c.emit(
+      Codes.FONT_OFFSET_TABLE_INVALID,
+      'warning',
+      `DefineFont ${id} declares ${glyphCount} glyphs but only ${safeCount} offsets fit the body`,
+    );
+  }
+  const glyphShapes: (VectorShape | null)[] = [];
+  let priorStart = c.offset;
+  const tagEnd = c.limit;
+  for (let index = 0; index < safeCount; index += 1) {
+    const relativeStart = offsets[index] ?? 0;
+    const relativeEnd = offsets[index + 1] ?? tagEnd - offsetBase;
+    const start = offsetBase + relativeStart;
+    const end = Math.min(offsetBase + relativeEnd, tagEnd);
+    if (start < offsetBase || end < start || end > tagEnd || start < priorStart) {
+      c.emit(Codes.FONT_OFFSET_TABLE_INVALID, 'warning', `DefineFont ${id} glyph ${index} has invalid offsets`);
+      glyphShapes.push(null);
+      continue;
+    }
+    const raw = c.bytes.subarray(start, end);
+    glyphShapes.push(glyphShape(raw, c, id, index));
+    priorStart = end;
+  }
+  return {
+    id,
+    version: 1,
+    tagCode: 10,
+    glyphCount: safeCount,
+    glyphs: glyphShapes.map((shape, index) => ({
+      index,
+      code: null, // v1 carries no codes; FontInfo fills these in
+      shape,
+      advance: null,
+      bounds: null,
+    })),
+  };
+}
+
+/**
+ * Apply a `DefineFontInfo`/`Info2` code table to a previously-decoded v1/v2/v3 font model, returning
+ * an updated font view. Reports `SF0281` when glyph count disagrees, `SF0276` when codes are
+ * unsorted, and `SF0283` when FontInfo2 has WideCodes clear.
+ */
+/** Report sink for `applyFontInfo`, which resolves outside any single tag cursor. */
+export type FontInfoEmit = (code: Code, severity: Severity, message: string) => void;
+
+export function applyFontInfo(
+  font: DefineFontModel | DefineFontV1Model,
+  info: FontInfoModel,
+  emit?: FontInfoEmit,
+): DefineFontModel {
+  const flags = info.flags;
+  // IMPL-080-R010: a FontInfo CodeTable must be positionally aligned with the glyph table. A length
+  // disagreement is a conflict between the two tags, not an unsorted table — same code, SF0276.
+  if (info.codes.length !== font.glyphs.length) {
+    emit?.(
+      Codes.FONT_CODE_TABLE_UNSORTED,
+      'warning',
+      `FontInfo for font ${font.id} carries ${info.codes.length} code(s) for ${font.glyphs.length} glyph(s); codes are aligned by position, extras dropped and gaps left unmapped`,
+    );
+  }
+  const codes = font.glyphs.map((_, i) => info.codes[i] ?? null);
+  const numericCodes = codes.map((c) => (c === null ? 0 : c));
+  const unsorted = numericCodes.some((code, i) => i > 0 && code < (numericCodes[i - 1] ?? 0));
+  if (unsorted) {
+    emit?.(
+      Codes.FONT_CODE_TABLE_UNSORTED,
+      'warning',
+      `FontInfo for font ${font.id} merged code table is not sorted; a sorted copy is used for lookup and the raw order is kept`,
+    );
+  }
+  // Promote a v1 model to a shape-only DefineFontModel with codes from Info.
+  if (font.version === 1) {
+    return {
+      id: font.id,
+      version: 2, // treated as a v2-equivalent code table (glyphs already decoded)
+      tagCode: 48,
+      name: info.name,
+      languageCode: info.languageCode ?? 0,
+      unitsPerEm: 1024,
+      italic: flags.italic,
+      bold: flags.bold,
+      wideCodes: flags.wideCodes,
+      shiftJIS: flags.shiftJIS,
+      ansi: flags.ansi,
+      smallText: flags.smallText,
+      glyphs: font.glyphs.map((g, i) => ({ ...g, code: codes[i] ?? null })),
+      codes: numericCodes,
+      ascent: null,
+      descent: null,
+      leading: null,
+      kerning: [],
+    };
+  }
+  return {
+    ...(font as DefineFontModel),
+    name: font.name.length === 0 ? info.name : font.name,
+    glyphs: font.glyphs.map((g, i) => ({ ...g, code: codes[i] ?? g.code })),
+    codes: numericCodes,
+    italic: flags.italic || font.italic,
+    bold: flags.bold || font.bold,
+    shiftJIS: flags.shiftJIS || font.shiftJIS,
+    ansi: flags.ansi || font.ansi,
+    smallText: flags.smallText || font.smallText,
+    wideCodes: flags.wideCodes || font.wideCodes,
+  };
+}
+
+/** `DefineFontInfo` (13) / `DefineFontInfo2` (62): flags + name + code table. */
+export function decodeFontInfo(tagCode: number, c: Cursor): FontInfoModel {
+  if (tagCode !== Tag.DefineFontInfo && tagCode !== Tag.DefineFontInfo2) {
+    throw new RangeError(`tag ${tagCode} is not DefineFontInfo/2`);
+  }
+  const id = c.u16();
+  const nameLength = c.u8();
+  const name = decodeUtf8(c.bytes.subarray(c.offset, Math.min(c.limit, c.offset + nameLength)));
+  c.skip(nameLength);
+  const flagsByte = c.u8();
+  const flags = {
+    smallText: (flagsByte & 0x20) !== 0,
+    shiftJIS: (flagsByte & 0x10) !== 0,
+    ansi: (flagsByte & 0x08) !== 0,
+    italic: (flagsByte & 0x04) !== 0,
+    bold: (flagsByte & 0x02) !== 0,
+    wideCodes: (flagsByte & 0x01) !== 0,
+  };
+  let languageCode: number | null = null;
+  if (tagCode === Tag.DefineFontInfo2) {
+    languageCode = c.u8();
+    if (!flags.wideCodes) {
+      c.emit(
+        Codes.FONT_INFO2_WIDE_CODES_MISSING,
+        'error',
+        `DefineFontInfo2 ${id} has WideCodes clear but SWF requires UI16 codes; reading as UI16 to stay in sync`,
+      );
+    }
+    // Force wideCodes for Info2 regardless of the (malformed) flag.
+    flags.wideCodes = true;
+  }
+  const codes: number[] = [];
+  while (c.offset < c.limit) codes.push(flags.wideCodes ? c.u16() : c.u8());
+  // Detect unsorted here; emit once but do not reorder (preserve authored mapping).
+  if (codes.some((code, i) => i > 0 && code < (codes[i - 1] ?? 0))) {
+    c.emit(Codes.FONT_CODE_TABLE_UNSORTED, 'warning', `FontInfo for font ${id} has an unsorted CodeTable`);
+  }
+  const indirect = /^_(sans|serif|typewriter|ゴシック|明朝|等幅)/.test(name);
+  if (indirect) {
+    c.emit(
+      Codes.FONT_INDIRECT_NAME,
+      'info',
+      `font ${id} name "${name}" is an indirect (device-stack) alias; recorded as indirect`,
+    );
+  }
+  return {
+    id,
+    tagCode: tagCode as 13 | 62,
+    version: tagCode === Tag.DefineFontInfo2 ? 2 : 1,
+    name,
+    flags,
+    languageCode,
+    codes,
+  };
+}
+
+/** `DefineFontName` (88): two NUL-terminated strings (PostScript name, copyright). */
+export function decodeFontName(c: Cursor): FontNameModel {
+  const id = c.u16();
+  const fontName = c.string();
+  const copyright = c.string();
+  return { id, fontName, copyright };
+}
+
+/**
+ * `DefineFontAlignZones` (73): `FontID`, `CSMTableHint UB[2]`, `Reserved UB[6]`, then one
+ * `ZONERECORD` per glyph (IMPL-080-R035). A ZONERECORD is `NumZoneData UI8` (always 2 in practice),
+ * `ZONEDATA[NumZoneData]{AlignmentCoordinate FLOAT16, Range FLOAT16}`, then a flags byte carrying
+ * `Reserved UB[6]`, `ZoneMaskY UB[1]`, `ZoneMaskX UB[1]`.
+ *
+ * The record count is implied by the target font's glyph count, which this decoder does not have:
+ * read records until the body is exhausted and let the model layer reconcile the count.
+ */
+export function decodeFontAlignZones(c: Cursor): FontAlignZonesModel {
+  const id = c.u16();
+  const csmTableHint = c.ub(2);
+  c.ub(6); // reserved
+  c.align();
+  const records: FontZoneRecord[] = [];
+  while (c.offset < c.limit) {
+    const numZoneData = c.u8();
+    // Each ZONEDATA is 4 bytes; the trailing flags byte makes the record 1 + 4n + 1 bytes long.
+    if (c.limit - c.offset < numZoneData * 4 + 1) {
+      c.emit(
+        Codes.FONT_HINT_TARGET_INVALID,
+        'warning',
+        `font ${id} alignment zone record ${records.length} declares ${numZoneData} zone(s) but the tag body ends early`,
+      );
+      break;
+    }
+    const zones: FontZoneData[] = [];
+    for (let index = 0; index < numZoneData; index += 1) {
+      const alignmentCoordinate = c.float16();
+      const range = c.float16();
+      zones.push({ alignmentCoordinate, range });
+    }
+    const zoneMask = c.u8();
+    records.push({
+      zones,
+      zoneMaskY: (zoneMask & 0x02) !== 0,
+      zoneMaskX: (zoneMask & 0x01) !== 0,
+    });
+  }
+  return { id, csmTableHint, zones: records };
+}
+
+/**
+ * `CSMTextSettings` (74): `TextID`, `UseFlashType UB[2]`, `GridFit UB[3]`, `Reserved UB[3]`,
+ * `Thickness F32`, `Sharpness F32`, `Reserved UI8` (IMPL-080-R036).
+ */
+export function decodeCsmTextSettings(c: Cursor): CsmTextSettingsModel {
+  const textId = c.u16();
+  const useFlashType = c.ub(2);
+  const gridFit = c.ub(3);
+  c.ub(3); // reserved
+  c.align();
+  const thickness = c.float32();
+  const sharpness = c.float32();
+  c.u8(); // reserved UI8
+  return { textId, useFlashType, gridFit, thickness, sharpness };
+}
+
+/**
+ * The chapter's advanced-anti-aliasing cutoffs for a `CSMTextSettings` record at a given font size
+ * (IMPL-080-R036, errata `E-017`: the prose claims outside ≤ inside, the formulas give
+ * `outside − inside = sharpness`; we implement the formulas).
+ */
+export function csmCutoffs(
+  settings: CsmTextSettingsModel,
+  fontSize: number,
+): {
+  readonly outsideCutoff: number;
+  readonly insideCutoff: number;
+} {
+  return {
+    outsideCutoff: (0.5 * settings.sharpness - settings.thickness) * fontSize,
+    insideCutoff: (-0.5 * settings.sharpness - settings.thickness) * fontSize,
   };
 }

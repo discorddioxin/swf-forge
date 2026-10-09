@@ -13,7 +13,7 @@ import {
   resamplePcm16,
   silentPcm,
 } from '@swf-forge/audio';
-import { buildMovieModel, Codes, Tag, tagName } from '@swf-forge/swf';
+import { buildMovieModel, Codes, tagName } from '@swf-forge/swf';
 import type { BitmapAssetModel, CharacterModel, DefineSoundModel, MorphShapeModel, SwfFile } from '@swf-forge/swf';
 import { openSwfNodeSync } from '@swf-forge/swf/node';
 
@@ -157,20 +157,11 @@ function recordMorph(character: CharacterModel, out: string): AssetRecord[] {
   });
 }
 
-function jpegTablesForFile(file: SwfFile): Uint8Array | null {
-  const tables = file.tagIndex.tags.filter((ref) => ref.code === Tag.JPEGTables);
-  if (tables.length > 1) {
-    const first = tables[0];
-    file.sink.emit({
-      code: Codes.IMAGE_MULTIPLE_JPEG_TABLES,
-      severity: 'warning',
-      message: `${tables.length} JPEGTables tags found; the first table at offset ${first?.offset ?? 0} wins`,
-      offset: first?.headerOffset ?? 0,
-      context: 'bitmap asset export',
-    });
-  }
-  const first = tables[0];
-  return first ? file.body.subarray(first.offset, first.offset + first.length) : null;
+function jpegTablesForFile(model: ReturnType<typeof buildMovieModel>, file: SwfFile): Uint8Array | null {
+  // JPEG-tables multiplicity SF0257 is reported by `collectControl`; the chosen payload is surfaced
+  // directly on the control model to avoid a second tag-index scan here.
+  void file;
+  return model.control.jpegTables;
 }
 
 function recordBitmap(
@@ -781,7 +772,7 @@ export function runAssetsDump(request: AssetsDumpRequest, io: CliIo): number {
   const assets: AssetRecord[] = [];
   try {
     mkdirSync(request.out, { recursive: true });
-    const jpegTables = jpegTablesForFile(file);
+    const jpegTables = jpegTablesForFile(model, file);
     for (const character of [...model.characters.values()].sort((a, b) => a.id - b.id)) {
       if (!needsBuildAsset(character)) continue;
       if (character.vectorShape !== null) assets.push(recordShape(character, request.out));

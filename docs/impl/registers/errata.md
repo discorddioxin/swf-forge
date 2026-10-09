@@ -603,6 +603,38 @@ length, `info` `SF0104`, `APP-R001`) and no name may be invented for them. `TST-
 the equality machine-checked. Tag *bodies* remain the chapters' business; Appendix B governs tag
 *values* only.
 
+---
+
+## E-027 — `IMPL-060-R034`'s quantisation grid is one grid written twice
+
+**Found in:** our own `docs/impl/decompiler/060-shapes-and-gradients.md` §6.2 / `IMPL-060-R034`,
+while implementing the quantise stage (P3 checkpoint C2).
+
+**What it says:** coordinates are snapped to "1/20 px at smoothing 0, 0.05 px above", which reads as
+two grids selected by a smoothing level.
+
+**What is wrong:** 1/20 px **is** 0.05 px. The sentence states the same spacing in two notations, so
+there is no smoothing-dependent switch to implement and no second grid to choose. A reader
+implementing the rule literally would invent a `smoothing` parameter that can only ever take one
+effective value.
+
+A second, smaller defect sits beside it: the same section says the IR holds "floats in px", while
+`IMPL-060-R037` — and the decoder — keep **integer twips** end to end. Quantising freshly decoded
+geometry is therefore a no-op by construction. The stage is not redundant; it earns its place on
+geometry that has been through arithmetic (morph ratio interpolation, curve subdivision, matrix
+application), which is where two engines actually drift apart.
+
+**Resolution:** one grid, expressed in the unit the IR is stored in. `quantiseShape` takes a single
+`gridTwips` option defaulting to `1` (= 1/20 px = 0.05 px) and no smoothing flag. `quantiseScalar`
+rounds **half away from zero** rather than using `Math.round`, which rounds half toward +∞ and would
+make the grid asymmetric about the origin, so a shape would not survive being mirrored; `-0` is
+normalised to `0` so the canonical serialisation stays byte-stable. The "floats in px" phrasing is
+superseded by `IMPL-060-R037`: the IR is integer twips.
+
+**Encoded by:** `T-MOD-107` (`packages/swf/test/shape-vector-ir.test.ts`) — grid spacing, mirror
+symmetry, `-0` folding, idempotence, and the explicit assertion that decoded geometry is already
+quantised. The quantiser lives at `packages/swf/src/shapes/quantise.ts`.
+
 ## Changelog
 
 | Version | Date | Change |
@@ -618,3 +650,4 @@ the equality machine-checked. Tag *bodies* remain the chapters' business; Append
 | 1.8 | 2026-10-04 | `E-023`: `IMPL-130` test ids re-banded to `T-RT-1xx` (collision with the design spec's `T-RT-00x` block; the undefined `T-RT-020` is now the defined `T-RT-120`) |
 | 1.9 | 2026-10-04 | `E-024`: dangling citations repaired (`GFX-D21` -> `GFX-D16`, `RT-R062` -> `RT-R057`…`R059`, `REPO-D09` -> `REPO-D06`), each missing decision/rule written into its owning design spec |
 | 2.0 | 2026-10-04 | Appendix pass: `E-025` (Appendix A's printed tables: `VertLineFlag` type/condition, the swapped hor/vert delta labels, `MoveDelta*` called unsigned, the "first byte ignored" frame-rate prose, the "fill bits" label for padding) and `E-026` (six invented tag names removed from `specs/110` §2 — Appendix B is the index authority) |
+| 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |

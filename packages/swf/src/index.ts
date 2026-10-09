@@ -72,10 +72,36 @@ export type {
   StrokePath,
   VectorShape,
 } from './tags/shape.js';
+// Geometry pipeline stages 5 and 6 (`IMPL-060-R034`-`R038`).
+export { isQuantised, quantiseScalar, quantiseShape } from './shapes/quantise.js';
+export type { QuantiseOptions } from './shapes/quantise.js';
+export { simplifyShape } from './shapes/simplify.js';
+export type { SimplifyOptions, SimplifyResult, SimplifyStats } from './shapes/simplify.js';
+export { canonicalVectorShape, serialiseVectorShape, vectorShapeDigest } from './shapes/serialise.js';
 export { decodeDefineBitmap } from './tags/images.js';
 export type { BitmapAssetModel, BitmapSource, LosslessBitmapFormat } from './tags/images.js';
-export { decodeDefineFont2or3 } from './tags/fonts.js';
-export type { DefineFontModel, FontGlyphModel, FontKerningPair } from './tags/fonts.js';
+export {
+  applyFontInfo,
+  csmCutoffs,
+  decodeCsmTextSettings,
+  decodeDefineFont2or3,
+  decodeDefineFontV1,
+  decodeFontAlignZones,
+  decodeFontInfo,
+  decodeFontName,
+} from './tags/fonts.js';
+export type {
+  CsmTextSettingsModel,
+  DefineFontModel,
+  DefineFontV1Model,
+  FontAlignZonesModel,
+  FontGlyphModel,
+  FontInfoModel,
+  FontKerningPair,
+  FontNameModel,
+  FontZoneData,
+  FontZoneRecord,
+} from './tags/fonts.js';
 export { decodeDefineMorphShape } from './tags/morph.js';
 export type { MorphEdgePair, MorphShapeModel } from './tags/morph.js';
 export { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from './tags/text.js';

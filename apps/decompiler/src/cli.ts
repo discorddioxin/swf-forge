@@ -10,6 +10,7 @@ import { SwfReadError } from '@swf-forge/swf';
 
 import { runDump } from './commands/dump.js';
 import { runInspect } from './commands/inspect.js';
+import { runRender } from './commands/render.js';
 import { runAssetsDump } from './assets/dump.js';
 import { EXIT, type CliIo } from './exit.js';
 
@@ -22,12 +23,15 @@ Usage:
   forge-decompile inspect <file.swf> [--json] [--verbose] [--actions] [--tags] [--symbols] [--shapes] [--strict] [--tolerate-length] [--strict-timeline]
   forge-decompile dump <file.swf> [--json] [--verbose] [--strict] [--tolerate-length] [--strict-timeline] [--import <url>=<file.swf>]... [--out <dir>]
   forge-decompile assets dump <file.swf> --out <dir>
+  forge-decompile render <file.swf> --out <dir> [--frames <n|a-b>] [--images] [--demo]
   forge-decompile <command> --help
 
 Commands:
   inspect   header, timeline, dictionary and diagnostics for one file
   dump      the whole movie model: header, dictionary, every frame, control tags, diagnostics
   assets dump  deterministic build-time previews and a relative asset manifest
+  render    static render (P4): scene bundle, reference frames and per-frame hashes; --demo adds
+            the browser viewer bundle (static-scene v1)
 
 Options:
   --json        machine-readable output on stdout (stable field order)
@@ -41,12 +45,16 @@ Options:
   --strict-timeline  report removals at empty depths (SF0127, info) instead of silent no-ops
   --import URL=FILE  dump: add a SWF to the import input set under its published URL (repeatable)
   --out <dir>   dump: write <dir>/model.json (same bytes as --json) and print a summary
+                render: write scene.json, render-manifest.json and (with --images) frames/
+  --frames <n|a-b>  render: restrict the bundle to a frame range
+  --images      render: also write frames/frame-NNN.png
+  --demo        render: copy the browser viewer (engine-flash) and the scene into <dir>/demo
 
 Exit codes:
   0 ok · 1 error diagnostics · 2 unreadable or not a SWF · 3 AVM2 content · 5 internal error`;
 
 /** Flags that take a value, so `--out dir` does not turn `dir` into a file argument. */
-const VALUE_FLAGS = new Set(['--out']);
+const VALUE_FLAGS = new Set(['--out', '--frames']);
 
 interface ParsedArgs {
   readonly flags: ReadonlySet<string>;
@@ -174,6 +182,28 @@ export function runCli(argv: readonly string[], io: CliIo): number {
           return EXIT.unreadable;
         }
         return runAssetsDump({ file, out }, io);
+      }
+      case 'render': {
+        const file = files[0];
+        const out = values.get('--out');
+        if (file === undefined || flags.has('--help')) {
+          io.out(USAGE);
+          return file === undefined ? EXIT.unreadable : EXIT.ok;
+        }
+        if (out === undefined) {
+          io.err('usage: forge-decompile render <file.swf> --out <dir> [--frames <n|a-b>]');
+          return EXIT.unreadable;
+        }
+        return runRender(
+          {
+            file,
+            out,
+            frames: values.get('--frames') ?? null,
+            images: flags.has('--images'),
+            demo: flags.has('--demo'),
+          },
+          io,
+        );
       }
       case 'diff':
         io.err('diff: not implemented yet');

@@ -354,8 +354,13 @@ carry typesetting defects (errata `E-025`): its bytes are authoritative, its tab
 
 **IMPL-060-R034** The pipeline order is fixed and golden-visible:
 decode → edge reconstruction (absolute pen positions, integer twips) → style chaining (per-style
-oriented runs) → IR (floats in px) → quantise (1/20 px at smoothing 0, 0.05 px above) → simplify
-(4 steps, fixed order) → flatten.
+oriented runs) → IR (integer twips, per `R037`) → quantise (one grid, 1 twip = 1/20 px = 0.05 px) →
+simplify (4 steps, fixed order) → flatten.
+
+> **Corrected in `E-027`.** v1.5 wrote the grid as "1/20 px at smoothing 0, 0.05 px above" — the
+> same spacing in two notations, not two grids, so there is no smoothing switch to implement — and
+> described the IR as "floats in px", which contradicts `R037`. The implementation takes a single
+> `gridTwips` option defaulting to `1` and keeps the IR in integer twips.
 
 - **IMPL-060-R035** Quantisation applies to the **input** of simplification so the result stays
   grid-aligned and deterministic (`T-MOD-107`; the v1.0 reference to `T-MOD-201` was a typo).
@@ -537,3 +542,4 @@ practical guard, not a file field.
 | 1.3 | 2026-10-04 | Appendix and tech-spec pass: `T-MOD-123` pins the Appendix A shape bit walk; duplicate rule ids in the line-style/shape sections are renumbered to `R046`–`R052` (no outside citations existed) |
 | 1.4 | 2026-10-05 | Production `StateNewStyles` now byte-aligns before style arrays and rebases non-zero local fill/line indices into stable IR tables; adds straight/curved bit-width vectors, bitmap-style rebasing, production preview and inspect coverage (`T-MOD-124/125`) |
 | 1.5 | 2026-10-05 | Repeat conformance pass: add executable `T-MOD-116/118/123/126/127` fixtures, extend `T-MOD-113` to Shape2/3/4, and correct the shape-regression citations to match the test registry |
+| 1.6 | 2026-10-09 | P3 checkpoint C2: `R034`'s quantisation grid corrected to one grid (`E-027`) and the IR restated as integer twips per `R037`; the quantise/simplify/canonical-serialise stages land as `packages/swf/src/shapes/{quantise,simplify,serialise}.ts` with `SimplifyStats` making each of `R036`'s four steps separately assertable; executable `T-MOD-103/104/105/107/108/109/110/111/119/120/121` fixtures added |

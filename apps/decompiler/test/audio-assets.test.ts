@@ -5,7 +5,7 @@
  * The existing bundle test checks that `sound-3.mp3` equals the authored frame. These cover what
  * that one cannot: that the *recorded digest* is the digest of the original bytes rather than of
  * something the writer produced, that `SeekSamples` is reported and never applied to the payload,
- * and that every emitted asset carries levels and a chunk table.
+ * and that PCM-backed WAV assets carry levels and a chunk table (MP3 records its pass-through limitation).
  */
 
 import { createHash } from 'node:crypto';
@@ -108,7 +108,12 @@ describe('T-AUD-105 MP3 pass-through', () => {
     // shorten the asset and make the hash-equality guarantee unverifiable.
     const { dir, assets } = runDump('mp3-seek', swf);
 
-    expect(assets[0]?.metadata).toMatchObject({ codec: 'mp3-pass-through', seekSamples: -3, frameCount: 2 });
+    expect(assets[0]?.metadata).toMatchObject({
+      codec: 'mp3-pass-through',
+      measurement: 'unavailable-pass-through',
+      seekSamples: -3,
+      frameCount: 2,
+    });
     expect(readFileSync(join(dir, 'sound-3.mp3')).length).toBe(frames.length);
   });
 

@@ -106,8 +106,8 @@ describe('P3 streaming-sound model', () => {
     expect(mp3.model.mainTimeline.streamSoundSpans[0]?.blocks[0]).toMatchObject({ sampleOffset: 0, sampleCount: 0 });
 
     // A block carrying a complete packet header but short of its declared frame count is NOT
-    // malformed: SoundStreamHead declares an *average* sample count, and 26% of real ADPCM sounds
-    // run a frame or two short (errata E-031/E-032). 3 bytes = 2-bit code size + one 22-bit
+    // malformed: SoundStreamHead declares an *average* sample count, and real ADPCM sounds
+    // commonly end a few frames short (errata E-031/E-032). 3 bytes = 2-bit code size + one 22-bit
     // header exactly, so one frame of the declared two is present.
     const shortTail = analyze([
       tag(Tag.SoundStreamHead2, streamHead(1, 2, null)),

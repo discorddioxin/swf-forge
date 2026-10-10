@@ -344,10 +344,10 @@ describe('SWF ADPCM', () => {
   });
 
   it('T-AUD-102: separates a short final packet from a structurally broken stream', () => {
-    // 26% of real ADPCM sounds (165 of 643, audits/P3-ADPCM-PACKET-LENGTH.md §8) end 1-3 frames
-    // short of their declared SoundSampleCount. That is inaudible (<0.14 ms at 22 kHz) and must
-    // not be reported as malformed, or a quarter of shipped Flash content is condemned. Only a
-    // payload that cannot be split into whole packets is malformed.
+    // 26% of real ADPCM sounds (165 of 643, audits/P3-ADPCM-PACKET-LENGTH.md §8) end 1-6 frames
+    // short of their declared SoundSampleCount. At 22.05 kHz the largest measured gap is <0.28 ms.
+    // A shortfall in the *last required packet* is benign; an incomplete earlier packet is not,
+    // even when fewer than 4096 declared frames remain.
     const codes = (count: number, writer = new BitWriter().bits(0, 2)) => {
       writer.signed(100, 16).bits(0, 6);
       for (let i = 0; i < count; i += 1) writer.bits(1, 2);
@@ -365,6 +365,14 @@ describe('SWF ADPCM', () => {
     const broken = decodeSwfAdpcm(codes(4095).toBytes(), { channels: 1, sampleCount: 8192 });
     expect(broken.truncated).toBe(true);
     expect(broken.shortFinalPacket).toBe(false);
+
+    // A truncated FIRST packet is not benign just because fewer than 4096 declared frames remain.
+    // The byte-rounded payload supplies 4000 of its codes (the two padding bits decode as one
+    // extra code), leaving 999 frames, but the missing data is before the required second packet.
+    const early = decodeSwfAdpcm(codes(3999).toBytes(), { channels: 1, sampleCount: 5000 });
+    expect(early.truncated).toBe(true);
+    expect(early.decodedSampleCount).toBe(4001);
+    expect(early.shortFinalPacket).toBe(false);
 
     // An empty payload is not a "short final packet" either — there is no packet at all.
     const empty = decodeSwfAdpcm(new Uint8Array(0), { channels: 1, sampleCount: 64 });

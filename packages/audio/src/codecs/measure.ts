@@ -2,8 +2,9 @@
  * Audio asset measurement and chunking (`IMPL-090-R030`–`R033`, WP-090-11).
  *
  * Everything here operates on canonical 48 kHz PCM16 planes and produces metadata only — no
- * samples are rewritten, re-encoded or re-ordered. The numbers must be identical across runs and
- * hosts, so every quantity is computed with integer arithmetic and a fixed rounding rule.
+ * samples are rewritten, re-encoded or re-ordered. Frame counts, trim positions and chunk boundaries
+ * stay integer-exact; normalized peak/RMS use JavaScript number arithmetic with explicit decimal
+ * rounding. Determinism is pinned by repeat-run tests for the same input and build.
  */
 
 /** Canonical emission rate (`IMPL-090-R030`, `AUD-R041`). */

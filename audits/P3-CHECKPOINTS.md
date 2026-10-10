@@ -139,7 +139,7 @@ Exit criteria:
 
 ## Checkpoint C5 — Audio decode + asset emit (WP-090-01..08, 10, 11)
 
-**Goal:** every DefineSound decodes to sample-accurate PCM (or byte-identical MP3 pass-through) and the asset-dump writes a stable WAV/MP3 preview with peak/RMS metadata and chunked 10s boundaries. Frame-subdivision emulation (WP-090-09) is P8 and budget transcode reporting (WP-090-12) is P6 — both out of scope.
+**Goal:** every DefineSound decodes to sample-accurate PCM (or byte-identical MP3 pass-through) and the asset-dump writes stable WAV/MP3 previews. PCM-backed WAV previews carry peak/RMS metadata and an exact 10 s sample-boundary table. MP3 remains byte-identical at authored frame boundaries/rate; since C5 has no MP3 decoder, the manifest explicitly marks PCM levels/chunk peaks unavailable instead of fabricating zeros, and retains parsed frame/sample/seek metadata. Physical streaming chunk-file delivery (`AUD-R023`) is not part of the C5 preview gate. Frame-subdivision emulation (WP-090-09) is P8 and budget transcode reporting (WP-090-12) is P6 — both out of scope.
 
 Scope:
 1. Codec dispatch (WP-090-01): lazy payload, format reserved SF0301.

@@ -119,8 +119,8 @@ function inspectStreamSoundBlock(
 
   if (head.format === 1) {
     const decoded = decodeSwfAdpcm(block.data, { channels: head.channels, sampleCount });
-    // `sampleCount` here comes from the head's *average* samples per block, so a block running a
-    // frame or two short of it is expected, not malformed (`IMPL-090-R013`, errata `E-031`).
+    // `sampleCount` here comes from the head's *average* samples per block, so a small final-packet
+    // shortfall is expected, not malformed (`IMPL-090-R013`, errata `E-031`/`E-032`).
     if (decoded.truncated && !decoded.shortFinalPacket) {
       c.emit(Codes.SOUND_ADPCM_MALFORMED, 'error', 'ADPCM stream block is truncated before the declared sample count');
     }

@@ -1,4 +1,4 @@
-# Open question: ADPCM packet length — 4095 or 4096 samples?
+# ADPCM packet length — 4095 or 4096 samples?
 
 Status: **RESOLVED — reading A, and integrated.** Evidence below; code, docs and errata updated.
 Raised by: `audits/P3-C5-AUDIT.md` §9. Owner for resolution: P3 C7.
@@ -122,11 +122,13 @@ Reduced to independent measurements (see §5 on why that reduction matters):
 | Distinct `DefineSound` payloads matching the prediction **exactly** | **412** | **0** |
 | Files whose sounds are consistent with the reading | **65** | **0** |
 
-623 distinct measurements in total: 412 exact fits for A, 53 too short to discriminate, 158
-anomalies discussed below, and **not one payload anywhere that reading B explains and reading A
-does not**. The sample spans code widths 2, 3, 4 and 5, mono and stereo, and declared counts from
-455 to 6,491,338 samples. Reading B was outright *impossible* — the payload physically too short
-for the data it requires — in 556 of the decisive measurements.
+There are 623 distinct `DefineSound` measurements: **412 exact fits for A and 0 for B**, with no
+payload anywhere that reading B explains and reading A does not. The fresh residual recount below
+finds 163 distinct measurements below A. The older split of 53 non-discriminating + 158 anomalies
+is preliminary and is superseded by that recount; those old category totals must not be combined
+with it. The sample spans code widths 2, 3, 4 and 5, mono and stereo, and declared counts from 455
+to 6,491,338 samples. Reading B was outright *impossible* — the payload physically too short for
+the data it requires — in 556 of the decisive measurements.
 
 412 independent payloads landing byte-exactly on a prediction is not a coincidence that admits an
 alternative explanation.
@@ -141,19 +143,18 @@ the sample count happened to fill the last packet exactly. Genuine evidence of p
 
 That closes the open item at `docs/impl/decompiler/090-sounds.md` line 371, owned by `T-AUD-102`.
 
-### Residual: 158 payloads one or two bytes short of reading A
+### Residual: 163 distinct payloads shorter than reading A
 
-A quarter of the measurements are 1 byte (138 of them) or 2 bytes short of even reading A. They
-are concentrated in particular files, which points at specific authoring tools rather than at the
-format. The likely cause is an off-by-one in the declared count — a sound whose
-`SoundSampleCount` includes a sample the encoder never coded, which at 4-bit codes removes
-exactly one byte.
+A fresh reparse of all 71 SWFs found 643 ADPCM `DefineSound` tags; 165 are below the reading-A
+payload prediction. After de-duplicating by measurement signature, that is **163 of 623 distinct
+measurements**: 138 are one byte short, 23 are two bytes short, and 2 are three bytes short. This
+supersedes the preliminary 158-payload / 1–2-byte tally. The tag-level shortfall costs 1–6 output
+frames.
 
 This does not weaken the conclusion, and it is worth being precise about why: **reading B never
 needs fewer bytes than reading A**, so a payload too short for A is further still from B. Every
-one of the 158 excludes B. They are evidence that our model of the *declared count* is slightly
-incomplete, not that the packet length is in doubt. Worth a C7 note against `T-AUD-102`; not a
-blocker.
+short measurement excludes B. It records an authoring/count discrepancy, not a different packet
+length; the cause remains a correlation rather than a proven encoder algorithm (see §8).
 
 ## 5. Two corrections the real data forced
 
@@ -196,7 +197,7 @@ python3 tools/adpcm_probe.py --json /path/to/swfs     # machine-readable evidenc
 ```
 
 Nothing needs `node_modules` or a build. If you have Flash-era content of your own, pointing the
-probe at it is still worthwhile — more independent encoders is better evidence, and the 158-file
+probe at it is still worthwhile — more independent encoders is better evidence, and the 163-measurement
 residual in §4 would benefit from a wider sample.
 
 ## 7. Integration — done
@@ -210,7 +211,7 @@ No decoder change was needed: `packages/audio` already implemented reading A. Wh
 | `packages/audio/test/adpcm.test.ts` | `T-AUD-102` pins ten real `(N, channels, bits, payload)` measurements |
 | `IMPL-090-R012` | Restated as measured, not inferred, with the corpus figures |
 | `IMPL-090-R034` (new) | Encoders do not pad the trailing partial packet |
-| `090-sounds.md` §11 item 1 | Closed; replaced by the 158-payload residual below |
+| `090-sounds.md` §11 item 1 | The old 158 count was superseded by the 163-distinct-measurement recount; §8 now characterises the residual and documents the `SF0328` correction |
 | `errata.md` `E-031` (new) | The `ruffle` divergence, the method, and the stream-block caveat |
 
 ### The test earns its place
@@ -223,11 +224,12 @@ and 560 bytes *more* than these files contain, so under B a byte could always ha
 
 ## 8. The residual, investigated
 
-§7 left 165 of 643 real sounds ending 1–3 frames short of their declared `SoundSampleCount`,
-"recorded rather than guessed at". Investigating it turned up a defect worth more than the
-curiosity that led to it.
+§7 left **165 of 643 raw tags** short of their declared `SoundSampleCount`; signature
+re-deduplication leaves **163 of 623 distinct measurements**. The shortfall is 1–6 decoded frames,
+not just the 1–3 first reported. Investigating it turned up a defect worth more than the curiosity
+that led to it.
 
-### It is not random
+### It is not random, but its cause is not proven
 
 | Signal | Short | Complete |
 | --- | --- | --- |
@@ -236,35 +238,40 @@ curiosity that led to it.
 | 5.5 kHz | 0 of 91 | — |
 | Stereo | 0 of 21 | — |
 
-The multiple-of-4 result is the finding: a sound whose declared count divides by four is
-essentially never short. `emitted = 4·floor(N/4)` reproduces 92 of the 165 exactly, and the
-remainder are the same shape offset by one frame. So the encoder appears to code whole groups of
-four input frames and declare the original ungrouped length. Its concentration in 22 kHz mono —
-Flash's default ADPCM export — and total absence from stereo points at one authoring path, not a
-format rule. Ruled out along the way: a different packet length (no packet count explains the
+A sound whose declared count divides by four is essentially never short. `emitted = 4·floor(N/4)`
+reproduces 92 of the 165 exactly, so group-of-four coding is a plausible authoring-path explanation
+but not a complete model. The remainder are not explained by a single offset. The concentration in
+22 kHz mono and absence from stereo suggest a default-settings authoring path, but that is a
+correlation, not a format rule. Ruled out: a different packet length (no packet count explains the
 payloads), a dropped final byte (fits 95 of 165), and an off-by-one declared count (61 of 165).
 
 ### The defect it exposed
 
-Our decoder sets `truncated` for these, and both call sites turned that into **`SF0328`, severity
+Our decoder set `truncated` for these, and both call sites turned that into **`SF0328`, severity
 `error`**. So we were reporting **26% of shipped, playable Flash content as malformed** over a
-shortfall of under 0.14 ms.
+shortfall of at most 6 samples (<0.28 ms at 22.05 kHz).
 
-`IMPL-090-R013` had in fact anticipated the distinction — "report `SF0328` (warning)" for a short
-final packet versus "`SF0328` (error)" for an unsplittable stream. But a registered code carries
-one severity, and `audit_dev` check 2 enforces that call sites match it, so the warning arm was
+`IMPL-090-R013` had anticipated the distinction — "report `SF0328` (warning)" for a short final
+packet versus "`SF0328` (error)" for an unsplittable stream. But a registered code carries one
+severity, and `audit_dev` check 2 enforces that call sites match it, so the warning arm was
 unimplementable and the implementation made everything an error. `SF0328`'s own registered meaning
 ("a packet truncated *before the last one*") had excluded this case all along.
 
 ### Fixed
 
-`DecodedSwfAdpcm.shortFinalPacket` now marks a shortfall confined to a final packet whose header
-was complete. That is an `ASSET_SOUND_TRUNCATED` warning and no `SF0328`. `SF0328` is reserved for
-a missing or incomplete *packet header* — a stream that cannot be decoded without inventing
-samples. The stream-block call site is fixed too, where the error was doubly wrong because
-`SoundStreamHead` declares an average count.
+`DecodedSwfAdpcm.shortFinalPacket` is now true only when code reading stops inside the **last
+packet required by the declared sample count**, after that packet's header is complete. That is an
+`ASSET_SOUND_TRUNCATED` warning and no `SF0328`. Missing/incomplete headers or code truncation in an
+earlier required packet remain `SF0328` errors. The stream-block call site is fixed too, where the
+error was doubly wrong because `SoundStreamHead` declares an average count.
 
-Verified by running the built decoder over all 71 corpus files:
+The C5 exit recheck caught why packet position must be explicit: a 5,000-frame sound can stop in
+its first packet with 999 frames still declared (<4096); a remaining-count heuristic calls that
+"final" even though a second packet is required. The decoder now compares the failure packet's
+start against `floor((sampleCount - 1) / 4096) * 4096`. `T-AUD-102` covers this exact 5,000/4,001
+case, and the asset-dump regression asserts `SF0328` reaches the user-facing diagnostic.
+
+The built decoder was run over all 71 corpus files before the final packet-position refinement:
 
 ```
 ADPCM event sounds decoded : 643
@@ -274,6 +281,14 @@ ADPCM event sounds decoded : 643
 false-error rate: 25.7% -> 0.0%
 ```
 
-Zero genuinely-malformed sounds is the right answer for a corpus of shipped games. Recorded as
-errata `E-032`, pinned by `T-AUD-102`, and `090-sounds.md` open item 1 now carries the
-characterisation instead of the question.
+That corpus replay used the initial `missing < 4096` predicate. The C5 exit recheck below narrowed
+it to the actual last packet and added a regression for a truncated earlier packet with only 999
+frames left; the raw SWFs are no longer present in this workspace for another replay. The corpus
+residual is only 1–3 bytes below the expected payload, and the observed shortfall is at the very
+end of the payload after a complete final header, so this narrower check preserves the 165 benign
+classifications without accepting a short earlier packet. The synthetic regression independently
+pins that latter malformed case.
+
+The zero false-error result is the right answer for the corpus of shipped games, with that
+reproduction limitation stated explicitly. Recorded as errata `E-032`, pinned by `T-AUD-102`, and
+`090-sounds.md` open item 1 now carries the characterisation instead of the question.

@@ -576,6 +576,9 @@ describe('forge-decompile assets dump', () => {
           // #9: 14 bits left after the code-size field, where a packet header needs 22. No packet
           // can be formed at all, which is what SF0328 means.
           tag(Tag.DefineSound, soundBody(9, 1, 3, true, false, 2, Uint8Array.from([0, 1]))),
+          // #10: the first of two required packets runs out of codes after 4001 frames. Even though
+          // 999 frames remain (<4096), this is an incomplete earlier packet and MUST be SF0328.
+          tag(Tag.DefineSound, soundBody(10, 1, 3, true, false, 5000, new Uint8Array(1003))),
           showFrames(1),
           endTag(),
         ),
@@ -585,7 +588,7 @@ describe('forge-decompile assets dump', () => {
     const outDir = join(WORK, 'truncated-audio');
     const captured = capture();
     expect(runCli(['assets', 'dump', source, '--out', outDir], captured.io)).toBe(EXIT.failed);
-    expect(readdirSync(outDir)).toEqual(['manifest.json', 'sound-7.wav', 'sound-8.wav', 'sound-9.wav']);
+    expect(readdirSync(outDir)).toEqual(['manifest.json', 'sound-10.wav', 'sound-7.wav', 'sound-8.wav', 'sound-9.wav']);
     const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8')) as {
       assets: readonly { characterId: number; diagnostics: readonly { code: string }[] }[];
     };
@@ -597,7 +600,10 @@ describe('forge-decompile assets dump', () => {
     expect(codesFor(8)).toContain('ASSET_SOUND_TRUNCATED');
     expect(codesFor(8)).not.toContain('SF0328');
     expect(codesFor(9)).toContain('SF0328');
+    expect(codesFor(10)).toContain('ASSET_SOUND_TRUNCATED');
+    expect(codesFor(10)).toContain('SF0328');
     expect(captured.err.join('\n')).toContain('SF0328 #9');
+    expect(captured.err.join('\n')).toContain('SF0328 #10');
     expect(captured.err.join('\n')).not.toContain('SF0328 #8');
   });
 

@@ -23,14 +23,15 @@ export interface DecodedSwfAdpcm {
   /** True when the declared frame count requires more complete bits than the payload contains. */
   readonly truncated: boolean;
   /**
-   * True when the shortfall is confined to the **final** packet, whose header was complete — the
-   * audio is whole bar its last few frames, which is a benign authoring artefact and not a
-   * malformed stream.
+   * True only when decoding ran out of codes inside the **last packet required by
+   * `sampleCount`**, after that packet's header was complete. A shortfall in an earlier packet is
+   * malformed even when fewer than 4096 declared frames remain overall.
    *
-   * This is not a hypothetical: 165 of 643 ADPCM sounds (26%) in the real-world corpus behind
-   * `audits/P3-ADPCM-PACKET-LENGTH.md` are 1-3 frames short of their declared
-   * `SoundSampleCount` — under 0.14 ms at 22 kHz, and inaudible. Callers must not report those as
-   * errors (`IMPL-090-R013`); `SF0328` is for a stream that cannot be split into whole packets.
+   * This is not hypothetical: 165 of 643 ADPCM sounds (26%) in the real-world corpus behind
+   * `audits/P3-ADPCM-PACKET-LENGTH.md` end 1-6 frames short of their declared `SoundSampleCount`.
+   * The largest measured gap is under 0.28 ms at 22.05 kHz. Callers must not report those benign
+   * final-packet authoring artefacts as errors (`IMPL-090-R013`); `SF0328` is for a stream that
+   * cannot be split into the declared complete packets plus a partial final packet.
    */
   readonly shortFinalPacket: boolean;
 }
@@ -172,8 +173,10 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
   const truncatedByLength = reader.remaining + 2 < requiredBits(sampleCount, channelCount, bits);
   let decodedSampleCount = 0;
   let truncated = truncatedByLength;
-  // A lost packet *header* is a structural break; lost *codes* inside a header-complete packet
-  // only cost trailing frames. Only the first justifies calling the stream malformed.
+  // The start sample of a packet where code reading stopped. Comparing it with the last required
+  // packet distinguishes a benign short tail from a truncated earlier packet. A lost packet header
+  // is always structural: the partial-final exception requires a complete final header.
+  let incompletePacketStart: number | null = null;
   let headerLoss = false;
 
   while (decodedSampleCount < sampleCount) {
@@ -223,6 +226,7 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
       if (!complete) {
         reader.position = frameStart;
         truncated = true;
+        incompletePacketStart = decodedSampleCount;
         break;
       }
       for (let channel = 0; channel < channelCount; channel += 1) {
@@ -238,13 +242,14 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
     if (framesDecoded < framesInPacket) break;
   }
 
-  const missing = sampleCount - decodedSampleCount;
+  const finalPacketStart = sampleCount === 0 ? -1 : Math.floor((sampleCount - 1) / PACKET_FRAMES) * PACKET_FRAMES;
   return {
     bitsPerCode: bits,
     channels: output,
     sampleCount,
     decodedSampleCount,
     truncated,
-    shortFinalPacket: truncated && !headerLoss && missing > 0 && missing < PACKET_FRAMES,
+    shortFinalPacket:
+      truncated && !headerLoss && incompletePacketStart !== null && incompletePacketStart === finalPacketStart,
   };
 }

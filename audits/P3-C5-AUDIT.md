@@ -9,9 +9,10 @@ Frame-subdivision emulation (WP-090-09, `T-AUD-114`) is P8 and transcode budgets
 
 ## 1. Verdict
 
-C5 is **complete**, and it is the worst checkpoint so far. Four defects in shipped decode code,
-three of them in the ADPCM/PCM sample path — the part of the system whose entire job is to produce
-the right numbers. One erratum is raised (`E-030`).
+C5 is **complete and exit-ready**, and it is the worst checkpoint so far. Four defects in shipped
+decode code, three of them in the ADPCM/PCM sample path — the part of the system whose entire job
+is to produce the right numbers. The original C5 cut raised `E-030`; the scoped exit-readiness
+follow-up added `E-031`/`E-032` and is recorded in §10.
 
 The reason they survived is a single structural failure, and it is the finding that matters most:
 
@@ -96,13 +97,12 @@ The rebuild keeps the 200-packet structure but changes what it compares against:
   "simplifying" the loop back to the one-line formula fails here rather than quietly detuning
   every ADPCM asset.
 
-One assumption is still shared between implementation and reference and should be named: both
-treat a packet as `InitialSample` **plus** 4095 coded frames = **4096 output samples**, per the
-chapter's `ADPCMPACKET` structure. `ruffle` emits 4095 — it loads `InitialSample` as a predictor
-seed and overwrites it with the first coded sample before returning anything. Both consume the same
-bits, so neither desynchronises; they differ by one sample per packet. Our reading follows the
-published structure and is kept, but it is **not independently verified** and is recorded as an
-open question (§8).
+The packet-length question was open at the original C5 audit and has since been settled by `E-031`:
+`InitialSample` is emitted, for 4096 samples per packet. In the decisive real `DefineSound` corpus,
+412 payloads match the 4096 prediction and none match `ruffle`'s 4095 reading. Both readings consume
+the same bits, so neither desynchronises; they differ by one output sample per packet. The separate
+short-payload residual exposed a diagnostic false-positive and is resolved by `E-032`/§10; its
+precise authoring cause remains unproven, not the packet length.
 
 ## 3. The PCM defects (`E-030`)
 
@@ -165,15 +165,17 @@ loop are all expressed against the trimmed timeline — and a loop the trim dest
 **Full scale is 32768, not 32767.** `Int16Array` is asymmetric; using 32767 would make a sample at
 the negative rail report a peak above 1.0.
 
-Wired into `assets dump`: every emitted audio asset now carries `audio.{peak, rms, rmsDbfs, silent,
-belowNullGate, durationSamples, chunks[]}`.
+Wired into `assets dump`: PCM-backed WAV assets carry `audio.{peak, rms, rmsDbfs, silent,
+belowNullGate, durationSamples, chunks[]}`. MP3 is deliberately not decoded or re-encoded: its
+manifest retains frame/sample/seek metadata and now explicitly marks PCM measurement as
+`unavailable-pass-through`, rather than claiming zero levels.
 
 ## 5. Scope items
 
 | # | Item | Status |
 |---|---|---|
 | 1 | Codec dispatch, lazy payload, `SF0301` | ✅ pre-existing |
-| 2 | ADPCM bit-exact; framing, 4095 boundary, short final packet | ✅ **two arithmetic fixes**; `T-AUD-101` rebuilt, `T-AUD-102` pre-existing |
+| 2 | ADPCM bit-exact; framing, 4096-packet boundary, real payload lengths, short-final vs malformed truncation | ✅ **two arithmetic fixes**; `T-AUD-101` rebuilt; `T-AUD-102` extended for E-031/E-032, including final- and earlier-packet cases |
 | 3 | PCM format 0 vs 3 | ✅ **two fixes** (`E-030`), `T-AUD-103` rewritten |
 | 4 | MP3 frame header parse, 414-byte example | ✅ pre-existing `T-AUD-104`, verified against `IMPL-090-R009` |
 | 5 | MP3 pass-through, hash equality, latency trim | ✅ correct; `T-AUD-105` written |
@@ -234,14 +236,13 @@ not its status.
 | **F-P3-22** | 8-bit uncompressed PCM read as two's complement; `0x80` (silence) decoded as full-scale negative, waveform inverted | ✅ fixed (`E-030`) |
 | **E-030** | Format 0 "native endian" is undecodable; big-endian was the wrong coin flip | ✅ little-endian, `IMPL-090-R006` and `SF0302` corrected |
 
-## 9. Open items carried forward
+## 9. Items carried forward / resolved since C5
 
-- **ADPCM packet length: 4096 or 4095 output samples?** We emit `InitialSample` plus 4095 coded
-  frames, per the chapter's `ADPCMPACKET` structure. `ruffle` emits 4095, discarding
-  `InitialSample` as a seed. Both consume identical bits, so neither desynchronises, but the
-  outputs differ by one sample per packet. Our reading is the documented one and is kept; it is the
-  one assumption the rebuilt `T-AUD-101` still shares with the implementation. Resolving it needs a
-  real-file comparison. → C7.
+- ADPCM packet length (4096 vs 4095) is resolved as **4096** by `E-031`: 412 exact matches and 0
+  for 4095 across the decisive real `DefineSound` corpus. The 1–6-frame short-payload residual and
+  its diagnostic false-positive are resolved by `E-032`; the decoder now marks a short final packet
+  only when the incomplete codes are in the last packet required by `sampleCount`. See §10 for the
+  C5 recheck and the non-final-packet regression.
 - **`F-P3-17` gate hardening** (`audit_dev` blind to `emit?.(`) — still open from C4. → C7.
 - **`SF0281` registry wording** (quarantine implies discard) — still open from C4. → C7.
 - C3 items still open: `IMPL-070-R027`/`R034` `SF0260` citations, `padEdges` anchor choice,
@@ -255,8 +256,42 @@ history was recovered intact with `git fetch` + `git reset 25dff19`, leaving exa
 the working tree. Nothing was lost. Worth recording as an argument for pushing each checkpoint
 rather than batching.
 
-## 10. Next checkpoint
+## 10. C5 exit-readiness recheck (2026-10-09)
+
+The post-C5 ADPCM investigation was brought back to C5's exit bar before moving on. It exposed
+one safety edge in `shortFinalPacket`: the earlier predicate inferred "final packet" from the
+number of frames left (<4096), which could classify a truncated first packet as benign when a
+multi-packet sound had a short remainder. The decoder now records the packet start where code
+reading stopped and compares it to the final packet start implied by the declared sample count.
+
+`T-AUD-102` includes the regression: a 5,000-frame sound whose first packet stops after 4,001
+decoded frames has 999 frames left (less than one packet) but is **not** the final packet; it must
+remain truncated/malformed. The asset-dump test covers this through to `SF0328`, alongside a benign
+short final packet and a missing packet header. This pins both sides at decoder and CLI levels.
+
+The MP3/metrics boundary is also explicit: no MP3 decoder is in the C5 scope, so the pass-through
+record reports parsed `frameCount`, `sampleCount`, and `seekSamples` and marks PCM measurement as
+`unavailable-pass-through`; it never lies with zero peak/RMS. PCM-derived WAVs alone carry the exact
+sample-boundary chunk table and measured peak/RMS. `P3-CHECKPOINTS.md` and `IMPL-090` now state this
+exception, plus that runtime streaming chunk files (`AUD-R023`) and P8 playback/drift are not C5
+preview gates.
+
+**Decision: C5 is exit-ready; no C5 blockers remain.** Closure gates after these changes:
+
+| Gate | Final result |
+|---|---|
+| build | clean |
+| typecheck | clean across the 8 workspace projects and their test configs |
+| `pnpm test` | **58 files / 678 tests passed**, including the 10,000-mutation fuzz smoke |
+| lint | clean (`eslint` + Prettier) |
+| `spec:verify` | `ISSUES: 0` |
+| `audit:dev` | `findings=52 known=57 new=0 fixed=5`; probes built and run (`shape4 5/5`, dump check passes) |
+| `tag:coverage` | all **65/65** tags dispositioned |
+| `test:audit` | **75** Python tests passed |
+| `git diff --check` | clean |
+
+## 11. Next checkpoint
 
 **C6 — `forge-decompile assets dump` integration (WP-060-11, 070-15, 080-13, 090-11).** The
-per-asset `audio` block added here is one of the manifest fields C6 has to make deterministic
-end-to-end.
+PCM-backed `audio` metadata block and the MP3 pass-through measurement marker added here are
+manifest fields C6 must preserve deterministically end-to-end.

@@ -42,7 +42,7 @@ interface AssetRecord {
   readonly status: 'written' | 'fallback' | 'unsupported';
   readonly sha256: string | null;
   readonly metadata?: Readonly<Record<string, number | string | boolean>>;
-  /** `IMPL-090-R030`/`R031` levels and chunk table; present on every emitted audio asset. */
+  /** `IMPL-090-R030`/`R031` levels and chunk table for PCM-backed WAV previews. */
   readonly audio?: AssetAudioMeta;
   readonly diagnostics: readonly AssetDiagnostic[];
 }
@@ -730,6 +730,9 @@ function recordSound(character: CharacterModel, out: string): AssetRecord {
         sha256: digest(parsed.frameBytes),
         metadata: {
           codec: 'mp3-pass-through',
+          // C5 deliberately does not decode/re-encode MP3. PCM-domain metrics and PCM chunk peaks
+          // are therefore unavailable; record that explicitly rather than inventing zeros.
+          measurement: 'unavailable-pass-through',
           sampleRate: parsed.frames[0]?.sampleRate ?? sound.sampleRate,
           sampleCount: sound.sampleCount,
           seekSamples: parsed.seekSamples,

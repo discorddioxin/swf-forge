@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BitmapDecodeError, decodeBitmap, encodeBitmapPng, encodeFontWoff2 } from '@swf-forge/assets';
+import { BitmapDecodeError, decodeBitmap, encodeBitmapPng, encodeFontWoff2, spliceJpegTables } from '@swf-forge/assets';
 import {
   decodeSwfAdpcm,
   decodeSwfPcm,
@@ -187,17 +187,38 @@ function recordBitmap(
   if (model === null) return unsupported(character);
   try {
     const decoded = decodeBitmap(model, { jpegTables, swfVersion });
-    const png = encodeBitmapPng(decoded.bitmap);
-    const path = `bitmap-${character.id}.png`;
-    writeFileSync(join(out, path), png);
+    const contentType = decoded.bitmap.contentType;
+    let outputBytes: Uint8Array;
+    let outputType: string;
+    let extension: string;
+    if (contentType === 'png' || contentType === 'gif') {
+      // Embedded PNG/GIF are valid source assets in their own right. Keep the original container
+      // bytes (including animation and ancillary chunks) after the decoder has validated them.
+      outputBytes = model.payload;
+      outputType = contentType === 'png' ? 'image/png' : 'image/gif';
+      extension = contentType;
+    } else if (contentType === 'jpeg' && model.alpha === null) {
+      // JPEG2 carries a complete stream; DefineBits carries only its image half. Normalize either
+      // into a standalone JPEG and preserve those compressed bytes rather than re-encoding pixels.
+      outputBytes = spliceJpegTables(model.payload, model.source === 'defineBits' ? jpegTables : null);
+      outputType = 'image/jpeg';
+      extension = 'jpg';
+    } else {
+      // Lossless sources and JPEGs with a separate alpha plane need a canonical RGBA preview.
+      outputBytes = encodeBitmapPng(decoded.bitmap);
+      outputType = 'image/png';
+      extension = 'png';
+    }
+    const path = `bitmap-${character.id}.${extension}`;
+    writeFileSync(join(out, path), outputBytes);
     return {
       characterId: character.id,
       kind: character.kind,
       sourceTag: sourceTag(character),
-      outputType: 'image/png',
+      outputType,
       path,
       status: 'written',
-      sha256: digest(png),
+      sha256: digest(outputBytes),
       metadata: {
         width: decoded.bitmap.width,
         height: decoded.bitmap.height,
@@ -368,8 +389,25 @@ function sourceTag(character: CharacterModel): string {
   return character.index?.code === undefined ? character.tagName : tagName(character.index.code);
 }
 
-function recordFont(character: CharacterModel, out: string): AssetRecord {
-  if (character.font === null) return unsupported(character);
+function recordFont(character: CharacterModel, out: string, file: SwfFile): AssetRecord {
+  if (character.font === null) {
+    const cffDiagnostic = file.diagnostics.find(
+      (diagnostic) => diagnostic.code === Codes.FONT_CFF_UNSUPPORTED && diagnostic.characterId === character.id,
+    );
+    if (cffDiagnostic) {
+      return {
+        characterId: character.id,
+        kind: character.kind,
+        sourceTag: sourceTag(character),
+        outputType: null,
+        path: null,
+        status: 'unsupported',
+        sha256: null,
+        diagnostics: [{ code: cffDiagnostic.code, severity: cffDiagnostic.severity, message: cffDiagnostic.message }],
+      };
+    }
+    return unsupported(character);
+  }
   try {
     const converted = encodeFontWoff2(character.font);
     const atlas = buildFontAtlas(character.font);
@@ -817,7 +855,8 @@ export function runAssetsDump(request: AssetsDumpRequest, io: CliIo): number {
       if (character.vectorShape !== null) assets.push(recordShape(character, request.out));
       else if (character.morph !== null) assets.push(...recordMorph(character, request.out));
       else if (character.bitmap !== null) assets.push(recordBitmap(character, request.out, jpegTables, file.version));
-      else if (character.font !== null) assets.push(recordFont(character, request.out));
+      else if (character.font !== null || character.kind === 'font4')
+        assets.push(recordFont(character, request.out, file));
       else if (character.sound !== null) assets.push(recordSound(character, request.out));
       else assets.push(unsupported(character));
     }

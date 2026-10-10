@@ -1,12 +1,13 @@
 /** Deterministic `forge-decompile assets dump` bundle and unsupported-media behavior. */
 
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { deflateSync } from 'node:zlib';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { encodeBitmapPng } from '@swf-forge/assets';
+import { encodeBitmapPng, spliceJpegTables } from '@swf-forge/assets';
 import { EXIT, runCli, type CliIo } from '@swf-forge/decompiler';
 import { Tag } from '@swf-forge/swf';
 import { ByteWriter, buildSwf, concat, endTag, showFrames, tag, writeRect } from '@swf-forge/swf/test-support';
@@ -70,7 +71,7 @@ function morphEndpoint(length: number, withStyleChange: boolean): Uint8Array {
   return writer.toUint8Array();
 }
 
-function morphSwf(): Uint8Array {
+function morphBody(id: number): Uint8Array {
   const fills = new ByteWriter();
   fills.u8(1).u8(0x00); // one solid MorphFillStyle
   fills.u8(240).u8(25).u8(10).u8(255); // start red
@@ -79,7 +80,7 @@ function morphSwf(): Uint8Array {
   const start = morphEndpoint(80, true);
   const end = morphEndpoint(160, false);
   const body = new ByteWriter();
-  body.u16(8);
+  body.u16(id);
   writeRect(body, { xMin: 0, xMax: 80, yMin: 0, yMax: 80 });
   writeRect(body, { xMin: 0, xMax: 160, yMin: 0, yMax: 160 });
   body
@@ -87,9 +88,13 @@ function morphSwf(): Uint8Array {
     .bytes(fills.toUint8Array())
     .bytes(start)
     .bytes(end);
+  return body.toUint8Array();
+}
+
+function morphSwf(id = 8): Uint8Array {
   return buildSwf({
     version: 10,
-    body: concat(tag(Tag.DefineMorphShape, body.toUint8Array()), showFrames(1), endTag()),
+    body: concat(tag(Tag.DefineMorphShape, morphBody(id)), showFrames(1), endTag()),
     frameCount: 1,
   });
 }
@@ -116,11 +121,11 @@ function fontGlyphShape(): Uint8Array {
   return writer.toUint8Array();
 }
 
-function fontSwf(): Uint8Array {
+function fontBody(id: number): Uint8Array {
   const glyph = fontGlyphShape();
   const name = new TextEncoder().encode('Test Font');
   const font = new ByteWriter();
-  font.u16(17).u8(0x84).u8(0).u8(name.length).bytes(name).u16(1);
+  font.u16(id).u8(0x84).u8(0).u8(name.length).bytes(name).u16(1);
   font
     .u16(4)
     .u16(4 + glyph.length)
@@ -129,9 +134,13 @@ function fontSwf(): Uint8Array {
   font.u16(800).u16(200).s16(-50).s16(600);
   writeRect(font, { xMin: 0, xMax: 80, yMin: 0, yMax: 80 });
   font.u16(0);
+  return font.toUint8Array();
+}
+
+function fontSwf(id = 17): Uint8Array {
   return buildSwf({
     version: 10,
-    body: concat(tag(Tag.DefineFont2, font.toUint8Array()), showFrames(1), endTag()),
+    body: concat(tag(Tag.DefineFont2, fontBody(id)), showFrames(1), endTag()),
     frameCount: 1,
   });
 }
@@ -196,6 +205,94 @@ function mp3FrameAt48kHz(): Uint8Array {
   const bytes = new Uint8Array(385);
   bytes.set([0xff, 0xfb, 0x96, 0xc0]);
   return bytes;
+}
+
+const PROGRESSIVE_JPEG = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wgARCAACAAIDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAAA//EABUBAQEAAAAAAAAAAAAAAAAAAAUH/9oADAMBAAIQAxAAAAEwZx//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAn//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/AX//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/AX//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/An//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IX//2gAMAwEAAgADAAAAEH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/EH//xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/EH//xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/EH//2Q==',
+  'base64',
+);
+
+function splitJpegTables(jpeg: Uint8Array): { readonly tables: Uint8Array; readonly image: Uint8Array } {
+  const tableSegments: Uint8Array[] = [];
+  const imageSegments: Uint8Array[] = [];
+  let offset = 2;
+  while (offset + 4 < jpeg.length) {
+    if (jpeg[offset] !== 0xff) throw new Error(`invalid JPEG marker at ${offset}`);
+    const start = offset;
+    while (jpeg[offset] === 0xff) offset += 1;
+    const marker = jpeg[offset++] ?? 0;
+    if (marker === 0xda || marker === 0xd9) {
+      imageSegments.push(jpeg.subarray(start));
+      break;
+    }
+    const length = ((jpeg[offset] ?? 0) << 8) | (jpeg[offset + 1] ?? 0);
+    const end = offset + length;
+    if (length < 2 || end > jpeg.length) throw new Error(`invalid JPEG segment at ${start}`);
+    const segment = jpeg.subarray(start, end);
+    if (marker === 0xdb || marker === 0xc4 || marker === 0xdd) tableSegments.push(segment);
+    else imageSegments.push(segment);
+    offset = end;
+  }
+  return {
+    tables: concat(Uint8Array.from([0xff, 0xd8]), ...tableSegments, Uint8Array.from([0xff, 0xd9])),
+    image: concat(Uint8Array.from([0xff, 0xd8]), ...imageSegments),
+  };
+}
+
+function digest(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
+function treeHash(directory: string): string {
+  const hash = createHash('sha256');
+  for (const name of readdirSync(directory).sort()) {
+    const nameBytes = Buffer.from(name, 'utf8');
+    const bytes = readFileSync(join(directory, name));
+    hash.update(u32(nameBytes.length)).update(nameBytes).update(u32(bytes.length)).update(bytes);
+  }
+  return hash.digest('hex');
+}
+
+function multiKindSwf(): Uint8Array {
+  const jpeg = new Uint8Array(PROGRESSIVE_JPEG);
+  const split = splitJpegTables(jpeg);
+  const embeddedPng = encodeBitmapPng({ width: 1, height: 1, pixels: Uint8Array.from([12, 34, 56, 255]) });
+  const embeddedGif = new Uint8Array(Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'));
+  const lossless = concat(
+    u16(35),
+    Uint8Array.from([5]),
+    u16(1),
+    u16(1),
+    new Uint8Array(deflateSync(Uint8Array.from([0, 80, 160, 240]))),
+  );
+  const jpegAlpha = concat(
+    u16(34),
+    u32(jpeg.length),
+    jpeg,
+    new Uint8Array(deflateSync(Uint8Array.from([255, 128, 64, 0]))),
+  );
+  const adpcm = new Bits().bits(0, 2).signed(1000, 16).bits(0, 6).bits(1, 2).bits(2, 2).bytes();
+  const mp3 = concat(u16(0xfffd), mp3Frame());
+  return buildSwf({
+    version: 10,
+    body: concat(
+      tag(Tag.JPEGTables, split.tables),
+      tag(Tag.DefineSound, soundBody(43, 2, 3, true, false, 1152, mp3)),
+      tag(Tag.DefineBitsJPEG3, jpegAlpha),
+      tag(Tag.DefineBits, concat(u16(31), split.image)),
+      tag(Tag.DefineBitsLossless, lossless),
+      tag(Tag.DefineShape3, shapeBody(11)),
+      tag(Tag.DefineSound, soundBody(41, 3, 3, true, false, 3, Uint8Array.from([0x00, 0x80, 0xff, 0x7f, 0x34, 0x12]))),
+      tag(Tag.DefineFont2, fontBody(17)),
+      tag(Tag.DefineBitsJPEG2, concat(u16(33), embeddedGif)),
+      tag(Tag.DefineMorphShape, morphBody(22)),
+      tag(Tag.DefineSound, soundBody(42, 1, 2, true, false, 3, adpcm)),
+      tag(Tag.DefineBitsJPEG2, concat(u16(32), embeddedPng)),
+      showFrames(1),
+      endTag(),
+    ),
+    frameCount: 1,
+  });
 }
 
 function audioSwf(): Uint8Array {
@@ -268,6 +365,232 @@ describe('forge-decompile assets dump', () => {
     for (const name of readdirSync(firstDir)) {
       expect(readFileSync(join(secondDir, name))).toEqual(readFileSync(join(firstDir, name)));
     }
+  });
+
+  it('T-AST-025: golden multi-kind bundle has sorted records, direct passthroughs, and source metadata', () => {
+    const swf = multiKindSwf();
+    const source = write('multi-kind-golden.swf', swf);
+    const outDir = join(WORK, 'multi-kind-golden');
+    const captured = capture();
+    expect(runCli(['assets', 'dump', source, '--out', outDir], captured.io)).toBe(EXIT.ok);
+    expect(captured.err).toEqual([
+      'SF0256 #31: progressive JPEG payload passed to the configured decoder',
+      'SF0256 #34: progressive JPEG payload passed to the configured decoder',
+    ]);
+    expect(readdirSync(outDir).sort()).toEqual([
+      'bitmap-31.jpg',
+      'bitmap-32.png',
+      'bitmap-33.gif',
+      'bitmap-34.png',
+      'bitmap-35.png',
+      'font-17-atlas-0.png',
+      'font-17-atlas.json',
+      'font-17.woff2',
+      'manifest.json',
+      'morph-22-end.png',
+      'morph-22-start.png',
+      'shape-11.png',
+      'sound-41.wav',
+      'sound-42.wav',
+      'sound-43.mp3',
+    ]);
+
+    const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8')) as {
+      format: string;
+      formatVersion: number;
+      source: { bytes: number; sha256: string; compression: string; version: number };
+      assets: readonly {
+        characterId: number;
+        kind: string;
+        sourceTag: string;
+        outputType: string | null;
+        path: string | null;
+        status: string;
+        sha256: string | null;
+        metadata?: Record<string, unknown>;
+        diagnostics: readonly { code: string; severity: string }[];
+      }[];
+    };
+    expect(manifest.format).toBe('swf-forge/assets-manifest');
+    expect(manifest.formatVersion).toBe(1);
+    expect(manifest.source).toEqual({
+      bytes: swf.length,
+      sha256: digest(swf),
+      compression: 'none',
+      version: 10,
+    });
+    expect(
+      manifest.assets.map(({ characterId, kind, sourceTag, outputType, path, status }) => ({
+        characterId,
+        kind,
+        sourceTag,
+        outputType,
+        path,
+        status,
+      })),
+    ).toEqual([
+      {
+        characterId: 11,
+        kind: 'shape',
+        sourceTag: 'DefineShape3',
+        outputType: 'image/png',
+        path: 'shape-11.png',
+        status: 'written',
+      },
+      {
+        characterId: 17,
+        kind: 'font2',
+        sourceTag: 'DefineFont2',
+        outputType: 'font/woff2',
+        path: 'font-17.woff2',
+        status: 'written',
+      },
+      {
+        characterId: 22,
+        kind: 'morphShape',
+        sourceTag: 'DefineMorphShape',
+        outputType: 'image/png',
+        path: 'morph-22-start.png',
+        status: 'written',
+      },
+      {
+        characterId: 22,
+        kind: 'morphShape',
+        sourceTag: 'DefineMorphShape',
+        outputType: 'image/png',
+        path: 'morph-22-end.png',
+        status: 'written',
+      },
+      {
+        characterId: 31,
+        kind: 'bitmap',
+        sourceTag: 'DefineBits',
+        outputType: 'image/jpeg',
+        path: 'bitmap-31.jpg',
+        status: 'written',
+      },
+      {
+        characterId: 32,
+        kind: 'bitmap',
+        sourceTag: 'DefineBitsJPEG2',
+        outputType: 'image/png',
+        path: 'bitmap-32.png',
+        status: 'written',
+      },
+      {
+        characterId: 33,
+        kind: 'bitmap',
+        sourceTag: 'DefineBitsJPEG2',
+        outputType: 'image/gif',
+        path: 'bitmap-33.gif',
+        status: 'written',
+      },
+      {
+        characterId: 34,
+        kind: 'bitmap',
+        sourceTag: 'DefineBitsJPEG3',
+        outputType: 'image/png',
+        path: 'bitmap-34.png',
+        status: 'written',
+      },
+      {
+        characterId: 35,
+        kind: 'bitmapLossless',
+        sourceTag: 'DefineBitsLossless',
+        outputType: 'image/png',
+        path: 'bitmap-35.png',
+        status: 'written',
+      },
+      {
+        characterId: 41,
+        kind: 'sound',
+        sourceTag: 'DefineSound',
+        outputType: 'audio/wav',
+        path: 'sound-41.wav',
+        status: 'written',
+      },
+      {
+        characterId: 42,
+        kind: 'sound',
+        sourceTag: 'DefineSound',
+        outputType: 'audio/wav',
+        path: 'sound-42.wav',
+        status: 'written',
+      },
+      {
+        characterId: 43,
+        kind: 'sound',
+        sourceTag: 'DefineSound',
+        outputType: 'audio/mpeg',
+        path: 'sound-43.mp3',
+        status: 'written',
+      },
+    ]);
+    expect(
+      manifest.assets.map((asset) => ({
+        characterId: asset.characterId,
+        codes: asset.diagnostics.map(({ code, severity }) => ({ code, severity })),
+      })),
+    ).toEqual([
+      { characterId: 11, codes: [] },
+      { characterId: 17, codes: [] },
+      { characterId: 22, codes: [] },
+      { characterId: 22, codes: [] },
+      { characterId: 31, codes: [{ code: 'SF0256', severity: 'warning' }] },
+      { characterId: 32, codes: [] },
+      { characterId: 33, codes: [] },
+      { characterId: 34, codes: [{ code: 'SF0256', severity: 'warning' }] },
+      { characterId: 35, codes: [] },
+      { characterId: 41, codes: [] },
+      { characterId: 42, codes: [] },
+      { characterId: 43, codes: [] },
+    ]);
+    for (const asset of manifest.assets) {
+      expect(asset.path).not.toBeNull();
+      expect(asset.sha256).toBe(digest(readFileSync(join(outDir, asset.path ?? ''))));
+    }
+
+    const split = splitJpegTables(PROGRESSIVE_JPEG);
+    expect(readFileSync(join(outDir, 'bitmap-31.jpg'))).toEqual(
+      Buffer.from(spliceJpegTables(split.image, split.tables)),
+    );
+    expect(readFileSync(join(outDir, 'bitmap-32.png'))).toEqual(
+      Buffer.from(encodeBitmapPng({ width: 1, height: 1, pixels: Uint8Array.from([12, 34, 56, 255]) })),
+    );
+    expect(readFileSync(join(outDir, 'bitmap-33.gif'))).toEqual(
+      Buffer.from('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7', 'base64'),
+    );
+    expect(readFileSync(join(outDir, 'bitmap-34.png')).subarray(0, 8)).toEqual(
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    );
+    expect(manifest.assets.find((asset) => asset.characterId === 34)?.metadata).toMatchObject({
+      contentType: 'jpeg',
+      alphaPixels: 3,
+    });
+    expect(readFileSync(join(outDir, 'font-17.woff2')).subarray(0, 4).toString('ascii')).toBe('wOF2');
+    const atlas = JSON.parse(readFileSync(join(outDir, 'font-17-atlas.json'), 'utf8')) as {
+      pages: readonly { path: string; sha256: string; width: number; height: number }[];
+    };
+    expect(atlas.pages).toEqual([
+      {
+        path: 'font-17-atlas-0.png',
+        sha256: digest(readFileSync(join(outDir, 'font-17-atlas-0.png'))),
+        width: 512,
+        height: 512,
+      },
+    ]);
+    expect(readFileSync(join(outDir, 'sound-43.mp3'))).toEqual(Buffer.from(mp3Frame()));
+    expect(treeHash(outDir)).toBe('4432382826b1715e1614f0e57768e4d73bc5fc7da050f9b68f09e9c7c23b4d2c');
+  });
+
+  it('T-AST-026: repeats the complete multi-kind asset tree byte-for-byte', () => {
+    const source = write('multi-kind-repeat.swf', multiKindSwf());
+    const firstDir = join(WORK, 'multi-kind-repeat-a');
+    const secondDir = join(WORK, 'multi-kind-repeat-b');
+    expect(runCli(['assets', 'dump', source, '--out', firstDir], capture().io)).toBe(EXIT.ok);
+    expect(runCli(['assets', 'dump', source, '--out', secondDir], capture().io)).toBe(EXIT.ok);
+    expect(readdirSync(secondDir).sort()).toEqual(readdirSync(firstDir).sort());
+    expect(treeHash(secondDir)).toBe(treeHash(firstDir));
   });
 
   it('T-AST-024 writes deterministic start/end morph previews and paired-edge metadata', () => {
@@ -663,6 +986,152 @@ describe('forge-decompile assets dump', () => {
     for (const name of readdirSync(firstDir)) {
       expect(readFileSync(join(secondDir, name))).toEqual(readFileSync(join(firstDir, name)));
     }
+  });
+
+  it('T-AST-027: records quarantined bitmap/font inputs and exact-duration silent audio fallbacks', () => {
+    const noJpegTables = concat(u16(61), Uint8Array.from([0xff, 0xd8]));
+    const unknownLossless = concat(u16(62), Uint8Array.from([9]), u16(1), u16(1), Uint8Array.from([0]));
+    const cffFont = concat(u16(63), Uint8Array.from([0x04, 0]));
+    const malformedJpeg = concat(u16(64), Uint8Array.from([0xff, 0xd8]));
+    const source = write(
+      'unsupported-fallbacks.swf',
+      buildSwf({
+        version: 10,
+        body: concat(
+          tag(Tag.DefineSound, soundBody(75, 7, 3, true, false, 2, Uint8Array.from([1, 2]))),
+          tag(Tag.DefineBits, noJpegTables),
+          tag(Tag.DefineFont4, cffFont),
+          tag(Tag.DefineSound, soundBody(72, 5, 3, true, false, 2, Uint8Array.from([3, 4]))),
+          tag(Tag.DefineBitsLossless, unknownLossless),
+          tag(Tag.DefineSound, soundBody(74, 11, 0, true, false, 2, Uint8Array.from([5, 6]))),
+          tag(Tag.DefineBitsJPEG2, malformedJpeg),
+          tag(Tag.DefineSound, soundBody(71, 4, 3, true, false, 2, Uint8Array.from([7, 8]))),
+          tag(Tag.DefineSound, soundBody(73, 6, 3, true, false, 2, Uint8Array.from([9, 10]))),
+          showFrames(1),
+          endTag(),
+        ),
+        frameCount: 1,
+      }),
+    );
+    const outDir = join(WORK, 'unsupported-fallbacks');
+    const captured = capture();
+    expect(runCli(['assets', 'dump', source, '--out', outDir], captured.io)).toBe(EXIT.failed);
+    expect(readdirSync(outDir).sort()).toEqual([
+      'manifest.json',
+      'sound-71.wav',
+      'sound-72.wav',
+      'sound-73.wav',
+      'sound-74.wav',
+      'sound-75.wav',
+    ]);
+
+    const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8')) as {
+      assets: readonly {
+        characterId: number;
+        sourceTag: string;
+        outputType: string | null;
+        path: string | null;
+        status: string;
+        metadata?: Record<string, unknown>;
+        diagnostics: readonly { code: string; severity: string }[];
+      }[];
+    };
+    expect(
+      manifest.assets.map((asset) => ({
+        characterId: asset.characterId,
+        sourceTag: asset.sourceTag,
+        status: asset.status,
+        outputType: asset.outputType,
+        path: asset.path,
+        codes: asset.diagnostics.map((diagnostic) => diagnostic.code),
+      })),
+    ).toEqual([
+      {
+        characterId: 61,
+        sourceTag: 'DefineBits',
+        status: 'unsupported',
+        outputType: null,
+        path: null,
+        codes: ['SF0251'],
+      },
+      {
+        characterId: 62,
+        sourceTag: 'DefineBitsLossless',
+        status: 'unsupported',
+        outputType: null,
+        path: null,
+        codes: ['SF0260'],
+      },
+      {
+        characterId: 63,
+        sourceTag: 'DefineFont4',
+        status: 'unsupported',
+        outputType: null,
+        path: null,
+        codes: ['SF0270'],
+      },
+      {
+        characterId: 64,
+        sourceTag: 'DefineBitsJPEG2',
+        status: 'unsupported',
+        outputType: null,
+        path: null,
+        codes: ['SF0255', 'SF0252'],
+      },
+      {
+        characterId: 71,
+        sourceTag: 'DefineSound',
+        status: 'fallback',
+        outputType: 'audio/wav',
+        path: 'sound-71.wav',
+        codes: ['SF0307'],
+      },
+      {
+        characterId: 72,
+        sourceTag: 'DefineSound',
+        status: 'fallback',
+        outputType: 'audio/wav',
+        path: 'sound-72.wav',
+        codes: ['SF0307'],
+      },
+      {
+        characterId: 73,
+        sourceTag: 'DefineSound',
+        status: 'fallback',
+        outputType: 'audio/wav',
+        path: 'sound-73.wav',
+        codes: ['SF0307'],
+      },
+      {
+        characterId: 74,
+        sourceTag: 'DefineSound',
+        status: 'fallback',
+        outputType: 'audio/wav',
+        path: 'sound-74.wav',
+        codes: ['SF0303'],
+      },
+      {
+        characterId: 75,
+        sourceTag: 'DefineSound',
+        status: 'fallback',
+        outputType: 'audio/wav',
+        path: 'sound-75.wav',
+        codes: ['SF0301'],
+      },
+    ]);
+    expect(manifest.assets.find((asset) => asset.characterId === 63)?.diagnostics[0]?.severity).toBe('error');
+    expect(
+      manifest.assets.filter((asset) => asset.characterId >= 71).every((asset) => asset.metadata?.silent === true),
+    ).toBe(true);
+    for (const id of [71, 72, 73, 74, 75]) {
+      const wav = readFileSync(join(outDir, `sound-${id}.wav`));
+      expect(wav.subarray(0, 4).toString('ascii')).toBe('RIFF');
+      expect(wav.subarray(44).every((sample) => sample === 0)).toBe(true);
+    }
+    expect(captured.err.join('\n')).toContain('SF0251 #61');
+    expect(captured.err.join('\n')).toContain('SF0260 #62');
+    expect(captured.err.join('\n')).toContain('SF0270 #63');
+    expect(captured.err.join('\n')).toContain('SF0301 #75');
   });
 
   it('marks malformed bitmap media unsupported with a specific diagnostic instead of emitting a false PNG', () => {

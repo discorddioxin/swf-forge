@@ -1251,9 +1251,17 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
           Codes.FONT_CFF_UNSUPPORTED,
           'error',
           `DefineFont4 ${definition.id} contains CFF outlines; glyph conversion is unsupported`,
+          fontCursor.offset,
+          { characterId: definition.id },
         );
       } else {
-        fontCursor.emit(Codes.FONT_DEVICE_ONLY, 'info', `DefineFont4 ${definition.id} has no embedded CFF outlines`);
+        fontCursor.emit(
+          Codes.FONT_DEVICE_ONLY,
+          'info',
+          `DefineFont4 ${definition.id} has no embedded CFF outlines`,
+          fontCursor.offset,
+          { characterId: definition.id },
+        );
       }
     }
     if (fontAlignZones !== null && definition.tagCode !== Tag.DefineFont3) {

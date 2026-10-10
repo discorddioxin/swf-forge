@@ -24,6 +24,7 @@ from adpcm_probe import (
     READING_B_PACKET,
     Observation,
     census,
+    evidence,
     decompress_swf,
     observations_for_file,
     predict_bytes,
@@ -262,8 +263,10 @@ class TestEndToEnd(unittest.TestCase):
         self.assertEqual(found, [])
 
     def test_reads_adpcm_stream_blocks_against_the_head_sample_count(self) -> None:
-        # 3675 samples/frame is 44.1 kHz at 12 fps. Each block restarts the decoder, so each is an
-        # independent observation; at 4-bit codes the readings differ by one byte.
+        # 3675 samples/frame is 44.1 kHz at 12 fps. Each block restarts the decoder, so each is
+        # parsed separately — but the head declares an *average*, so a block is advisory evidence
+        # only. Here reading A at N=3675 and reading B at N=3674 both give 1840 bytes, so the
+        # honest verdict is inconclusive and none of it may decide the question.
         payload = adpcm_payload(3675, 1, 4, READING_A_PACKET)
         body = stream_head(3675, 1) + b"".join(
             tag(TAG_SOUND_STREAM_BLOCK, payload) + tag(TAG_SHOW_FRAME, b"") for _ in range(3)
@@ -272,8 +275,10 @@ class TestEndToEnd(unittest.TestCase):
             found, error = observations_for_file(path)
         self.assertIsNone(error)
         self.assertEqual(len(found), 3)
-        self.assertEqual({item.verdict for item in found}, {"A"})
         self.assertEqual([item.identity for item in found], ["block=0", "block=1", "block=2"])
+        self.assertTrue(all(not item.authoritative for item in found))
+        self.assertEqual({item.verdict for item in found}, {"inconclusive"})
+        self.assertEqual(evidence(found), [])
 
     def test_a_bogus_zws_length_field_is_an_error_not_a_crash(self) -> None:
         # Found by scanning a real corpus: a ZWS file whose declared length is under 8 made the
@@ -317,6 +322,79 @@ class TestEndToEnd(unittest.TestCase):
         finally:
             os.unlink(handle.name)
         self.assertEqual([item.verdict for item in found], ["A"])
+
+
+
+
+
+class TestEvidenceWeighting(unittest.TestCase):
+    """Corrections forced by the first real hunt. Both changed the answer's basis.
+
+    A naive count over raw observations reported CONFLICT: 85 rows "proving" reading B. All 85
+    were the *same* stream block of one looping sound, repeated. And a stream block's declared
+    count comes from `SoundStreamHead.StreamSoundSampleCount`, which the format defines as an
+    **average**, so its predicted length carries a +/-1-sample uncertainty the same size as the
+    effect being measured. Reading A on a 230-sample block predicts exactly the 147 bytes those
+    rows showed.
+    """
+
+    def stream_block(self, samples: int, payload_bytes: int, width: int = 5) -> Observation:
+        return Observation(
+            source="f.swf",
+            kind="SoundStreamBlock",
+            identity="block=0",
+            channels=1,
+            code_width=width,
+            samples=samples,
+            payload_bytes=payload_bytes,
+            tolerance=1,
+            authoritative=False,
+        ).evaluate()
+
+    def test_the_real_world_conflict_case_is_inconclusive_not_proof_of_b(self) -> None:
+        # Head declares an average of 229; payload is 147 B. Reading B fits at N=229, but so does
+        # reading A at N=230. The honest answer is that this block decides nothing.
+        item = self.stream_block(229, 147)
+        self.assertEqual(item.verdict, "inconclusive")
+        self.assertIn("tolerance", item.note)
+
+    def test_repeated_identical_blocks_count_once(self) -> None:
+        blocks = [self.stream_block(229, 147) for _ in range(85)]
+        for index, block in enumerate(blocks):
+            block.identity = f"block={index}"  # differing identity must not defeat de-duplication
+        self.assertEqual(len(evidence(blocks, include_streams=True)), 1)
+
+    def test_stream_blocks_do_not_decide_the_verdict_by_default(self) -> None:
+        blocks = [self.stream_block(229, 147) for _ in range(85)]
+        self.assertEqual(evidence(blocks), [])
+
+    def test_define_sound_observations_are_authoritative(self) -> None:
+        item = Observation(
+            source="f.swf",
+            kind="DefineSound",
+            identity="id=1",
+            channels=1,
+            code_width=4,
+            samples=10_000,
+            payload_bytes=5007,
+        ).evaluate()
+        self.assertTrue(item.authoritative)
+        self.assertEqual(len(evidence([item])), 1)
+
+    def test_distinct_sounds_in_one_file_are_kept_apart(self) -> None:
+        items = [
+            Observation("f.swf", "DefineSound", "id=1", 1, 4, 10_000, 5007).evaluate(),
+            Observation("f.swf", "DefineSound", "id=2", 1, 4, 20_000, 10_008).evaluate(),
+        ]
+        self.assertEqual(len(evidence(items)), 2)
+
+    def test_a_stream_block_outside_the_tolerance_fits_neither(self) -> None:
+        self.assertEqual(self.stream_block(229, 900).verdict, "neither")
+
+    def test_a_stream_block_can_still_exclude_a_reading(self) -> None:
+        # 145 B is reachable by reading A (N=228) but by no reading-B block within +/-1.
+        item = self.stream_block(229, 145)
+        self.assertEqual(item.verdict, "A")
 
 
 if __name__ == "__main__":

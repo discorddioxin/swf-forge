@@ -8,8 +8,12 @@ python3 tools/gen_status.py             # regenerates docs/impl/registers/STATUS
 python3 tools/audit_dev.py              # code-vs-spec integrity ledger (pnpm audit:dev)
 python3 tools/tag_coverage.py           # tag-by-tag decode coverage (pnpm tag:coverage)
 python3 tools/adpcm_probe.py FILE.swf   # settles the ADPCM packet length from real files
+python3 tools/adpcm_hunt.py             # goes and finds the files for it (network)
 pnpm test:audit                         # unit tests for every tool above
 ```
+
+`adpcm_hunt.py` is the one exception to "no network": it exists to search GitHub and npm for
+Flash content. Everything else is offline.
 
 ## `verify_docs.py`
 
@@ -116,6 +120,34 @@ Accepts files, globs or directories (scanned recursively), and reads uncompresse
 SWFs. `test_adpcm_probe.py` validates it by synthesising SWFs encoded under *each* reading and
 asserting the probe names the right one — the tool is not trusted on the strength of its own
 arithmetic.
+
+## `adpcm_hunt.py`
+
+`adpcm_probe.py` answers the question the moment it is handed a suitable file; the hard part is
+*getting* one. This tool does the looking, so the question does not stall on a manual file hunt.
+
+It searches GitHub and npm for repositories and packages that vendor Flash **content** (games,
+ads, demos, archives — not player or decompiler test suites, which carry no ADPCM), streams each
+archive, keeps only the `.swf` members, scans them, and runs the probe on anything containing
+ADPCM. Archives are discarded as it goes and files are deduplicated by SHA-256, so a long hunt
+costs little disk and a widely-vendored asset cannot manufacture false confidence by being
+counted twenty times.
+
+```bash
+python3 tools/adpcm_hunt.py                       # default hunt
+python3 tools/adpcm_hunt.py --max-sources 500     # wider
+python3 tools/adpcm_hunt.py --repo owner/name     # a corpus you know of
+python3 tools/adpcm_hunt.py --stop-on-hit         # stop as soon as a verdict is reached
+```
+
+Resumable — every source visited is recorded in a state file and re-running skips it — and
+Ctrl-C still writes the report. Set `GITHUB_TOKEN`, or have `gh` logged in, and search runs at
+30 requests/minute instead of 10. The report is the JSON evidence bundle for the audit record.
+
+`test_adpcm_hunt.py` validates it offline: archives are built containing SWFs whose ADPCM content
+and correct verdict are known, and the hunter must find them, keep them, dedupe them, respect its
+size caps, survive corrupt input and report the right answer — including raising `CONFLICT` when
+given deliberately contradictory evidence.
 
 ## `gen_status.py`
 

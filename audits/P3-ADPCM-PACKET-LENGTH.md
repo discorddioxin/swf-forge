@@ -1,8 +1,8 @@
 # Open question: ADPCM packet length — 4095 or 4096 samples?
 
-Status: **open, instrumented, blocked on sample files.**
+Status: **RESOLVED — reading A.** Evidence below; doc/errata updates belong to C7.
 Raised by: `audits/P3-C5-AUDIT.md` §9. Owner for resolution: P3 C7.
-Tooling: `tools/adpcm_probe.py`, validated by `tools/test_adpcm_probe.py`.
+Tooling: `tools/adpcm_probe.py` and `tools/adpcm_hunt.py`, validated by their `test_*.py` siblings.
 
 ---
 
@@ -107,86 +107,108 @@ stops coding at `SoundSampleCount` or always writes whole packets. The probe pri
 "last packet padded full" predictions alongside, and tallies exact matches corpus-wide. The same
 files settle both questions.
 
-## 4. What I have already ruled out
+## 4. The answer
 
-I scanned every SWF I can reach from this sandbox. **5,656 files, zero ADPCM.**
+**Reading A. `InitialSample` is an output sample; a packet emits 4096 samples.** The
+implementation in `packages/audio/src/codecs/adpcm.ts` is correct as shipped and needs no change.
+`ruffle` is wrong here, by one sample per 4096.
 
-| Corpus | Files | ADPCM |
+`tools/adpcm_hunt.py` searched GitHub for Flash *content* and harvested **71 ADPCM-bearing SWFs
+from 11 independent repositories** — real games and arcade archives, not conformance fixtures.
+Reduced to independent measurements (see §5 on why that reduction matters):
+
+| | Reading A | Reading B |
 | --- | --- | --- |
-| `ruffle-rs/ruffle` test suite | 5,012 | 0 |
-| `mozilla/shumway` + `jindrapetrik/jpexs-decompiler` | 644 | 0 |
+| Distinct `DefineSound` payloads matching the prediction **exactly** | **412** | **0** |
+| Files whose sounds are consistent with the reading | **65** | **0** |
 
-The scan is trustworthy rather than silently broken: over the ruffle corpus the same walker found
-35 MP3 `DefineSound`s, 5 PCM ones, 42 PCM `SoundStreamHead`s, one Speex and two unknown formats.
-The tag walk works; those corpora genuinely contain no ADPCM.
+623 distinct measurements in total: 412 exact fits for A, 53 too short to discriminate, 158
+anomalies discussed below, and **not one payload anywhere that reading B explains and reading A
+does not**. The sample spans code widths 2, 3, 4 and 5, mono and stereo, and declared counts from
+455 to 6,491,338 samples. Reading B was outright *impossible* — the payload physically too short
+for the data it requires — in 556 of the decisive measurements.
 
-That is an informative negative. ADPCM was Flash authoring's default for *short effect sounds* in
-the Flash 4–8 era and is almost absent from developer test suites, which test player behaviour
-with whatever audio was cheapest to embed. It survives in shipped content, not in test fixtures.
+412 independent payloads landing byte-exactly on a prediction is not a coincidence that admits an
+alternative explanation.
 
-**Do not** repeat these searches. `raw.githubusercontent.com` is also blocked from this sandbox;
-GitHub blobs must come through `api.github.com/.../contents/` or `codeload.github.com` tarballs.
+### The second question, also answered
 
-## 5. What I need you to do
+Of the exact matches, **nine** also matched the "trailing packet padded out to a full one"
+prediction — and in all nine the padded and unpadded predictions are *the same number*, because
+the sample count happened to fill the last packet exactly. Genuine evidence of padding: **zero**.
 
-In rough order of how likely each is to settle it quickly.
+> Encoders stop coding at `SoundSampleCount`. They do not write whole packets past it.
 
-### Step 1 — point the census at any SWFs you already have
+That closes the open item at `docs/impl/decompiler/090-sounds.md` line 371, owned by `T-AUD-102`.
 
-If you have a Flash archive anywhere — an old games folder, a Flashpoint install, a downloaded
-`.swf` collection, anything from `archive.org`'s Flash collections:
+### Residual: 158 payloads one or two bytes short of reading A
+
+A quarter of the measurements are 1 byte (138 of them) or 2 bytes short of even reading A. They
+are concentrated in particular files, which points at specific authoring tools rather than at the
+format. The likely cause is an off-by-one in the declared count — a sound whose
+`SoundSampleCount` includes a sample the encoder never coded, which at 4-bit codes removes
+exactly one byte.
+
+This does not weaken the conclusion, and it is worth being precise about why: **reading B never
+needs fewer bytes than reading A**, so a payload too short for A is further still from B. Every
+one of the 158 excludes B. They are evidence that our model of the *declared count* is slightly
+incomplete, not that the packet length is in doubt. Worth a C7 note against `T-AUD-102`; not a
+blocker.
+
+## 5. Two corrections the real data forced
+
+Both of these changed the answer's basis, and both are now pinned by tests
+(`TestEvidenceWeighting` in `tools/test_adpcm_probe.py`).
+
+**The first run reported `CONFLICT`** — 85 observations apparently proving reading B. All 85 were
+the *same* `SoundStreamBlock` of one looping sound in one file, counted once per repetition. Raw
+observation counts are not independent evidence; the tool now de-duplicates by
+`(file, kind, channels, width, declared count, payload length)`. In the final corpus 27,747 raw
+observations collapse to 611 distinct ones.
+
+**And those stream blocks could not have settled anything anyway.**
+`SoundStreamHead.StreamSoundSampleCount` is defined as the *average* samples per block — our own
+`090-sounds.md` line 252 describes encoders writing "one-under block sizes so the running average
+stays exact". So a block's declared count carries a ±1-sample uncertainty, which is the same size
+as the effect being measured. The conflicting block declared 229 samples and held 147 bytes;
+reading B predicts 147 at N=229, but **reading A predicts 147 at N=230** — a block one sample
+above the average, exactly what the format permits. It was never evidence for B.
+
+Stream blocks are now evaluated with a ±1 tolerance, marked advisory, and excluded from the
+verdict by default. Only `DefineSound`, whose `SoundSampleCount` is exact for that sound, decides
+the question.
+
+The general lesson, and the reason the tool reports `CONFLICT` loudly rather than averaging it
+away: when two readings are both "proved", the extractor is wrong, not the format ambiguous.
+
+## 6. Reproducing it
 
 ```bash
-python3 tools/adpcm_probe.py --census /path/to/swfs
+python3 tools/adpcm_hunt.py --max-sources 120     # harvest (network; ~20 min)
+python3 tools/adpcm_probe.py /tmp/adpcm-hunt      # verdict over what it found
 ```
 
-It prints a sound-format breakdown and lists the files containing ADPCM. This is fast and
-read-only. If the ADPCM count is zero, move to step 2; if it is non-zero, jump to step 4.
-
-**Best hunting grounds, in order:** Flash *games* from 2000–2006 (menu clicks, coin and jump
-effects were nearly always ADPCM), banner ads of the same era, e-learning and "interactive CD-ROM"
-content, and anything authored in Flash MX or earlier. Files from 2008 onward are mostly MP3.
-
-### Step 2 — make one file, if you have any Flash authoring tool
-
-This is the most reliable route, because it produces a file whose intent is known. In Flash
-Professional / Animate: import any sound longer than about half a second, set its Publish
-compression to **ADPCM**, 4-bit, and export. One file is enough. Anything over 4096 samples
-(≈0.37 s at 11 kHz) discriminates.
-
-If you have `swfmill`, `ming`, `haxe`/OpenFL or JPEXS Free Flash Decompiler available, each can
-produce or re-compress an ADPCM sound; JPEXS can also *re-encode an existing* MP3 sound to ADPCM,
-which turns any SWF you already have into a usable sample.
-
-### Step 3 — if neither works, tell me and I will widen the net
-
-I can fetch from `github.com`, `codeload.github.com`, `api.github.com`, `registry.npmjs.org` and
-`pypi.org`. If you know of a repository or npm/PyPI package that vendors Flash content with
-sound — an old game's source, a Flash-era asset pack, a decompiler's sample set — give me the
-name and I will pull and scan it. I cannot reach `archive.org`, Flashpoint's CDN, or the general
-web from here, so for anything outside those five hosts you would need to download it.
-
-### Step 4 — run the probe and paste the result back
+The hunt is resumable and keeps only ADPCM-bearing SWFs. The probe works offline on any corpus:
 
 ```bash
-python3 tools/adpcm_probe.py --json /path/to/swfs > adpcm-evidence.json
+python3 tools/adpcm_probe.py --census /path/to/swfs   # is there ADPCM here at all?
+python3 tools/adpcm_probe.py --json /path/to/swfs     # machine-readable evidence
 ```
 
-Paste the JSON, or just the summary block if the file is large. What I need from it is the
-`verdict`, the `counts`, and a handful of `observations` rows. **A single file with one ADPCM
-sound longer than 4096 samples is enough to close this.**
+Nothing needs `node_modules` or a build. If you have Flash-era content of your own, pointing the
+probe at it is still worthwhile — more independent encoders is better evidence, and the 158-file
+residual in §4 would benefit from a wider sample.
 
-If the verdict comes back `UNRESOLVED` because every sound was short, say so — the tool will have
-told you — and send the files anyway; several short sounds in one SWF can still add up to a
-decisive aggregate.
+## 7. What C7 should do with this
 
-## 6. What happens with the answer
+No code change. The decoder is correct.
 
-| Outcome | Consequence |
+| Item | Action |
 | --- | --- |
-| **A confirmed** | `packages/audio/src/codecs/adpcm.ts` is correct as shipped. Record the evidence against `IMPL-090-R0xx`, close the C5 §9 item, and note ruffle's divergence as a known player bug in `docs/impl/registers/errata.md`. |
-| **B confirmed** | The decoder emits one extra sample per 4096 and every ADPCM duration in the manifest is long by `ceil(N/4096)` samples. Fix the packet loop, re-pin `T-AUD-101`/`T-AUD-102`, correct the `measureAudio` durations, and file an erratum against the reference spec's `ADPCMPACKET` structure. |
-| **Still unresolved at C7** | Keep reading A (it matches the published structure), but demote the behaviour from "verified" to a recorded assumption with this document cited, exactly as `SF0302` was handled for the format-0 endianness question in `E-030`. |
+| `090-sounds.md` packet length | State 4096 as verified, citing this document and the corpus figures |
+| `090-sounds.md` line 371 / `T-AUD-102` | Record that encoders do not pad the trailing packet; close the open item |
+| `docs/impl/registers/errata.md` | New entry: ruffle emits 4095 samples per packet, a known player divergence, with the arithmetic |
+| `T-AUD-101` | Add a regression pinning 4096, with one real-world `(N, payload)` pair from the corpus as the fixture |
+| `T-AUD-102` | Note the 158-payload short-by-one-byte residual as an open sub-question about declared counts |
 
-Either way the resolution belongs in `audits/P3-C7-AUDIT.md` with the evidence attached, and the
-probe stays in `tools/` as the reproduction.
+The audit record belongs in `audits/P3-C7-AUDIT.md`; this document is the evidence it should cite.

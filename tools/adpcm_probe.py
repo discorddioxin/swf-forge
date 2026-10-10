@@ -184,6 +184,16 @@ class Observation:
     note: str = ""
     candidates: dict = field(default_factory=dict)
     exact: list = field(default_factory=list)
+    tolerance: int = 0
+    authoritative: bool = True
+
+    def signature(self) -> tuple:
+        """Identity for de-duplication.
+
+        A looping stream repeats the same block hundreds of times. Those are one datum, not one
+        per block: counting them separately manufactures confidence out of a single measurement.
+        """
+        return (self.source, self.kind, self.channels, self.code_width, self.samples, self.payload_bytes)
 
     def evaluate(self) -> "Observation":
         self.packets_a, _codes_a, self.bytes_a = predict_bytes(
@@ -199,6 +209,27 @@ class Observation:
             "B-padded": predict_bytes_padded(self.samples, self.channels, self.code_width, READING_B_PACKET),
         }
         self.exact = sorted(name for name, size in self.candidates.items() if size == self.payload_bytes)
+
+        if self.tolerance:
+            # `SoundStreamHead.StreamSoundSampleCount` is the *average* samples per block, not an
+            # exact per-block count: encoders vary blocks by a sample to keep the running average
+            # right. So a stream block's declared N may be off by one, which at 5-bit codes is
+            # enough to move a byte boundary. Accept any true count within tolerance.
+            span = range(max(1, self.samples - self.tolerance), self.samples + self.tolerance + 1)
+            sizes_a = {predict_bytes(n, self.channels, self.code_width, READING_A_PACKET)[2] for n in span}
+            sizes_b = {predict_bytes(n, self.channels, self.code_width, READING_B_PACKET)[2] for n in span}
+            compatible_a = self.payload_bytes in sizes_a
+            compatible_b = self.payload_bytes in sizes_b
+            if compatible_a and not compatible_b:
+                self.verdict, self.note = "A", "only reading A can produce this length (±1 sample)"
+            elif compatible_b and not compatible_a:
+                self.verdict, self.note = "B", "only reading B can produce this length (±1 sample)"
+            elif compatible_a and compatible_b:
+                self.verdict, self.note = "inconclusive", "both readings fit once the ±1 average tolerance is allowed"
+            else:
+                self.verdict, self.note = "neither", "no block length within ±1 of the declared average fits"
+            return self
+
         fits_a = self.payload_bytes >= self.bytes_a
         fits_b = self.payload_bytes >= self.bytes_b
         if not fits_a and not fits_b:
@@ -293,6 +324,8 @@ def observations_for_file(path: str) -> tuple[list[Observation], Optional[str]]:
                     code_width=width,
                     samples=stream_samples,
                     payload_bytes=len(payload),
+                    tolerance=1,
+                    authoritative=False,
                 ).evaluate()
             )
             block_index += 1
@@ -374,6 +407,67 @@ def census(files: list[str]) -> int:
     return 0
 
 
+def evidence(observations: list[Observation], include_streams: bool = False) -> list[Observation]:
+    """The subset of observations a verdict may rest on.
+
+    Two corrections to a naive count, both forced by real data:
+
+    * **De-duplicate.** A looping stream repeats one block hundreds of times; 298 raw stream-block
+      rows in the first real hunt collapsed to 4 distinct measurements.
+    * **Prefer `DefineSound`.** Its `SoundSampleCount` is the exact count for that sound. A stream
+      block's count comes from the head's *average*, so its predicted length carries a ±1-sample
+      uncertainty that is the same size as the effect being measured. Stream blocks are reported
+      but, unless `include_streams` is set, they do not decide the verdict.
+    """
+    unique: dict[tuple, Observation] = {}
+    for item in observations:
+        if not include_streams and not item.authoritative:
+            continue
+        unique.setdefault(item.signature(), item)
+    return list(unique.values())
+
+
+def tally(observations: list[Observation]) -> dict[str, int]:
+    counts = {"A": 0, "B": 0, "inconclusive": 0, "neither": 0}
+    for item in observations:
+        counts[item.verdict] = counts.get(item.verdict, 0) + 1
+    return counts
+
+
+def exclusions(observations: list[Observation]) -> dict[str, int]:
+    """How often each reading is *impossible*, which is the strongest form of the evidence.
+
+    A per-asset verdict of `neither` still excludes reading B, because B never needs fewer bytes
+    than A: a payload too short for A is even further short of B. Counting exclusions separately
+    keeps that evidence rather than discarding it as an anomaly. `degenerate` counts the short
+    sounds where the two readings predict the same length and nothing can be learned.
+    """
+    result = {"excludesA": 0, "excludesB": 0, "exactA": 0, "exactB": 0, "degenerate": 0}
+    for item in observations:
+        if item.payload_bytes < item.bytes_a:
+            result["excludesA"] += 1
+        if item.payload_bytes < item.bytes_b:
+            result["excludesB"] += 1
+        if item.bytes_a == item.bytes_b:
+            result["degenerate"] += 1
+        elif item.payload_bytes == item.bytes_a:
+            result["exactA"] += 1
+        elif item.payload_bytes == item.bytes_b:
+            result["exactB"] += 1
+    return result
+
+
+def corpus_verdict(counts: dict[str, int]) -> str:
+    """The one-line answer for a whole corpus. Shared by `adpcm_hunt.py`."""
+    if counts.get("A") and not counts.get("B"):
+        return "A — InitialSample IS an output sample; 4096 samples per packet (our reading)"
+    if counts.get("B") and not counts.get("A"):
+        return "B — InitialSample is a seed only; 4095 samples per packet (ruffle's reading)"
+    if counts.get("A") and counts.get("B"):
+        return "CONFLICT — both readings are proved by different files; re-check the extractor"
+    return "UNRESOLVED — no file discriminated; need longer ADPCM sounds (see --help)"
+
+
 def expand(paths: list[str]) -> list[str]:
     out: list[str] = []
     for entry in paths:
@@ -449,18 +543,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         if args.max_rows and len(found) > args.max_rows:
             print(f"  ... {len(found) - args.max_rows} more observation(s)")
 
-    counts = {"A": 0, "B": 0, "inconclusive": 0, "neither": 0}
-    for item in everything:
-        counts[item.verdict] = counts.get(item.verdict, 0) + 1
-
-    if counts["A"] and not counts["B"]:
-        verdict = "A — InitialSample IS an output sample; 4096 samples per packet (our reading)"
-    elif counts["B"] and not counts["A"]:
-        verdict = "B — InitialSample is a seed only; 4095 samples per packet (ruffle's reading)"
-    elif counts["A"] and counts["B"]:
-        verdict = "CONFLICT — both readings are proved by different files; re-check the extractor"
-    else:
-        verdict = "UNRESOLVED — no file discriminated; need longer ADPCM sounds (see --help)"
+    decisive = evidence(everything)
+    counts = tally(decisive)
+    verdict = corpus_verdict(counts)
+    advisory = evidence(everything, include_streams=True)
 
     if args.json:
         print(
@@ -481,14 +567,25 @@ def main(argv: Optional[list[str]] = None) -> int:
     print("\n" + "=" * 78)
     print(f"files scanned        : {len(files)}")
     print(f"files with ADPCM     : {scanned_with_adpcm}")
-    print(f"observations         : {len(everything)}")
+    print(f"observations         : {len(everything)} raw; {len(advisory)} distinct; {len(decisive)} decisive")
+    print("  (decisive = distinct DefineSound measurements; stream blocks are advisory because")
+    print("   SoundStreamHead declares an *average* sample count, not a per-block one)")
     print(f"  proving reading A  : {counts['A']}")
     print(f"  proving reading B  : {counts['B']}")
     print(f"  inconclusive       : {counts['inconclusive']}")
     print(f"  fits neither       : {counts['neither']}")
-    if everything:
+    if decisive:
+        excl = exclusions(decisive)
+        print(
+            f"reading B impossible : {excl['excludesB']}/{len(decisive)} decisive observations"
+            f"   (reading A impossible: {excl['excludesA']})"
+        )
+        print(
+            f"exact length match   : A={excl['exactA']}  B={excl['exactB']}"
+            f"  (plus {excl['degenerate']} too short to discriminate)"
+        )
         exact_tally: dict[str, int] = {}
-        for item in everything:
+        for item in decisive:
             for name in item.exact:
                 exact_tally[name] = exact_tally.get(name, 0) + 1
         print("exact size matches   : " + (", ".join(f"{name}={count}" for name, count in sorted(exact_tally.items())) or "none"))

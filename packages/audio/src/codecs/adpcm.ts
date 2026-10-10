@@ -25,6 +25,19 @@ export interface DecodedSwfAdpcm {
 }
 
 const MAX_SAMPLE_COUNT = 10_000_000;
+/**
+ * Output samples per packet: the header's `InitialSample` **plus** 4095 coded frames.
+ *
+ * `ruffle` emits 4095 instead, treating `InitialSample` as a predictor seed that the first code
+ * overwrites before anything is output (`core/src/backend/audio/decoders/adpcm.rs`, where
+ * `sample_num` cycles modulo 4095). Both readings consume identical bits, so neither
+ * desynchronises and no single packet distinguishes them — but they need different packet counts
+ * for a given `SoundSampleCount`, and therefore predict different payload lengths.
+ *
+ * Settled against real content, not reasoning: 412 of 412 decisive `DefineSound` payloads across
+ * 71 ADPCM SWFs from 11 unrelated repositories match 4096 exactly and none match 4095. See
+ * `audits/P3-ADPCM-PACKET-LENGTH.md` and errata `E-031`; pinned by `T-AUD-102`.
+ */
 const PACKET_FRAMES = 4096;
 const PACKET_CODES = PACKET_FRAMES - 1;
 

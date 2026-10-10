@@ -305,6 +305,44 @@ describe('SWF ADPCM', () => {
     expect(decoded.channels[0]?.[4096]).toBe(-2222);
   });
 
+  it('T-AUD-102: real-world payload lengths fit 4096 samples per packet exactly, not 4095', () => {
+    // Measured from shipped Flash content, not constructed here: each row is a real ADPCM
+    // DefineSound, its declared SoundSampleCount and the exact byte length of its payload.
+    // Harvested by tools/adpcm_hunt.py; see audits/P3-ADPCM-PACKET-LENGTH.md and errata E-031.
+    //
+    // The discrimination is that a packet emitting 4096 samples needs ceil(N/4096) packets and
+    // codes N - packets frames, while ruffle's 4095 reading needs codes for all N. The second
+    // costs more bytes, so a payload sized for the first is *too short* for the second.
+    const corpus = [
+      { samples: 369_350, channels: 1, bits: 2, payload: 92_566, source: 'renegade_racing.swf' },
+      { samples: 49_152, channels: 1, bits: 2, payload: 12_319, source: 'backyard-monsters.swf' },
+      { samples: 613_793, channels: 1, bits: 3, payload: 230_529, source: 'Learn_to_Fly.swf' },
+      { samples: 1_931, channels: 1, bits: 3, payload: 727, source: 'thundercars.swf' },
+      { samples: 4_587_840, channels: 1, bits: 4, payload: 2_296_443, source: 'Riddle_School_3.swf' },
+      { samples: 22_248, channels: 1, bits: 4, payload: 11_138, source: 'flash_kingdom.swf' },
+      { samples: 140_145, channels: 1, bits: 5, payload: 87_666, source: 'Mario.swf' },
+      { samples: 7_728, channels: 1, bits: 5, payload: 4_835, source: 'crush-the-castle.swf' },
+      { samples: 93_312, channels: 2, bits: 5, payload: 116_738, source: 'Sticky_Ninja.swf' },
+      { samples: 15_725, channels: 2, bits: 5, payload: 19_674, source: 'Sticky_Ninja.swf' },
+    ] as const;
+
+    for (const { samples, channels, bits, payload, source } of corpus) {
+      // A payload of exactly the observed length decodes completely under our reading.
+      const bytes = new Uint8Array(payload);
+      bytes[0] = (bits - 2) << 6; // AdpcmCodeSize in the top two bits, MSB-first
+      const decoded = decodeSwfAdpcm(bytes, { channels, sampleCount: samples });
+      expect(decoded.bitsPerCode, source).toBe(bits);
+      expect(decoded.truncated, `${source}: ${payload} B should hold ${samples} samples`).toBe(false);
+      expect(decoded.decodedSampleCount, source).toBe(samples);
+
+      // And it is *minimal*: one byte fewer no longer fits. That is what rules out 4095 samples
+      // per packet, which would have required between 1 and 560 bytes more than these files
+      // actually contain — had the encoder used it, a byte could be spared here.
+      const short = bytes.slice(0, payload - 1);
+      expect(decodeSwfAdpcm(short, { channels, sampleCount: samples }).truncated, `${source}: minimal`).toBe(true);
+    }
+  });
+
   it('T-AUD-102: emits an exact-length zero-padded result for a truncated packet header', () => {
     const bytes = new BitWriter().bits(1, 2).toBytes();
     const decoded = decodeSwfAdpcm(bytes, { channels: 1, sampleCount: 32 });

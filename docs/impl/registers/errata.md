@@ -742,6 +742,59 @@ both defects.
 
 ---
 
+## E-031 — `ruffle` emits 4095 samples per ADPCM packet; shipped content says 4096
+
+**Found in:** `ruffle`'s `core/src/backend/audio/decoders/adpcm.rs` versus Ch.11's `ADPCMPACKET`,
+implementing P3 C5. Not an upstream defect — upstream is right; this records a *player* divergence
+that our decoder must not copy.
+**What Ch.11 says:** `ADPCMMONOPACKET` is `InitialSample SI16`, `InitialIndex UB[6]`, then
+`AdpcmCodeData UB[4095 × bits]`. Read as written, a packet yields 4096 output samples: the header
+sample plus 4095 decoded from codes.
+**What `ruffle` does:** treats `InitialSample` as a predictor seed only. Its `sample_num` cycles
+`(sample_num + 1) % 4095`, and the call that returns the header sample also consumes a code, so
+the header value is overwritten before any output — 4095 samples per packet.
+
+**Why it is not resolvable by inspection:** both readings consume *identical bits*, so neither
+desynchronises, and the difference is one sample in 4096 (≈0.09 ms) with identical predictor state
+afterwards. No hex dump of a packet and no listening test separates them.
+
+**How it was settled:** by payload arithmetic over real files. The readings need different packet
+counts for the same declared `SoundSampleCount` and so predict different payload lengths:
+
+| | packets | coded frames | payload bytes |
+| --- | --- | --- | --- |
+| 4096/packet (ours) | `ceil(N/4096)` | `N − packets` | `ceil((2 + packets·22·ch + codes·bits·ch)/8)` |
+| 4095/packet (`ruffle`) | `ceil(N/4095)` | `N` | same formula, more codes |
+
+4096/packet always predicts **fewer** bytes, so a payload sized for it is *too short* for the other
+reading — which is decidable with no reference decoder. `tools/adpcm_hunt.py` harvested 71
+ADPCM-bearing SWFs from 11 unrelated repositories of shipped Flash content; of 623 distinct
+`DefineSound` measurements spanning code widths 2–5, mono and stereo, and declared counts from
+1,931 to 4,587,840 samples, **412 match the 4096 prediction exactly and 0 match 4095**. 4095 was
+outright impossible — the payload physically shorter than the data it needs — in 556 of them.
+
+**Resolution:** `InitialSample` is an output sample; a packet emits 4096. `IMPL-090-R012` states
+this as measured rather than inferred, and `IMPL-090-R034` records the corollary the same corpus
+established: encoders do not pad the trailing partial packet. Our decoder was already correct, so
+nothing changed in `packages/audio` beyond citing the evidence. Content decoded by `ruffle` is one
+sample per 4096 shorter than it should be; if a future oracle harness diffs against `ruffle`, this
+is an expected divergence, not a regression.
+
+**Caveat for anyone re-running the measurement:** `SoundStreamBlock` payloads cannot settle this.
+`SoundStreamHead.StreamSoundSampleCount` is an *average* (see `IMPL-090` §5 on one-under block
+sizes), so a block's predicted length carries a ±1-sample uncertainty the same size as the effect.
+A first pass that counted stream blocks appeared to prove 4095 from one looping sound; the block
+declared 229 samples and held 147 bytes, which 4095/packet predicts at N=229 — but 4096/packet
+predicts the same 147 at N=230, which the average permits. Only `DefineSound`, whose count is exact
+for that sound, is admissible evidence.
+
+**Encoded by:** `T-AUD-102` (`packages/audio/test/adpcm.test.ts`), which pins ten real
+`(N, channels, bits, payload)` measurements from the corpus and asserts each payload is *minimal* —
+one byte shorter no longer decodes — which is what excludes 4095. Full evidence and the reproduction
+in `audits/P3-ADPCM-PACKET-LENGTH.md`.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -759,4 +812,5 @@ both defects.
 | 2.0 | 2026-10-04 | Appendix pass: `E-025` (Appendix A's printed tables: `VertLineFlag` type/condition, the swapped hor/vert delta labels, `MoveDelta*` called unsigned, the "first byte ignored" frame-rate prose, the "fill bits" label for padding) and `E-026` (six invented tag names removed from `specs/110` §2 — Appendix B is the index authority) |
 | 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |
 | 2.3 | 2026-10-09 | `E-030`: sound format 0's "native endian" is undecodable — formats 0 and 3 both read little-endian (`ruffle` does the same) — and Ch.11 never states that 8-bit `SoundData` is unsigned, which it is; `IMPL-090-R006` corrected and `SF0302` reworded |
+| 2.4 | 2026-10-09 | `E-031`: `ruffle` emits 4095 samples per ADPCM packet where Ch.11's `ADPCMPACKET` and shipped content both say 4096 (`InitialSample` is output, not just a predictor seed) — settled by payload arithmetic over 623 real `DefineSound` measurements from 71 files in 11 repositories, 412 exact matches to 0; `IMPL-090-R012` restated as measured and `IMPL-090-R034` added (no trailing-packet padding) |
 | 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |

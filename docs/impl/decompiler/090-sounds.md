@@ -148,7 +148,11 @@ ADPCMSTEREOPACKET:    InitialSampleLeft SI16, InitialIndexLeft UB[6],
 ```
 
 - **IMPL-090-R012** A packet is **one header sample + 4095 codes** (4096 samples total) per channel
-  — v1.0's "64 samples per block" was wrong (errata `E-018`). Codes are **sign-magnitude**, not
+  — v1.0's "64 samples per block" was wrong (errata `E-018`). `InitialSample` **is emitted**; it is
+  not merely a predictor seed. This is measured, not inferred: 412 of 412 decisive `DefineSound`
+  payloads across 71 ADPCM SWFs from 11 unrelated repositories match the byte length that 4096
+  samples per packet predicts, and none match 4095 (`audits/P3-ADPCM-PACKET-LENGTH.md`). `ruffle`
+  emits 4095 and is wrong by one sample per packet — errata `E-031`. Codes are **sign-magnitude**, not
   two's complement: the top bit is the sign, the low `bits−1` bits index the chapter's tables
   (which give only the lower half; the upper half is its duplicate precisely because the sign is
   carried separately). The predictor and step index **restart from the packet header** for every
@@ -162,6 +166,14 @@ ADPCMSTEREOPACKET:    InitialSampleLeft SI16, InitialIndexLeft UB[6],
   declared sample count with silence, and report `SF0328` (warning) exactly once per sound. A
   payload that cannot be split into whole packets plus at most one header-complete partial packet is
   `SF0328` (error) — the bit stream is not decodable without inventing samples.
+- **IMPL-090-R034** Encoders **stop coding at `SoundSampleCount`**; the trailing partial packet is
+  not padded out to a full 4095 codes. Measured over the same corpus as `IMPL-090-R012`: no payload
+  matched a padded-final-packet length, while 412 matched the unpadded one. So the payload length a
+  sound *should* have is exactly `ceil((2 + ceil(N/4096)·22·channels + (N − ceil(N/4096))·bits·channels) / 8)`,
+  and a longer payload means trailing data to ignore, not more audio. Do not decode past the
+  declared count. A residual 158 payloads in that corpus sit 1–2 bytes *below* this length,
+  clustered by authoring tool — see §11 item 1; they are read as short final packets under
+  `IMPL-090-R013` and cost at most one sample.
 - **IMPL-090-R014** The decoder is integer-only and reproduces the chapter's tables
   (`APP-§9`: `stepIndex` 0–88, `INDEX_TABLE` per bit depth, the standard IMA step table), so
   `T-AUD-101` can be bit-exact against reference vectors. 8-bit ADPCM does not exist: output is
@@ -333,7 +345,7 @@ sets can never be confused in a test report.
 | ID | Test | Level | Phase owner |
 | --- | --- | --- | --- |
 | `T-AUD-101` | ADPCM decode vs reference vectors on 200 packets (bit-exact) | F1 | P3 decode/build |
-| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet | F1 | P3 decode/build |
+| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet, and real-world payload lengths pinning 4096 samples per packet against `ruffle`'s 4095 (`IMPL-090-R012`/`R034`) | F1 | P3 decode/build |
 | `T-AUD-103` | uncompressed 0 vs 3 produce identical PCM (8-bit) and byte-swapped PCM (16-bit) | F1 | P3 decode/build |
 | `T-AUD-104` | MP3 frame parser: sync, version/layer/rate/bitrate/padding, size formula incl. the 414-byte example | F1 | P3 decode/build |
 | `T-AUD-105` | MP3 pass-through: bytes unchanged (hash equality), latency trim applied at scheduling | F1 | P3 decode/build |
@@ -370,7 +382,7 @@ sets can never be confused in a test report.
 
 | # | Item | Impact |
 | --- | --- | --- |
-| 1 | ADPCM packets in real files: is the final packet padded to the full bit count, and do any encoders emit exactly 4095 codes without the trailing byte-align | medium (`T-AUD-102`) |
+| 1 | ADPCM declared counts that overshoot the payload: 158 of 623 measured real-world payloads are 1–2 bytes shorter than `IMPL-090-R034` predicts, clustered by authoring tool — probably a `SoundSampleCount` that counts one sample the encoder never coded. Harmless (short-final-packet handling absorbs it) but unexplained | low (`T-AUD-102`) |
 | 2 | `SoundStreamHead`'s `LatencySeek` when absent: does its absence shorten the tag, and do any tools write a zero there | medium (`SF0330`) |
 | 3 | Whether any AS1/AS2 title uses `StartSound2`/sound classes (it is AVM2-era) — current policy is report-and-ignore | low (`SF0309`) |
 | 4 | Playback vs stream rate mismatches in the wild: how often `PlaybackSoundRate` should be honoured for ADPCM streams | low (`SF0326`) |
@@ -401,3 +413,4 @@ shapes) are **settled** — see §4–§6 and APP-§10.9. The ADPCM "64 samples 
 | 1.0 | initial | Scoped from Ch.11; ADPCM/MP3 stream-block details marked pending with a reference-vector mitigation |
 | 1.1 | 2026-10-04 | Ch.11-grounded: coding-format table with SWF versions and the exact sample rates; `DefineSound` field semantics (`SoundSampleCount` = sample pairs; rate/size/type ignored per codec); **ADPCM packets of one header sample + 4095 codes** (corrects v1.0's "64 samples per block"), bit-packed and unaligned, with a short-final-packet policy, per-packet predictor reset; MP3 `MP3SOUNDDATA` (SeekSamples + frames, no count field) with the honest note that `SoundSampleCount` supplies duration, full frame-header parsing and the integer size formula; Nellymoser/Speex field-ignoring rules; `SOUNDINFO` MSB-first flag byte, `InPoint`/`OutPoint`/`LoopCount` semantics, envelope `Pos44` as a 44-kHz sample position and levels 0…32768; `SoundStreamHead`/`Head2` bit layout with `LatencySeek` only for MP3, advisory playback fields, one block per frame, `MP3STREAMSOUNDDATA` `SampleCount` semantics, the chapter's five-step frame-subdivision algorithm with both worked examples; diagnostics `SF0330`–`SF0332`, `SF0328` reworded; tests `T-AUD-101`–`115`; WPs re-shaped to 12 = 36 d |
 | 1.2 | 2026-10-09 | `E-030` applied: `IMPL-090-R006` rewritten — formats 0 and 3 decode identically (16-bit little-endian, 8-bit unsigned), `SF0302` reworded as an assumption record; the ADPCM delta is IMA's shift accumulation, not the closed form (`F-P3-20`), and the step table's entries 69-71 corrected (`F-P3-19`) |
+| 1.3 | 2026-10-09 | ADPCM packet length settled against shipped content (`E-031`): `IMPL-090-R012` restates 4096 samples per packet as measured — 412 of 412 decisive real-world payloads, 0 for `ruffle`'s 4095 — and new `IMPL-090-R034` records that encoders do not pad the trailing partial packet; open item 1 closed and replaced by the 158-payload short-by-one-byte residual; `T-AUD-102` extended with ten real `(N, payload)` measurements |

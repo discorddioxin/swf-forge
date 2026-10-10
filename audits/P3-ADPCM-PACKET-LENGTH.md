@@ -1,6 +1,6 @@
 # Open question: ADPCM packet length — 4095 or 4096 samples?
 
-Status: **RESOLVED — reading A.** Evidence below; doc/errata updates belong to C7.
+Status: **RESOLVED — reading A, and integrated.** Evidence below; code, docs and errata updated.
 Raised by: `audits/P3-C5-AUDIT.md` §9. Owner for resolution: P3 C7.
 Tooling: `tools/adpcm_probe.py` and `tools/adpcm_hunt.py`, validated by their `test_*.py` siblings.
 
@@ -199,16 +199,32 @@ Nothing needs `node_modules` or a build. If you have Flash-era content of your o
 probe at it is still worthwhile — more independent encoders is better evidence, and the 158-file
 residual in §4 would benefit from a wider sample.
 
-## 7. What C7 should do with this
+## 7. Integration — done
 
-No code change. The decoder is correct.
+No decoder change was needed: `packages/audio` already implemented reading A. What landed is the
+*evidence*, so the behaviour is pinned and the next person does not re-litigate it.
 
-| Item | Action |
+| Item | Status |
 | --- | --- |
-| `090-sounds.md` packet length | State 4096 as verified, citing this document and the corpus figures |
-| `090-sounds.md` line 371 / `T-AUD-102` | Record that encoders do not pad the trailing packet; close the open item |
-| `docs/impl/registers/errata.md` | New entry: ruffle emits 4095 samples per packet, a known player divergence, with the arithmetic |
-| `T-AUD-101` | Add a regression pinning 4096, with one real-world `(N, payload)` pair from the corpus as the fixture |
-| `T-AUD-102` | Note the 158-payload short-by-one-byte residual as an open sub-question about declared counts |
+| `packages/audio/src/codecs/adpcm.ts` | `PACKET_FRAMES` carries the reasoning, the `ruffle` divergence and the corpus result |
+| `packages/audio/test/adpcm.test.ts` | `T-AUD-102` pins ten real `(N, channels, bits, payload)` measurements |
+| `IMPL-090-R012` | Restated as measured, not inferred, with the corpus figures |
+| `IMPL-090-R034` (new) | Encoders do not pad the trailing partial packet |
+| `090-sounds.md` §11 item 1 | Closed; replaced by the 158-payload residual below |
+| `errata.md` `E-031` (new) | The `ruffle` divergence, the method, and the stream-block caveat |
 
-The audit record belongs in `audits/P3-C7-AUDIT.md`; this document is the evidence it should cite.
+### The test earns its place
+
+A regression that passes under both readings would be worthless, so it was checked by mutation:
+setting `PACKET_FRAMES = 4095` and `codedFrames = sampleCount` — i.e. implementing `ruffle`'s
+reading — fails 5 tests including this one. The pin works because each fixture asserts the real
+payload is **minimal**: one byte shorter no longer decodes. Reading B would have needed between 1
+and 560 bytes *more* than these files contain, so under B a byte could always have been spared.
+
+### Still open, deliberately
+
+158 of 623 measured payloads sit 1–2 bytes *below* even reading A's prediction, clustered by
+authoring tool — most likely a `SoundSampleCount` that counts one sample the encoder never coded.
+It cannot favour reading B (B never needs fewer bytes than A), the short-final-packet rule
+`IMPL-090-R013` already absorbs it, and the cost is at most one sample. Recorded as `090-sounds.md`
+§11 item 1 rather than guessed at.

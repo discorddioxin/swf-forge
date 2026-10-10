@@ -343,6 +343,40 @@ describe('SWF ADPCM', () => {
     }
   });
 
+  it('T-AUD-102: separates a short final packet from a structurally broken stream', () => {
+    // 26% of real ADPCM sounds (165 of 643, audits/P3-ADPCM-PACKET-LENGTH.md §8) end 1-3 frames
+    // short of their declared SoundSampleCount. That is inaudible (<0.14 ms at 22 kHz) and must
+    // not be reported as malformed, or a quarter of shipped Flash content is condemned. Only a
+    // payload that cannot be split into whole packets is malformed.
+    const codes = (count: number, writer = new BitWriter().bits(0, 2)) => {
+      writer.signed(100, 16).bits(0, 6);
+      for (let i = 0; i < count; i += 1) writer.bits(1, 2);
+      return writer;
+    };
+
+    // Declared 40 frames, payload carries 1 header + 36 codes = 37: three frames short.
+    const short = decodeSwfAdpcm(codes(36).toBytes(), { channels: 1, sampleCount: 40 });
+    expect(short.truncated).toBe(true);
+    expect(short.shortFinalPacket).toBe(true);
+    expect(short.decodedSampleCount).toBe(37);
+
+    // A payload whose second packet header is missing entirely is a structural break, not a
+    // trailing-frame artefact: 4096 declared frames need a second packet that simply is not there.
+    const broken = decodeSwfAdpcm(codes(4095).toBytes(), { channels: 1, sampleCount: 8192 });
+    expect(broken.truncated).toBe(true);
+    expect(broken.shortFinalPacket).toBe(false);
+
+    // An empty payload is not a "short final packet" either — there is no packet at all.
+    const empty = decodeSwfAdpcm(new Uint8Array(0), { channels: 1, sampleCount: 64 });
+    expect(empty.truncated).toBe(true);
+    expect(empty.shortFinalPacket).toBe(false);
+
+    // A complete sound is neither.
+    const whole = decodeSwfAdpcm(codes(39).toBytes(), { channels: 1, sampleCount: 40 });
+    expect(whole.truncated).toBe(false);
+    expect(whole.shortFinalPacket).toBe(false);
+  });
+
   it('T-AUD-102: emits an exact-length zero-padded result for a truncated packet header', () => {
     const bytes = new BitWriter().bits(1, 2).toBytes();
     const decoded = decodeSwfAdpcm(bytes, { channels: 1, sampleCount: 32 });

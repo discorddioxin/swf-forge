@@ -162,10 +162,15 @@ ADPCMSTEREOPACKET:    InitialSampleLeft SI16, InitialIndexLeft UB[6],
   `AdpcmCodeSize` at the top of the first byte, then packets back to back, a packet being
   `22·channels + 4095·channels·bits` bits (the header sample starts at bit 2 and is not byte
   aligned; the next packet starts immediately after the last code). A payload that ends inside a
-  packet is the *last* packet: its header is complete, so decode the codes present, pad to the
-  declared sample count with silence, and report `SF0328` (warning) exactly once per sound. A
-  payload that cannot be split into whole packets plus at most one header-complete partial packet is
-  `SF0328` (error) — the bit stream is not decodable without inventing samples.
+  packet is the *last* packet: its header is complete, so decode the codes present and pad to the
+  declared sample count with silence. This is **not** a malformed stream and must not be reported
+  as one — it is an ordinary authoring artefact, present in **165 of 643 (26%) real ADPCM sounds**
+  (`audits/P3-ADPCM-PACKET-LENGTH.md` §8), costing 1–3 frames, under 0.14 ms at 22 kHz. The decoder
+  reports it as `shortFinalPacket` and the asset layer records an `ASSET_SOUND_TRUNCATED` warning;
+  `SF0328` is **not** emitted. Reserve `SF0328` (error) for a payload that cannot be split into
+  whole packets plus at most one header-complete partial packet — a *packet header* that is missing
+  or incomplete, which the registry's wording ("a packet truncated before the last one") already
+  describes. That stream is not decodable without inventing samples. Errata `E-032`.
 - **IMPL-090-R034** Encoders **stop coding at `SoundSampleCount`**; the trailing partial packet is
   not padded out to a full 4095 codes. Measured over the same corpus as `IMPL-090-R012`: no payload
   matched a padded-final-packet length, while 412 matched the unpadded one. So the payload length a
@@ -382,7 +387,7 @@ sets can never be confused in a test report.
 
 | # | Item | Impact |
 | --- | --- | --- |
-| 1 | ADPCM declared counts that overshoot the payload: 158 of 623 measured real-world payloads are 1–2 bytes shorter than `IMPL-090-R034` predicts, clustered by authoring tool — probably a `SoundSampleCount` that counts one sample the encoder never coded. Harmless (short-final-packet handling absorbs it) but unexplained | low (`T-AUD-102`) |
+| 1 | Why ADPCM encoders stop 1–3 frames short of `SoundSampleCount` in 26% of real sounds. Characterised and handled (`IMPL-090-R013`, `E-032`): it never occurs when `SoundSampleCount` is a multiple of 4 (1 of 165 cases vs 284 of 478 clean), so the encoder appears to code whole groups of 4 input frames and declare the ungrouped original length. `emitted = 4·floor(N/4)` fits 92 of 165 exactly; the rest are the same shape with a one-frame offset. Benign, bounded by one packet, inaudible | low (`T-AUD-102`) |
 | 2 | `SoundStreamHead`'s `LatencySeek` when absent: does its absence shorten the tag, and do any tools write a zero there | medium (`SF0330`) |
 | 3 | Whether any AS1/AS2 title uses `StartSound2`/sound classes (it is AVM2-era) — current policy is report-and-ignore | low (`SF0309`) |
 | 4 | Playback vs stream rate mismatches in the wild: how often `PlaybackSoundRate` should be honoured for ADPCM streams | low (`SF0326`) |
@@ -414,3 +419,4 @@ shapes) are **settled** — see §4–§6 and APP-§10.9. The ADPCM "64 samples 
 | 1.1 | 2026-10-04 | Ch.11-grounded: coding-format table with SWF versions and the exact sample rates; `DefineSound` field semantics (`SoundSampleCount` = sample pairs; rate/size/type ignored per codec); **ADPCM packets of one header sample + 4095 codes** (corrects v1.0's "64 samples per block"), bit-packed and unaligned, with a short-final-packet policy, per-packet predictor reset; MP3 `MP3SOUNDDATA` (SeekSamples + frames, no count field) with the honest note that `SoundSampleCount` supplies duration, full frame-header parsing and the integer size formula; Nellymoser/Speex field-ignoring rules; `SOUNDINFO` MSB-first flag byte, `InPoint`/`OutPoint`/`LoopCount` semantics, envelope `Pos44` as a 44-kHz sample position and levels 0…32768; `SoundStreamHead`/`Head2` bit layout with `LatencySeek` only for MP3, advisory playback fields, one block per frame, `MP3STREAMSOUNDDATA` `SampleCount` semantics, the chapter's five-step frame-subdivision algorithm with both worked examples; diagnostics `SF0330`–`SF0332`, `SF0328` reworded; tests `T-AUD-101`–`115`; WPs re-shaped to 12 = 36 d |
 | 1.2 | 2026-10-09 | `E-030` applied: `IMPL-090-R006` rewritten — formats 0 and 3 decode identically (16-bit little-endian, 8-bit unsigned), `SF0302` reworded as an assumption record; the ADPCM delta is IMA's shift accumulation, not the closed form (`F-P3-20`), and the step table's entries 69-71 corrected (`F-P3-19`) |
 | 1.3 | 2026-10-09 | ADPCM packet length settled against shipped content (`E-031`): `IMPL-090-R012` restates 4096 samples per packet as measured — 412 of 412 decisive real-world payloads, 0 for `ruffle`'s 4095 — and new `IMPL-090-R034` records that encoders do not pad the trailing partial packet; open item 1 closed and replaced by the 158-payload short-by-one-byte residual; `T-AUD-102` extended with ten real `(N, payload)` measurements |
+| 1.4 | 2026-10-09 | `E-032`: `IMPL-090-R013` rewritten — a final packet a few frames short is a benign authoring artefact (26% of real ADPCM sounds), reported as an asset warning and no longer as `SF0328`, which is reserved for a missing or incomplete packet header as its registry wording always said; open item 1 characterised (encoders code whole groups of four frames) |

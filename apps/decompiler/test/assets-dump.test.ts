@@ -570,7 +570,12 @@ describe('forge-decompile assets dump', () => {
         version: 10,
         body: concat(
           tag(Tag.DefineSound, soundBody(7, 3, 3, true, false, 2, Uint8Array.from([0x12]))),
+          // #8: a complete packet header but one frame short of the declared two. Benign — 26% of
+          // real ADPCM sounds do this (errata E-032) — so a warning, never SF0328.
           tag(Tag.DefineSound, soundBody(8, 1, 3, true, false, 2, Uint8Array.from([0, 0, 1]))),
+          // #9: 14 bits left after the code-size field, where a packet header needs 22. No packet
+          // can be formed at all, which is what SF0328 means.
+          tag(Tag.DefineSound, soundBody(9, 1, 3, true, false, 2, Uint8Array.from([0, 1]))),
           showFrames(1),
           endTag(),
         ),
@@ -580,17 +585,20 @@ describe('forge-decompile assets dump', () => {
     const outDir = join(WORK, 'truncated-audio');
     const captured = capture();
     expect(runCli(['assets', 'dump', source, '--out', outDir], captured.io)).toBe(EXIT.failed);
-    expect(readdirSync(outDir)).toEqual(['manifest.json', 'sound-7.wav', 'sound-8.wav']);
+    expect(readdirSync(outDir)).toEqual(['manifest.json', 'sound-7.wav', 'sound-8.wav', 'sound-9.wav']);
     const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8')) as {
       assets: readonly { characterId: number; diagnostics: readonly { code: string }[] }[];
     };
-    expect(manifest.assets.find((asset) => asset.characterId === 7)?.diagnostics.map((item) => item.code)).toContain(
-      'ASSET_SOUND_TRUNCATED',
-    );
-    expect(manifest.assets.find((asset) => asset.characterId === 8)?.diagnostics.map((item) => item.code)).toContain(
-      'SF0328',
-    );
-    expect(captured.err.join('\n')).toContain('SF0328 #8');
+    const codesFor = (id: number) =>
+      manifest.assets.find((asset) => asset.characterId === id)?.diagnostics.map((item) => item.code) ?? [];
+    expect(codesFor(7)).toContain('ASSET_SOUND_TRUNCATED');
+    // The short final packet is reported, but as a warning about missing frames — not as a
+    // malformed stream. Pinning both halves: the warning present, the error absent.
+    expect(codesFor(8)).toContain('ASSET_SOUND_TRUNCATED');
+    expect(codesFor(8)).not.toContain('SF0328');
+    expect(codesFor(9)).toContain('SF0328');
+    expect(captured.err.join('\n')).toContain('SF0328 #9');
+    expect(captured.err.join('\n')).not.toContain('SF0328 #8');
   });
 
   it('decodes embedded PNG and lossless bitmap tags to deterministic preview PNGs', () => {

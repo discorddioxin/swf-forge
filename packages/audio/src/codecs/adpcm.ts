@@ -22,6 +22,17 @@ export interface DecodedSwfAdpcm {
   readonly decodedSampleCount: number;
   /** True when the declared frame count requires more complete bits than the payload contains. */
   readonly truncated: boolean;
+  /**
+   * True when the shortfall is confined to the **final** packet, whose header was complete — the
+   * audio is whole bar its last few frames, which is a benign authoring artefact and not a
+   * malformed stream.
+   *
+   * This is not a hypothetical: 165 of 643 ADPCM sounds (26%) in the real-world corpus behind
+   * `audits/P3-ADPCM-PACKET-LENGTH.md` are 1-3 frames short of their declared
+   * `SoundSampleCount` — under 0.14 ms at 22 kHz, and inaudible. Callers must not report those as
+   * errors (`IMPL-090-R013`); `SF0328` is for a stream that cannot be split into whole packets.
+   */
+  readonly shortFinalPacket: boolean;
 }
 
 const MAX_SAMPLE_COUNT = 10_000_000;
@@ -148,17 +159,28 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
   const reader = new BitReader(bytes);
   const codeSize = reader.read(2);
   if (codeSize === null) {
-    return { bitsPerCode: null, channels: output, sampleCount, decodedSampleCount: 0, truncated: sampleCount > 0 };
+    return {
+      bitsPerCode: null,
+      channels: output,
+      sampleCount,
+      decodedSampleCount: 0,
+      truncated: sampleCount > 0,
+      shortFinalPacket: false,
+    };
   }
   const bits = (codeSize + 2) as AdpcmBitDepth;
   const truncatedByLength = reader.remaining + 2 < requiredBits(sampleCount, channelCount, bits);
   let decodedSampleCount = 0;
   let truncated = truncatedByLength;
+  // A lost packet *header* is a structural break; lost *codes* inside a header-complete packet
+  // only cost trailing frames. Only the first justifies calling the stream malformed.
+  let headerLoss = false;
 
   while (decodedSampleCount < sampleCount) {
     const headerBits = 22 * channelCount;
     if (reader.remaining < headerBits) {
       truncated = true;
+      headerLoss = true;
       break;
     }
     const predictions: number[] = [];
@@ -176,6 +198,7 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
     }
     if (!validHeader) {
       truncated = true;
+      headerLoss = true;
       break;
     }
 
@@ -215,11 +238,13 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
     if (framesDecoded < framesInPacket) break;
   }
 
+  const missing = sampleCount - decodedSampleCount;
   return {
     bitsPerCode: bits,
     channels: output,
     sampleCount,
     decodedSampleCount,
     truncated,
+    shortFinalPacket: truncated && !headerLoss && missing > 0 && missing < PACKET_FRAMES,
   };
 }

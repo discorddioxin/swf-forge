@@ -221,10 +221,59 @@ reading — fails 5 tests including this one. The pin works because each fixture
 payload is **minimal**: one byte shorter no longer decodes. Reading B would have needed between 1
 and 560 bytes *more* than these files contain, so under B a byte could always have been spared.
 
-### Still open, deliberately
+## 8. The residual, investigated
 
-158 of 623 measured payloads sit 1–2 bytes *below* even reading A's prediction, clustered by
-authoring tool — most likely a `SoundSampleCount` that counts one sample the encoder never coded.
-It cannot favour reading B (B never needs fewer bytes than A), the short-final-packet rule
-`IMPL-090-R013` already absorbs it, and the cost is at most one sample. Recorded as `090-sounds.md`
-§11 item 1 rather than guessed at.
+§7 left 165 of 643 real sounds ending 1–3 frames short of their declared `SoundSampleCount`,
+"recorded rather than guessed at". Investigating it turned up a defect worth more than the
+curiosity that led to it.
+
+### It is not random
+
+| Signal | Short | Complete |
+| --- | --- | --- |
+| `SoundSampleCount` is a multiple of 4 | **1 of 165** | **284 of 478** |
+| 22 kHz mono | 157 of 364 (43%) | — |
+| 5.5 kHz | 0 of 91 | — |
+| Stereo | 0 of 21 | — |
+
+The multiple-of-4 result is the finding: a sound whose declared count divides by four is
+essentially never short. `emitted = 4·floor(N/4)` reproduces 92 of the 165 exactly, and the
+remainder are the same shape offset by one frame. So the encoder appears to code whole groups of
+four input frames and declare the original ungrouped length. Its concentration in 22 kHz mono —
+Flash's default ADPCM export — and total absence from stereo points at one authoring path, not a
+format rule. Ruled out along the way: a different packet length (no packet count explains the
+payloads), a dropped final byte (fits 95 of 165), and an off-by-one declared count (61 of 165).
+
+### The defect it exposed
+
+Our decoder sets `truncated` for these, and both call sites turned that into **`SF0328`, severity
+`error`**. So we were reporting **26% of shipped, playable Flash content as malformed** over a
+shortfall of under 0.14 ms.
+
+`IMPL-090-R013` had in fact anticipated the distinction — "report `SF0328` (warning)" for a short
+final packet versus "`SF0328` (error)" for an unsplittable stream. But a registered code carries
+one severity, and `audit_dev` check 2 enforces that call sites match it, so the warning arm was
+unimplementable and the implementation made everything an error. `SF0328`'s own registered meaning
+("a packet truncated *before the last one*") had excluded this case all along.
+
+### Fixed
+
+`DecodedSwfAdpcm.shortFinalPacket` now marks a shortfall confined to a final packet whose header
+was complete. That is an `ASSET_SOUND_TRUNCATED` warning and no `SF0328`. `SF0328` is reserved for
+a missing or incomplete *packet header* — a stream that cannot be decoded without inventing
+samples. The stream-block call site is fixed too, where the error was doubly wrong because
+`SoundStreamHead` declares an average count.
+
+Verified by running the built decoder over all 71 corpus files:
+
+```
+ADPCM event sounds decoded : 643
+  truncated                : 165
+  -> benign short final pkt: 165   (no SF0328)
+  -> genuinely malformed   : 0     (SF0328 error)
+false-error rate: 25.7% -> 0.0%
+```
+
+Zero genuinely-malformed sounds is the right answer for a corpus of shipped games. Recorded as
+errata `E-032`, pinned by `T-AUD-102`, and `090-sounds.md` open item 1 now carries the
+characterisation instead of the question.

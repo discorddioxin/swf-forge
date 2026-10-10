@@ -650,11 +650,17 @@ function recordSound(character: CharacterModel, out: string): AssetRecord {
           severity: 'warning',
           message: `decoded ${decoded.decodedSampleCount} of ${decoded.sampleCount} declared ADPCM frame(s); remainder padded with silence`,
         });
-        diagnostics.push({
-          code: Codes.SOUND_ADPCM_MALFORMED,
-          severity: 'error',
-          message: 'ADPCM packet data ends before the declared sample count',
-        });
+        // Only a stream that cannot be split into whole packets is malformed (`IMPL-090-R013`,
+        // and the registry's own wording: "a packet truncated before the last one"). A final
+        // packet a few frames short is an authoring artefact present in 26% of real ADPCM sounds
+        // — reporting it as an error would condemn a quarter of shipped Flash content.
+        if (!decoded.shortFinalPacket) {
+          diagnostics.push({
+            code: Codes.SOUND_ADPCM_MALFORMED,
+            severity: 'error',
+            message: 'ADPCM packet data ends before the declared sample count',
+          });
+        }
       }
       const zeroPayload = zeroPayloadDiagnostic(sound.data, decoded.channels, 'ADPCM');
       if (zeroPayload) diagnostics.push(zeroPayload);

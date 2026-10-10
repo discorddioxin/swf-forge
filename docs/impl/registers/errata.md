@@ -795,6 +795,50 @@ in `audits/P3-ADPCM-PACKET-LENGTH.md`.
 
 ---
 
+## E-032 — `IMPL-090-R013` gave one diagnostic code two severities, and it fired on a quarter of real content
+
+**Found in:** our own `IMPL-090-R013`, while characterising the short-payload residual left open by
+`E-031`. An internal inconsistency, not an upstream defect.
+**What it said:** a payload ending inside its final packet should "report `SF0328` (warning)", while
+a payload that cannot be split into whole packets is "`SF0328` (error)" — the same code at two
+severities.
+**What is wrong:** three things, compounding.
+
+1. **A code has one severity.** `SF0328` is registered `error`, and `audit_dev` check 2 enforces
+   that every call site's severity equals the registry's. The warning arm was unimplementable, so
+   the implementation emitted `error` for both.
+2. **The common arm is the benign one.** Measured over the `E-031` corpus: **165 of 643 ADPCM event
+   sounds (26%) end 1–3 frames short** of their declared `SoundSampleCount`. At 22 kHz that is
+   under 0.14 ms. Every one was being reported as a hard error — a quarter of shipped, playable
+   Flash content declared malformed, which makes the error signal worthless.
+3. **The registry already disagreed with R013.** `SF0328`'s own wording is "code size outside 2–5
+   bits, or a packet truncated *before the last one*" — which excludes a short final packet. R013's
+   warning arm contradicted the code it was citing.
+
+**Why so many files do it:** the shortfall is not random. It essentially never happens when
+`SoundSampleCount` is a multiple of 4 (1 of 165 short sounds, against 284 of 478 complete ones), so
+the encoder appears to code whole groups of four input frames while declaring the original
+ungrouped length; `emitted = 4·floor(N/4)` reproduces 92 of the 165 exactly and the remainder differ
+by one frame. It is concentrated in 22 kHz mono (43%) and absent from stereo, consistent with a
+default-settings authoring path rather than a format rule.
+
+**Resolution:** the decoder distinguishes the two cases. `DecodedSwfAdpcm.shortFinalPacket` is true
+when the shortfall is confined to a final packet whose header was complete — audio whole bar its
+last few frames. Callers report that as an `ASSET_SOUND_TRUNCATED` warning and **do not** emit
+`SF0328`. `SF0328` (error) is reserved for a missing or incomplete *packet header*, matching its
+registered meaning. `IMPL-090-R013` rewritten; the stream-block call site in
+`packages/swf/src/model/timeline.ts` fixed too, where the error was doubly wrong because
+`SoundStreamHead` declares an *average* sample count (`E-031`).
+
+Measured effect on the corpus: ADPCM sounds wrongly reported as malformed fall from **165 of 643
+(25.7%) to 0**.
+
+**Encoded by:** `T-AUD-102` (`packages/audio/test/adpcm.test.ts`), which pins a short final packet,
+a missing second packet header, an empty payload and a complete sound against the four expected
+classifications.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -813,4 +857,5 @@ in `audits/P3-ADPCM-PACKET-LENGTH.md`.
 | 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |
 | 2.3 | 2026-10-09 | `E-030`: sound format 0's "native endian" is undecodable — formats 0 and 3 both read little-endian (`ruffle` does the same) — and Ch.11 never states that 8-bit `SoundData` is unsigned, which it is; `IMPL-090-R006` corrected and `SF0302` reworded |
 | 2.4 | 2026-10-09 | `E-031`: `ruffle` emits 4095 samples per ADPCM packet where Ch.11's `ADPCMPACKET` and shipped content both say 4096 (`InitialSample` is output, not just a predictor seed) — settled by payload arithmetic over 623 real `DefineSound` measurements from 71 files in 11 repositories, 412 exact matches to 0; `IMPL-090-R012` restated as measured and `IMPL-090-R034` added (no trailing-packet padding) |
+| 2.5 | 2026-10-09 | `E-032`: `IMPL-090-R013` assigned `SF0328` two severities, which a single registered code cannot carry, so the implementation emitted `error` for both arms — reporting 165 of 643 real ADPCM sounds (26%) as malformed over a 1-3 frame, sub-0.14 ms shortfall. The decoder now distinguishes a short final packet from a missing packet header; `SF0328` is reserved for the latter, matching its registered wording. Corpus false-error rate 25.7% -> 0% |
 | 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |

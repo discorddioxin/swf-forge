@@ -105,11 +105,23 @@ describe('P3 streaming-sound model', () => {
     expect(mp3.file.sink.codes()).toContain('SF0331');
     expect(mp3.model.mainTimeline.streamSoundSpans[0]?.blocks[0]).toMatchObject({ sampleOffset: 0, sampleCount: 0 });
 
-    const adpcm = analyze([
+    // A block carrying a complete packet header but short of its declared frame count is NOT
+    // malformed: SoundStreamHead declares an *average* sample count, and 26% of real ADPCM sounds
+    // run a frame or two short (errata E-031/E-032). 3 bytes = 2-bit code size + one 22-bit
+    // header exactly, so one frame of the declared two is present.
+    const shortTail = analyze([
       tag(Tag.SoundStreamHead2, streamHead(1, 2, null)),
       tag(Tag.SoundStreamBlock, Uint8Array.from([0, 0, 1])),
     ]);
-    expect(adpcm.file.sink.codes()).toContain('SF0328');
+    expect(shortTail.file.sink.codes()).not.toContain('SF0328');
+
+    // A block that cannot even complete a packet header is malformed: 2 bytes leave 14 bits after
+    // the code-size field, and a header needs 22.
+    const headerless = analyze([
+      tag(Tag.SoundStreamHead2, streamHead(1, 2, null)),
+      tag(Tag.SoundStreamBlock, Uint8Array.from([0, 1])),
+    ]);
+    expect(headerless.file.sink.codes()).toContain('SF0328');
   });
 
   it('T-AUD-109: models StartSound2 class controls and reports the unsupported class lookup', () => {

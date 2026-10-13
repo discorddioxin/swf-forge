@@ -1,0 +1,1456 @@
+{
+  "schemaVersion": 1,
+  "command": "node apps/decompiler/dist/main.js analyze <relative-file.swf> --tiers --json",
+  "buildCommand": "corepack pnpm build",
+  "corpusScope": [
+    {
+      "sourceClass": "appendix-fixture",
+      "count": 1
+    },
+    {
+      "sourceClass": "synthetic-static-fixture",
+      "count": 20
+    },
+    {
+      "sourceClass": "malformed-fuzz-crasher",
+      "count": 5
+    }
+  ],
+  "repeatPolicy": "Two separate Node CLI processes per input; compare exit code, stdout bytes, and stderr bytes exactly.",
+  "summary": {
+    "files": 26,
+    "freshProcessRunsPerFile": 2,
+    "deterministicReports": 26,
+    "jsonReports": 26,
+    "entries": 0,
+    "actionBlocks": 0,
+    "functions": 0,
+    "tiers": {
+      "T0": 0,
+      "T1": 0,
+      "T2": 0
+    },
+    "t2ReasonCounts": {},
+    "diagnostics": {
+      "total": 35,
+      "errors": 2,
+      "warnings": 24,
+      "infos": 9
+    },
+    "exitCodes": {
+      "0": 25,
+      "1": 1
+    }
+  },
+  "reports": [
+    {
+      "path": "fixtures/appendix-a.swf",
+      "sourceClass": "appendix-fixture",
+      "inputSha256": "0d6dd29257c19a600402b385bde281c8c3eb83da01f2074822ba0d9f94813f5e",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "9abd3a106805e47400ef3d3c3d3455813e00a3785a5ebb7d9167a005fdf7179d",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/appendix-a.swf",
+          "bytes": 79,
+          "sha256": "0d6dd29257c19a600402b385bde281c8c3eb83da01f2074822ba0d9f94813f5e"
+        },
+        "movie": {
+          "swfVersion": 3,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 2,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 1,
+          "items": [
+            {
+              "code": "SF0002",
+              "severity": "warning",
+              "message": "SWF version 3 is below the AVM1 baseline (4); decoding continues",
+              "offset": 3,
+              "context": "header",
+              "count": 1
+            },
+            {
+              "code": "SF0030",
+              "severity": "info",
+              "message": "tag 2 (DefineShape) uses a long header though its body is 35 byte(s)",
+              "offset": 5,
+              "context": "long header 2",
+              "tagCode": 2,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/clip-mask.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "6e2530e1b216788acb25b97c85cab639c97664d5680884d264329bb3fef1f968",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "47da707213f9aafaf6c3800e1920500187b98e98e0ff764338a81b493ad6293d",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/clip-mask.swf",
+          "bytes": 145,
+          "sha256": "6e2530e1b216788acb25b97c85cab639c97664d5680884d264329bb3fef1f968"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/cxform-add.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "8b14f7f1523ceebcd14e2e7e91b25ef7fe17e858d6f6b6f188ef5d57967004d7",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "8abee64fc48df3a53bfe38919091e49f642a65bc0a72b5ddff02944712aad5c2",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/cxform-add.swf",
+          "bytes": 85,
+          "sha256": "8b14f7f1523ceebcd14e2e7e91b25ef7fe17e858d6f6b6f188ef5d57967004d7"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/cxform-mult.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "9918c6e51506a99cde8cf5da38acb71effc07281f56e6ae6922024ea37600ec8",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "3dd7c9da73fee96888f08b7b72a5ca798d12283a2345bdd70cfc5b227b586469",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/cxform-mult.swf",
+          "bytes": 85,
+          "sha256": "9918c6e51506a99cde8cf5da38acb71effc07281f56e6ae6922024ea37600ec8"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/depth-order.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "8260076615fc51da947ea3d4326da5691214728162fe9b366b5d53690efb8c97",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "2e0870ff5874f174f491c58c2cf87c3245f62c2d296863e3b6cdc4bed7a21a36",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/depth-order.swf",
+          "bytes": 129,
+          "sha256": "8260076615fc51da947ea3d4326da5691214728162fe9b366b5d53690efb8c97"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/hairline-stroke.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "98fcbd565d3d255ba4a438ea6187191d90ab81e25fbe1be106a0ee3a5da5e47a",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "5d1d68cc31fa1e9a560d0d6d4555e061ae8e70922c921fa9d564d76e63b1d340",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/hairline-stroke.swf",
+          "bytes": 81,
+          "sha256": "98fcbd565d3d255ba4a438ea6187191d90ab81e25fbe1be106a0ee3a5da5e47a"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0187",
+              "severity": "warning",
+              "message": "declared bounds (3600 x 2600 twips) disagree with recomputed bounds (3200 x 2200) beyond 1%",
+              "offset": 50,
+              "context": "tag 22 (DefineShape2) #1",
+              "tagCode": 22,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/invisible-placement.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "aa4e1ed3481f9c58860e1abab76c6ce480b6b46648961feeedbe23282994de1d",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "d4388a8bd2a1470c7730b94a13c5b6a242d5bc060ba21d8d19e9475715857235",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/invisible-placement.swf",
+          "bytes": 85,
+          "sha256": "aa4e1ed3481f9c58860e1abab76c6ce480b6b46648961feeedbe23282994de1d"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 1,
+          "items": [
+            {
+              "code": "SF0123",
+              "severity": "info",
+              "message": "PlaceObject3 backing fields present (visible/opaque background)",
+              "offset": 61,
+              "context": "tag 70 (PlaceObject3) #2",
+              "tagCode": 70,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/matrix-rotate.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "6a02539a6452d61467a7aaea381c2a9b9b7044bb0d5a882554c71fa041970b6f",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "c21768e3a50d535b7469bfef5082f9170f8ed7b584a8a6b908218a00b5dc612f",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/matrix-rotate.swf",
+          "bytes": 90,
+          "sha256": "6a02539a6452d61467a7aaea381c2a9b9b7044bb0d5a882554c71fa041970b6f"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/matrix-scale.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "4941ad98cfe6d634690e6649ab8a51ed5215f10f1638b4f88ab6d04e9ffc2c11",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "fdc6f67a11cb83a3e43b523afb1ccb295eac30aa69b0ee968155c58e8cacd760",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/matrix-scale.swf",
+          "bytes": 84,
+          "sha256": "4941ad98cfe6d634690e6649ab8a51ed5215f10f1638b4f88ab6d04e9ffc2c11"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/nonzero-hole.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "310fe975eb6bc0e73287dfe80de900ac81361441e1f077a0b58a1334efa82d63",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "cedee29c5e1061a697932342fa396d4e1572e9f5e5ddf6076dc059fb7c015958",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/nonzero-hole.swf",
+          "bytes": 116,
+          "sha256": "310fe975eb6bc0e73287dfe80de900ac81361441e1f077a0b58a1334efa82d63"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/quad-curves.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "7135b0bb7db102a46fe9649aa16c2e0faf06b83848ef11c8365ac70dd96f8a93",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "36142860b5fc0d08d5c4f4cca1c73e8f31bcf298e9c4dc87f2c5cc57ad17cbf4",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/quad-curves.swf",
+          "bytes": 86,
+          "sha256": "7135b0bb7db102a46fe9649aa16c2e0faf06b83848ef11c8365ac70dd96f8a93"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/solid-rect.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "6c33546e2bdf5ce2910bac33d37d95460fa7546c7dd796191ae4c96497f1fadf",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "adcf3bcfcca730c1c303e02e92acc0d51e7a6d3befb4105426e22031fec1163b",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/solid-rect.swf",
+          "bytes": 79,
+          "sha256": "6c33546e2bdf5ce2910bac33d37d95460fa7546c7dd796191ae4c96497f1fadf"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/sprite-loop.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "e11ea4408b247c610903e8585091b549c17d32e70cfed942868ab6aaea4a4829",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "146c7da8fc4f2babfff503f61d50d9d53345a8375515b5c25298ef0085cbf9dd",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/sprite-loop.swf",
+          "bytes": 161,
+          "sha256": "e11ea4408b247c610903e8585091b549c17d32e70cfed942868ab6aaea4a4829"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 5
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/sprite-nested.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "b23d97a5980f2d644a1c7a41edfe45c9ba037b819757d70e6b60be656117f902",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "9a224d516c6f8ebd9eba28ee18cd3ba962f95606459ad35be29461db6e1bbb3a",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/sprite-nested.swf",
+          "bytes": 138,
+          "sha256": "b23d97a5980f2d644a1c7a41edfe45c9ba037b819757d70e6b60be656117f902"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/stress-grid.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "522318809576d76e8f37d22b897f97dd9af89be8c82e8c886cf366c470d72809",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "acaaf064aaeb6de2798e06c72743b47e5e027a7f4365f6a2c62b4e44997dc043",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/stress-grid.swf",
+          "bytes": 490,
+          "sha256": "522318809576d76e8f37d22b897f97dd9af89be8c82e8c886cf366c470d72809"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/stroke-bevel-join.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "c8d8b986f96fab604d71c9b5170706d67f4f530aa001c8f1308789fd23163e34",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "b1fa26314a8104f9573405a63b1023e3a14b1c8322ee1a89de0127c9cabae067",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/stroke-bevel-join.swf",
+          "bytes": 84,
+          "sha256": "c8d8b986f96fab604d71c9b5170706d67f4f530aa001c8f1308789fd23163e34"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0187",
+              "severity": "warning",
+              "message": "declared bounds (3200 x 1800 twips) disagree with recomputed bounds (2400 x 1600) beyond 1%",
+              "offset": 53,
+              "context": "tag 83 (DefineShape4) #1",
+              "tagCode": 83,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/stroke-miter-join.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "c35f9a6d585a4513dd05ce17e0dbe4b4c05054f0e2e9f9ef53617e8900f1fc9e",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "7d260b42426024e9b90555c4aaea35490a7a3a632370331c70bcc69b62b8a6a7",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/stroke-miter-join.swf",
+          "bytes": 86,
+          "sha256": "c35f9a6d585a4513dd05ce17e0dbe4b4c05054f0e2e9f9ef53617e8900f1fc9e"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0187",
+              "severity": "warning",
+              "message": "declared bounds (3200 x 1800 twips) disagree with recomputed bounds (2400 x 1600) beyond 1%",
+              "offset": 55,
+              "context": "tag 83 (DefineShape4) #1",
+              "tagCode": 83,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/stroke-round-caps.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "a3763306b3f2030df53434a81aeb9853c01ddad024f63161e181c497756ffb98",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "d39cb07f5c92ce36b8c9bcd90e3142a600560be3aa05e97f1828e3c6a00e4938",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/stroke-round-caps.swf",
+          "bytes": 84,
+          "sha256": "a3763306b3f2030df53434a81aeb9853c01ddad024f63161e181c497756ffb98"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0187",
+              "severity": "warning",
+              "message": "declared bounds (3200 x 1800 twips) disagree with recomputed bounds (2800 x 1400) beyond 1%",
+              "offset": 53,
+              "context": "tag 83 (DefineShape4) #1",
+              "tagCode": 83,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/stroke-square-caps.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "3a103aa93afa5dfd28ca473c77ba29789b6d255700997b1a6cca57b13936f612",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "a4844d4aa18d3bd389f321b0d40907144e2b35afe0f0c8f51a04446c7a17baaa",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/stroke-square-caps.swf",
+          "bytes": 84,
+          "sha256": "3a103aa93afa5dfd28ca473c77ba29789b6d255700997b1a6cca57b13936f612"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 1,
+          "errors": 0,
+          "warnings": 1,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0187",
+              "severity": "warning",
+              "message": "declared bounds (3200 x 1800 twips) disagree with recomputed bounds (2800 x 1400) beyond 1%",
+              "offset": 53,
+              "context": "tag 83 (DefineShape4) #1",
+              "tagCode": 83,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/timeline-frames.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "db3408b458091bc026c6b262c75777cf209ce029f15b3b59bdb4bf66db66fec4",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "749aeb9e95c5b7e239a176d8c1dac4140774105607262a771f9210102bcd6b76",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/timeline-frames.swf",
+          "bytes": 110,
+          "sha256": "db3408b458091bc026c6b262c75777cf209ce029f15b3b59bdb4bf66db66fec4"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 3
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "fixtures/static/two-fills-hole.swf",
+      "sourceClass": "synthetic-static-fixture",
+      "inputSha256": "de516c5bf935034b073c76b9ab239fcf2ade792d02beb32872d96725c2229c13",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "39e93467693dc45d593344c22a10b33c7f3cb132b9fdc128566dc9df4ca4d3db",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "fixtures/static/two-fills-hole.swf",
+          "bytes": 106,
+          "sha256": "de516c5bf935034b073c76b9ab239fcf2ade792d02beb32872d96725c2229c13"
+        },
+        "movie": {
+          "swfVersion": 10,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 0,
+          "errors": 0,
+          "warnings": 0,
+          "infos": 0,
+          "items": []
+        }
+      }
+    },
+    {
+      "path": "packages/swf/test/fuzz/corpus/crash-001-truncated-body.swf",
+      "sourceClass": "malformed-fuzz-crasher",
+      "inputSha256": "d2c2845a14181fae09e4a6eb63655179542dbc0cdfaaeb0339cbba89a365bb6c",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "deda13ab1293e677a1f5fb338cacd286a51e6901f4a7fd6bec390efa215ab8f2",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "packages/swf/test/fuzz/corpus/crash-001-truncated-body.swf",
+          "bytes": 49,
+          "sha256": "d2c2845a14181fae09e4a6eb63655179542dbc0cdfaaeb0339cbba89a365bb6c"
+        },
+        "movie": {
+          "swfVersion": 6,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 9,
+          "errors": 0,
+          "warnings": 8,
+          "infos": 1,
+          "items": [
+            {
+              "code": "SF0005",
+              "severity": "warning",
+              "message": "file is 49 byte(s) on disk; FileLength declares 57",
+              "offset": 4,
+              "context": "container",
+              "count": 1
+            },
+            {
+              "code": "SF0107",
+              "severity": "warning",
+              "message": "DefineShape defines character id 0 (ignored)",
+              "offset": 0,
+              "context": "tag stream",
+              "tagCode": 2,
+              "count": 1
+            },
+            {
+              "code": "SF0101",
+              "severity": "warning",
+              "message": "tag 26 (PlaceObject2) body needs 6 byte(s) but only 4 remain — keeping the bytes present",
+              "offset": 22,
+              "context": "tag stream",
+              "tagCode": 26,
+              "count": 1
+            },
+            {
+              "code": "SF0102",
+              "severity": "info",
+              "message": "no End tag; the tag stream ends at the end of the body",
+              "offset": 28,
+              "context": "tag stream",
+              "count": 1
+            },
+            {
+              "code": "SF0023",
+              "severity": "warning",
+              "message": "header declares 1 frame(s) but the top level contains 0 ShowFrame tag(s)",
+              "offset": 0,
+              "context": "header",
+              "count": 1
+            },
+            {
+              "code": "SF0026",
+              "severity": "warning",
+              "message": "1 character reference(s) does not precede their definition; first: tag 26 (PlaceObject2) @ offset 8 references character 1 never defined",
+              "offset": 8,
+              "context": "tag ordering",
+              "tagCode": 26,
+              "count": 1
+            },
+            {
+              "code": "SF0110",
+              "severity": "warning",
+              "message": "placement references undefined character id 1",
+              "offset": 8,
+              "context": "tag 26 (PlaceObject2) #2",
+              "characterId": 1,
+              "tagCode": 26,
+              "count": 1
+            },
+            {
+              "code": "SF0013",
+              "severity": "warning",
+              "message": "read of 2 byte(s) at offset 27 past limit 28",
+              "offset": 27,
+              "context": "tag 26 (PlaceObject2) #6",
+              "tagCode": 26,
+              "count": 4
+            },
+            {
+              "code": "SF0110",
+              "severity": "warning",
+              "message": "placement references undefined character id 0",
+              "offset": 22,
+              "context": "tag 26 (PlaceObject2) #6",
+              "characterId": 0,
+              "tagCode": 26,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "packages/swf/test/fuzz/corpus/crash-002-tag-length-past-eof.swf",
+      "sourceClass": "malformed-fuzz-crasher",
+      "inputSha256": "4c6fea8ec86219293b570fda3a16cb7bad7018d7f234315a7949eb9bd35d6d14",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "65cf987dbf830e889750f14e7605d9dcf2e0a73ad1e5fa8c24adae03b1fcfb10",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "packages/swf/test/fuzz/corpus/crash-002-tag-length-past-eof.swf",
+          "bytes": 26,
+          "sha256": "4c6fea8ec86219293b570fda3a16cb7bad7018d7f234315a7949eb9bd35d6d14"
+        },
+        "movie": {
+          "swfVersion": 6,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 5,
+          "errors": 0,
+          "warnings": 2,
+          "infos": 3,
+          "items": [
+            {
+              "code": "SF0013",
+              "severity": "warning",
+              "message": "read of 4 byte(s) at offset 2 past limit 5",
+              "offset": 2,
+              "context": "tag stream",
+              "count": 1
+            },
+            {
+              "code": "SF0030",
+              "severity": "info",
+              "message": "tag 1021 (Unknown(1021)) uses a long header though its body is 0 byte(s)",
+              "offset": 0,
+              "context": "long header 1021",
+              "tagCode": 1021,
+              "count": 1
+            },
+            {
+              "code": "SF0104",
+              "severity": "info",
+              "message": "unknown tag code 1021 skipped by length",
+              "offset": 0,
+              "context": "unknown tag 1021",
+              "tagCode": 1021,
+              "count": 1
+            },
+            {
+              "code": "SF0102",
+              "severity": "info",
+              "message": "no End tag; the tag stream ends at the end of the body",
+              "offset": 5,
+              "context": "tag stream",
+              "count": 1
+            },
+            {
+              "code": "SF0023",
+              "severity": "warning",
+              "message": "header declares 1 frame(s) but the top level contains 0 ShowFrame tag(s)",
+              "offset": 0,
+              "context": "header",
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "packages/swf/test/fuzz/corpus/crash-003-sprite-missing-end.swf",
+      "sourceClass": "malformed-fuzz-crasher",
+      "inputSha256": "64d996619d97ba869a0d77c06c150195b5858c9d55ea62fc4f7c1d4791fea40a",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "3fc2203bb4fda75b4bb09f2f5d892f22965bc37e1b79b5ea89431f3c0e8c8b99",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "packages/swf/test/fuzz/corpus/crash-003-sprite-missing-end.swf",
+          "bytes": 43,
+          "sha256": "64d996619d97ba869a0d77c06c150195b5858c9d55ea62fc4f7c1d4791fea40a"
+        },
+        "movie": {
+          "swfVersion": 6,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 3,
+          "errors": 0,
+          "warnings": 3,
+          "infos": 0,
+          "items": [
+            {
+              "code": "SF0173",
+              "severity": "warning",
+              "message": "sprite 5 body ends without an End tag (closed at its byte limit)",
+              "offset": 18,
+              "context": "sprite 5",
+              "characterId": 5,
+              "count": 1
+            },
+            {
+              "code": "SF0026",
+              "severity": "warning",
+              "message": "1 character reference(s) does not precede their definition; first: tag 26 (PlaceObject2) @ offset 6 references character 1 never defined",
+              "offset": 6,
+              "context": "tag ordering",
+              "tagCode": 26,
+              "count": 1
+            },
+            {
+              "code": "SF0110",
+              "severity": "warning",
+              "message": "placement references undefined character id 1",
+              "offset": 6,
+              "context": "tag 26 (PlaceObject2) #1",
+              "characterId": 1,
+              "tagCode": 26,
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "packages/swf/test/fuzz/corpus/crash-004-zlib-invalid-stream.swf",
+      "sourceClass": "malformed-fuzz-crasher",
+      "inputSha256": "6e40839d741ddfcc6fbd03923a146985dad43c7cd0898bb20f01ad71b34c89a5",
+      "exitCode": 1,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "b23af1e8322118351bca837e0070fc7f44b85a2730e31316eff557e085b94551",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "packages/swf/test/fuzz/corpus/crash-004-zlib-invalid-stream.swf",
+          "bytes": 17,
+          "sha256": "6e40839d741ddfcc6fbd03923a146985dad43c7cd0898bb20f01ad71b34c89a5"
+        },
+        "movie": {
+          "swfVersion": 6,
+          "compression": "zlib",
+          "frameCount": 0
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 6,
+          "errors": 2,
+          "warnings": 2,
+          "infos": 2,
+          "items": [
+            {
+              "code": "SF0003",
+              "severity": "error",
+              "message": "invalid block type",
+              "offset": 0,
+              "context": "container",
+              "count": 1
+            },
+            {
+              "code": "SF0013",
+              "severity": "warning",
+              "message": "bit read of 5 bit(s) at offset 0 past limit 0",
+              "offset": 0,
+              "context": "header",
+              "count": 3
+            },
+            {
+              "code": "SF0029",
+              "severity": "error",
+              "message": "FrameSize has non-positive extent (0 x 0 twips)",
+              "offset": 8,
+              "context": "FrameSize",
+              "count": 1
+            },
+            {
+              "code": "SF0022",
+              "severity": "info",
+              "message": "frame rate 0 fps (raw 0) is outside the plausible range",
+              "offset": 0,
+              "context": "FrameRate",
+              "count": 1
+            },
+            {
+              "code": "SF0005",
+              "severity": "warning",
+              "message": "decompressed payload is 0 byte(s); FileLength 57 + 8-byte header implies 49",
+              "offset": 0,
+              "context": "container",
+              "count": 1
+            },
+            {
+              "code": "SF0102",
+              "severity": "info",
+              "message": "no End tag; the tag stream ends at the end of the body",
+              "offset": 0,
+              "context": "tag stream",
+              "count": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "path": "packages/swf/test/fuzz/corpus/crash-005-shape-edge-past-limit.swf",
+      "sourceClass": "malformed-fuzz-crasher",
+      "inputSha256": "6dd74951889b07f61390689d3e46e9d8ab30c117e47427554ff9e57ca60559c4",
+      "exitCode": 0,
+      "stderrSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stdoutSha256": "c12738b5381a2661fcbdb62c002174644e739e20380e0303373acaf97f0a1d27",
+      "deterministicAcrossFreshProcesses": true,
+      "report": {
+        "schemaVersion": 1,
+        "file": {
+          "path": "packages/swf/test/fuzz/corpus/crash-005-shape-edge-past-limit.swf",
+          "bytes": 52,
+          "sha256": "6dd74951889b07f61390689d3e46e9d8ab30c117e47427554ff9e57ca60559c4"
+        },
+        "movie": {
+          "swfVersion": 6,
+          "compression": "none",
+          "frameCount": 1
+        },
+        "avm2": {
+          "present": false,
+          "reason": null,
+          "offset": null
+        },
+        "counts": {
+          "actionBlocks": 0,
+          "functions": 0,
+          "T0": 0,
+          "T1": 0,
+          "T2": 0
+        },
+        "entries": [],
+        "diagnostics": {
+          "total": 4,
+          "errors": 0,
+          "warnings": 3,
+          "infos": 1,
+          "items": [
+            {
+              "code": "SF0107",
+              "severity": "warning",
+              "message": "DefineShape defines character id 0 (ignored)",
+              "offset": 0,
+              "context": "tag stream",
+              "tagCode": 2,
+              "count": 1
+            },
+            {
+              "code": "SF0013",
+              "severity": "warning",
+              "message": "read of 2 byte(s) at offset 19 past limit 19",
+              "offset": 19,
+              "context": "tag 22 (DefineShape2) #1",
+              "tagCode": 22,
+              "count": 92680
+            },
+            {
+              "code": "SF0190",
+              "severity": "warning",
+              "message": "style array has 23168 entries at the dedupe ceiling with byte-identical styles; kept verbatim",
+              "offset": 19,
+              "context": "tag 22 (DefineShape2) #1",
+              "tagCode": 22,
+              "count": 1
+            },
+            {
+              "code": "SF0189",
+              "severity": "info",
+              "message": "1 declared fill style(s) never referenced",
+              "offset": 19,
+              "context": "tag 22 (DefineShape2) #1",
+              "tagCode": 22,
+              "count": 1
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

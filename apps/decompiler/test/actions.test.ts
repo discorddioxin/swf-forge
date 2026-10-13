@@ -1,7 +1,7 @@
 /**
  * `forge-decompile inspect --actions` — the AVM1 front end surfaced in the decompiler
  * (WP-050-16, `IMPL-050` §1.8). Pins the disassembly text for a hand-built action block,
- * the JSON shape of `--actions`, and the AVM2 gate's hard failure (`T-AVM1-010`: `SF1000`,
+ * the JSON shape of `--actions`, and the AVM2 gate's hard failure (`T-AVM1-FE-010`: `SF1000`,
  * exit 3, offset named).
  */
 
@@ -91,7 +91,7 @@ describe('inspect --actions', () => {
     expect(dump.actions?.disassembly).toContain('Push 5');
   });
 
-  it('T-AVM1-010: DoABC -> SF1000, exit 3, offset named', () => {
+  it('T-AVM1-FE-010: DoABC -> SF1000, exit 3, offset named', () => {
     // DoABC body: name-length 0, then a handful of ABC bytes (content is irrelevant to the gate).
     const doAbc = tag(Tag.DoABC, Uint8Array.from([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]));
     const body = concat(doAbc, showFrames(1), endTag());

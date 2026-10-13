@@ -19,8 +19,10 @@ import type {
   StrokeGeometry,
   Transform2D,
 } from '@swf-forge/gfx';
-import { TWIPS_PER_PIXEL } from '@swf-forge/swf';
-import type { Cxform, FillStyle, Mat2D, StrokePath, VectorShape } from '@swf-forge/swf';
+import { TWIPS_PER_PIXEL, interpolateMorph, roundMorphShapeForTessellation } from '@swf-forge/swf';
+import type { Cxform, FillStyle, Mat2D, MorphShapeModel, StrokePath, VectorShape } from '@swf-forge/swf';
+
+import { prepareStaticShape } from '../geometry/prepare.js';
 
 export { TWIPS_PER_PIXEL };
 
@@ -87,7 +89,8 @@ export interface GeometryOptions {
  * arrays keep their decoded order (`GFX-R017` step 2); gradient and bitmap fills are announced by
  * their `kind` so a caller can report them rather than silently painting something else.
  */
-export function shapeToGeometry(id: string, shape: VectorShape, options: GeometryOptions = {}): ShapeGeometry {
+export function shapeToGeometry(id: string, sourceShape: VectorShape, options: GeometryOptions = {}): ShapeGeometry {
+  const shape = prepareStaticShape(sourceShape).shape;
   const scale = options.scale ?? toPixels(1);
   const originX = options.originX ?? 0;
   const originY = options.originY ?? 0;
@@ -146,6 +149,27 @@ export function shapeToGeometry(id: string, shape: VectorShape, options: Geometr
   }
 
   return { id, fills, strokes };
+}
+
+/**
+ * Morph-to-renderer boundary: preserve rational twips through interpolation, then apply R030's
+ * ties-to-even rounding once before the shared quantise/simplify adapter feeds GFX tessellation.
+ *
+ * This is deliberately not called by the P3 endpoint-only asset preview. The P3 model keeps each
+ * placement's Ratio; the production caller is the P4 scene/display-list integration that binds that
+ * placement value to its MorphShapeModel (IMPL-130 WP-130-04/05). `geometry-prepare.test.ts` pins
+ * this boundary until that caller exists.
+ */
+export function morphToGeometry(
+  id: string,
+  morph: MorphShapeModel,
+  ratio: number,
+  options: GeometryOptions = {},
+): ShapeGeometry {
+  if (morph.quarantined === true) throw new Error(`morph ${morph.id} is quarantined and has no renderable geometry`);
+  const rational = interpolateMorph(morph, ratio);
+  const finalTwips = roundMorphShapeForTessellation(rational);
+  return shapeToGeometry(id, finalTwips, options);
 }
 
 /** SWF matrix (translation in twips) → stage-pixel transform. */

@@ -171,7 +171,7 @@ export const Codes = {
   IMAGE_LOSSLESS2_FORMAT4: 'SF0259',
   IMAGE_FORMAT_UNKNOWN: 'SF0260',
   MORPH_EDGE_COUNT_MISMATCH: 'SF0261',
-  MORPH_RATIO_BAKED: 'SF0262',
+  MORPH_STRATEGY_RECORDED: 'SF0262',
   MORPH_VERTEX_BUDGET_EXCEEDED: 'SF0263',
   MORPH_OFFSET_MISMATCH: 'SF0264',
   MORPH_STYLE_MISMATCH: 'SF0265',
@@ -565,7 +565,12 @@ const REGISTRY: Record<string, CodeInfo> = {
     severity: 'warning',
     meaning: 'morph start/end edge counts differ; degenerate pairs inserted',
   },
-  SF0262: { code: 'SF0262', severity: 'info', meaning: 'morph ratios are baked to the configured finite ratio set' },
+  SF0262: {
+    code: 'SF0262',
+    severity: 'info',
+    meaning:
+      'morph interpolation strategy selected; the configured finite ratio set may be baked or dropped by the vertex budget',
+  },
   SF0263: { code: 'SF0263', severity: 'error', meaning: 'morph IR exceeds the vertex budget and was dropped' },
   SF0264: {
     code: 'SF0264',
@@ -623,7 +628,8 @@ const REGISTRY: Record<string, CodeInfo> = {
   SF0281: {
     code: 'SF0281',
     severity: 'warning',
-    meaning: 'glyph shape violates its mandatory fill style and was quarantined',
+    meaning:
+      'glyph outline violates the mandatory first fill style; its slot, metrics and cmap remain while the outline is withheld',
   },
   SF0282: { code: 'SF0282', severity: 'info', meaning: 'device-only font has no glyph outline table' },
   SF0283: { code: 'SF0283', severity: 'error', meaning: 'DefineFontInfo2 WideCodes flag is clear' },

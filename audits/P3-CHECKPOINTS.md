@@ -144,7 +144,7 @@ Exit criteria:
 Scope:
 1. Codec dispatch (WP-090-01): lazy payload, format reserved SF0301.
 2. ADPCM (WP-090-02): bit-exact against reference vectors (T-AUD-101); 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet (T-AUD-102).
-3. PCM (WP-090-03): format 0 big-endian vs format 3 little-endian (T-AUD-103); existing stream-block inspector verified.
+3. PCM (WP-090-03): formats 0 and 3 decode identically—both use little-endian 16-bit PCM and unsigned 8-bit PCM; `SF0302` records the assumed byte order for format 0 (`T-AUD-103`, `E-030`).
 4. MP3 (WP-090-04): frame header parse (version/layer/rate/bitrate/padding, 414-byte example) (T-AUD-104).
 5. MP3 pass-through (WP-090-05): byte-identical hash, latency SeekSamples trim metadata surfaced (T-AUD-105).
 6. Nellymoser/Speex/reserved fallback (WP-090-06): correct-duration silent WAV, manifest flag (T-AUD-115). SF0303/SF0307.
@@ -191,12 +191,12 @@ Exit criteria:
 
 ## Checkpoint C7 — P3 in-depth audit + closeout
 
-**Goal:** write the P3 audit (`audits/P3-AUDIT.md`) and resolution doc, modelled on P1/P2: verdict, WP ledger (C2–C6), test-obligation ledger, diagnostic ledger (SF0180–SF0195, SF0250–SF0269, SF0270–SF0289, SF0300–SF0332), rule-by-rule read against the four IMPL docs, behavioural probe outputs, findings with severity, open-items ledger, done-criteria status. Fix any new defects found; add labelled regression tests labelled `T-P3-REG-*`; re-run the full gate stack.
+**Goal:** write the P3 audit (`audits/P3-AUDIT.md`) and resolution doc, modelled on P1/P2: verdict, WP ledger (C2–C6), test-obligation ledger, diagnostic ledger (SF0180–SF0195, SF0250–SF0269, SF0270–SF0289, SF0300–SF0332), rule-by-rule read against the four IMPL docs, behavioural probe outputs, findings with severity, open-items ledger, done-criteria status. Fix any new defects found; label regression tests `T-P3-REG-*`; re-run the full gate stack. Also save a checkpoint record as `audits/P3-C7-AUDIT.md`.
 
 Exit criteria:
 - Audits saved at `audits/P3-AUDIT.md` and `audits/P3-AUDIT-RESOLUTION.md`.
 - All P3-owned deferred SF codes either now emit or carry a documented forward-reference to P4/P6/P8/P9.
-- Final gates: typecheck 8 projects, `pnpm test` (target ~495–510 tests), lint, build, spec:verify ISSUES=0, audit:dev new=0, tag:coverage clean, fuzz 10⁴ zero uncaught.
+- Final gates: typecheck 8 projects, full `pnpm test` (record actual files/tests; the old ~495–510 estimate predates C6's 58-file / 681-test baseline and is not an acceptance cap), lint, build, spec:verify ISSUES=0, audit:dev new=0, tag:coverage clean, fuzz 10⁴ zero uncaught.
 - Commit "P3 media decode + asset build + audit closeout" on `arena/07fdceae-swf-forge`.
 
 ---
@@ -214,7 +214,7 @@ Exit criteria:
 | C6 | Asset-dump CLI integration | C2, C3, C4, C5 | +3 | 0 |
 | C7 | P3 audit + closeout | C1–C6 | 0–5 (regressions) | any discovered defects |
 
-Total expected test delta: ~+45 → final suite ≈ **503–510 tests**.
+The original ~+45 / 503–510 total estimate predates C6's **58 files / 681 tests**; record the actual C7 run rather than comparing against that obsolete estimate.
 
 ## Explicitly deferred out of P3 (owned by later phases)
 

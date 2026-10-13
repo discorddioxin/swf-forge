@@ -482,8 +482,10 @@ DoAction:      ACTIONRECORDHEADER[] then a UI8 zero (End)
 DoInitAction:  SpriteID UI16, ACTIONRECORDHEADER[], UI8 zero
 ```
 
-**SWF version windows:** SWF 3 = control actions `0x00`–`0x09` (plus the 0x81+ control set);
-SWF 4 = stack machine `0x0A`–`0x9F` core; SWF 5 = types/math/object/stack additions and the
+**SWF version windows:** SWF 3 = control actions `0x00`–`0x09`, plus `GotoFrame` (`0x81`),
+`GetURL` (`0x83`), `WaitForFrame` (`0x8A`), `SetTarget` (`0x8B`), and `GotoLabel` (`0x8C`);
+SWF 4 = stack-machine actions `0x0A`–`0x9F` core, including `WaitForFrame2` (`0x8D`, which
+consumes the frame selector from the stack; Adobe's [version 10 SWF 3 action list](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/67) omits it, while its [SWF 4 actions list](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/73) and [continuation](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/74) include `ActionWaitForFrame2`); SWF 5 = types/math/object/stack additions and the
 `_quality`/`_xmouse`/`_ymouse` property ids; SWF 6 = `DoInitAction` (59) with `InstanceOf`,
 `Enumerate2`, `StrictEquals`, `Greater`, `StringGreater`; SWF 7 = `DefineFunction2`, `Extends`,
 `CastOp`, `ImplementsOp`, `Try`, `Throw`; SWF 9 = `DoABC` (and `DoAction` contents are ignored when
@@ -1091,7 +1093,7 @@ plus a local digest, never reproduced (`SEC-§4`).
 | 030 | `SWF-D07` | Carry `Metadata`/XMP into the emitted project? | Yes, as `movie.metadata` in the manifest |
 | 030 | `SWF-D08` | Path sanitisation for emitted asset names | Only content hashes and sanitised linkage ids |
 | 030 | `SWF-D09` | Tags inside a sprite outside Ch.13's list | Decode normally + `SF0129` (info) once per kind; definition tags are ignored for the dictionary (`SF0128`) |
-| 040 | `AVM1-D01` | String constant encoding for SWF 4–5 content | Latin-1/code-page per `DefineFontInfo` |
+| 040 | `AVM1-D01` | Legacy string decoding for SWF 4–5 content | Explicit caller policy; Windows-1252 default, Shift-JIS selectable; no in-file selector |
 | 040 | `AVM1-D02` | `Add` vs `Add2` distinct implementations | Both implemented |
 | 040 | `AVM1-D03` | Include the interpreter when any function is residual | Yes |
 | 040 | `AVM1-D04` | Scene semantics | Collapse scenes into label map; `nextScene`/`prevScene` computed |

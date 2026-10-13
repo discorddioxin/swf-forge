@@ -18,8 +18,8 @@ Checks:
     3  doc          every per-code `§8` table severity equals the registry's
     4  coverage     every registry code has an owning document; doc codes exist in the registry
     5  unemitted    production sink emissions, strict exceptions, and mere references are distinct
-    6  rules        `IMPL-NNN-Rnnn` definitions vs citations, two-part form aware
-    7  tests        `T-XXX-nnn` citations plus generated test/WP/document ownership coverage
+    6  rules        `IMPL-NNN-Rnnn` definitions vs citations, two-part form aware; P3 module maps are required
+    7  tests        namespaced `T-...-nnn` citations plus test/WP/document ownership coverage
     8  imports      comment-stripped cross-package import restrictions (eslint's intent)
     9  determinism  forbidden sources of nondeterminism on output paths
    10  version      version-gated diagnostics the owning module cannot reach
@@ -50,6 +50,7 @@ REGISTRY_PATH = os.path.join(ROOT, "packages", "swf", "src", "diagnostics", "cod
 ESLINT_PATH = os.path.join(ROOT, "eslint.config.js")
 DUMP_SOURCE = os.path.join(ROOT, "apps", "decompiler", "src", "dump", "model-dump.ts")
 DUMP_BIN = os.path.join(ROOT, "apps", "decompiler", "dist", "main.js")
+P3_AUDIT_PATH = os.path.join(ROOT, "audits", "P3-AUDIT.md")
 DISPLAY_SPEC = os.path.join(ROOT, "docs", "impl", "decompiler", "030-display-list-and-sprites.md")
 CONTROL_SPEC = os.path.join(ROOT, "docs", "impl", "decompiler", "040-control-tags-and-metadata.md")
 SWF_DIST = os.path.join(ROOT, "packages", "swf", "dist", "index.js")
@@ -67,7 +68,72 @@ DOC_MODULES = {
             "packages/swf/src/model/timeline.ts"],
     "040": ["packages/swf/src/model/movie.ts", "packages/swf/src/model/index.ts",
             "packages/swf/src/tags/control.ts"],
-    "060": ["packages/swf/src/tags/shape.ts"],
+    "060": [
+        "packages/swf/src/tags/shape.ts",
+        "packages/swf/src/shapes/quantise.ts",
+        "packages/swf/src/shapes/simplify.ts",
+        "packages/swf/src/shapes/serialise.ts",
+        "apps/decompiler/src/geometry/prepare.ts",
+        "apps/decompiler/src/render/vector-ir.ts",
+        "apps/decompiler/src/assets/shape-preview.ts",
+    ],
+    "070": [
+        "packages/swf/src/tags/images.ts",
+        "packages/swf/src/tags/morph.ts",
+        "packages/swf/src/shapes/morph-ir.ts",
+        "packages/assets/src/images/*.ts",
+        "apps/decompiler/src/assets/dump.ts",
+    ],
+    "080": [
+        "packages/swf/src/tags/fonts.ts",
+        "packages/swf/src/tags/text.ts",
+        "packages/swf/src/fonts/*.ts",
+        "packages/assets/src/fonts.ts",
+        "apps/decompiler/src/assets/font-atlas.ts",
+    ],
+    "090": [
+        "packages/swf/src/tags/sounds.ts",
+        "packages/audio/src/codecs/*.ts",
+    ],
+}
+
+# The P3 closeout audits these modules with two-part `Rnnn` references. Keeping an explicit required
+# source list makes a typo or an accidentally empty glob a failing audit result instead of silently
+# reverting that document to full-reference-only coverage.
+P3_RULE_MODULES = {
+    "060": {
+        "packages/swf/src/tags/shape.ts",
+        "packages/swf/src/shapes/quantise.ts",
+        "packages/swf/src/shapes/simplify.ts",
+        "packages/swf/src/shapes/serialise.ts",
+        "apps/decompiler/src/geometry/prepare.ts",
+        "apps/decompiler/src/render/vector-ir.ts",
+        "apps/decompiler/src/assets/shape-preview.ts",
+    },
+    "070": {
+        "packages/swf/src/tags/images.ts",
+        "packages/swf/src/tags/morph.ts",
+        "packages/swf/src/shapes/morph-ir.ts",
+        "packages/assets/src/images/decode.ts",
+        "apps/decompiler/src/assets/dump.ts",
+    },
+    "080": {
+        "packages/swf/src/tags/fonts.ts",
+        "packages/swf/src/tags/text.ts",
+        "packages/swf/src/fonts/metrics.ts",
+        "packages/assets/src/fonts.ts",
+        "apps/decompiler/src/assets/font-atlas.ts",
+    },
+    "090": {
+        "packages/swf/src/tags/sounds.ts",
+        "packages/audio/src/codecs/adpcm.ts",
+        "packages/audio/src/codecs/adpcm-tables.ts",
+        "packages/audio/src/codecs/mp3.ts",
+        "packages/audio/src/codecs/pcm.ts",
+        "packages/audio/src/codecs/resample.ts",
+        "packages/audio/src/codecs/wav.ts",
+        "packages/audio/src/codecs/measure.ts",
+    },
 }
 
 # The cross-package import restrictions of `eslint.config.js`, duplicated here so the check fails if the
@@ -193,7 +259,7 @@ def registers_docs():
     return sorted(glob.glob(os.path.join(ROOT, "docs", "impl", "registers", "*.md")))
 
 
-DEF_ROW = re.compile(r"^\|\s*`?(?:SF\d{4}|T-[A-Za-z0-9]+-\d+|IMPL-\d{3}-R\d{3})`?\s*\|")
+DEF_ROW = re.compile(r"^\|\s*`?(?:SF\d{4}|T-(?:[A-Za-z0-9]+-)*[A-Za-z0-9]+-\d+|IMPL-\d{3}-R\d{3})`?\s*\|")
 
 
 def check_sources():
@@ -519,8 +585,8 @@ def check_coverage(rows):
 # remove its entry; the checker rejects stale mappings. Codes raised as strict exceptions are
 # reported separately from DiagnosticSink emissions.
 DEFERRED_DIAGNOSTIC_WPS = {
-    # P3 implementation gaps remain open in the repeat audit; these are tracked to their actual WPs,
-    # not accepted as complete or hidden in the dev-audit baseline.
+    # These are explicit later-phase forwards, not unowned P3 gaps. The ownership check also verifies
+    # that each mapped WP declares a P4/P6/P8/P9 phase owner.
     "SF0279": "WP-080-12",
     # The P6 transcode ledger consumes these codes; P3 deliberately preserves source codecs.
     "SF0329": "WP-090-12",
@@ -588,10 +654,30 @@ def work_package_docs():
     return packages
 
 
+def work_package_phases():
+    """Map roadmap WPs to their declared phase owner where the table provides one."""
+    phases = {}
+    row = re.compile(r"^\|\s*`?(WP-\d{3}-\d{2})`?\s*\|", re.M)
+    for path in impl_docs():
+        for line in read(path).splitlines():
+            match = row.match(line)
+            if not match:
+                continue
+            cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
+            phase = next((cell for cell in cells[1:] if re.fullmatch(r"P\d+", cell)), None)
+            if phase is not None:
+                phases.setdefault(match.group(1), set()).add(phase)
+    return phases
+
+
+DEFERRED_FORWARD_PHASES = {"P4", "P6", "P8", "P9"}
+
+
 def check_emission_ownership(rows, by_name, range_owner, emitted, thrown, emission_sites, exception_sites):
     """Build the registry-wide emitted / exception / explicitly deferred coverage table."""
     name_of = {code: name for name, code in by_name.items()}
     packages = work_package_docs()
+    phases = work_package_phases()
     for code, wp in sorted(DEFERRED_DIAGNOSTIC_WPS.items()):
         if code not in rows:
             report("emission-ownership", f"ownership.unknown-code:{code}", "error",
@@ -602,6 +688,12 @@ def check_emission_ownership(rows, by_name, range_owner, emitted, thrown, emissi
         if wp not in packages:
             report("emission-ownership", f"ownership.unknown-wp:{code}", "error",
                    f"{code} is mapped to {wp}, which is not a work package in numbered implementation docs")
+        elif not phases.get(wp):
+            report("emission-ownership", f"ownership.phase-missing:{code}", "error",
+                   f"{code} is mapped to {wp}, but its implementation docs do not declare a phase owner")
+        elif not phases[wp] <= DEFERRED_FORWARD_PHASES:
+            report("emission-ownership", f"ownership.not-forward:{code}", "error",
+                   f"{code} is marked deferred but {wp} is owned by {sorted(phases[wp])}, not a later P4/P6/P8/P9 phase")
 
     for code, wp in sorted(EXCEPTION_DIAGNOSTIC_WPS.items()):
         if code not in rows:
@@ -645,7 +737,36 @@ RULE_FULL = re.compile(r"\bIMPL-(\d{3})-R(\d{3})\b")
 RULE_BARE = re.compile(r"(?<![\w-])R(\d{3})(?![\d\w-])")
 
 
+def doc_module_map_issues(module_map=None):
+    """Return missing P3 source mappings and stale/empty patterns without mutating findings."""
+    module_map = DOC_MODULES if module_map is None else module_map
+    issues = []
+    for doc, required in P3_RULE_MODULES.items():
+        patterns = module_map.get(doc, [])
+        if not patterns:
+            issues.append(("rules.module-map-missing", doc,
+                           f"IMPL-{doc} has no source-module map for two-part rule citations"))
+            continue
+        mapped = set()
+        for pattern in patterns:
+            matches = glob.glob(os.path.join(ROOT, pattern), recursive=True)
+            mapped.update(rel(path) for path in matches if os.path.isfile(path))
+            if not matches:
+                issues.append(("rules.module-map-empty", f"{doc}:{pattern}",
+                               f"IMPL-{doc} source-module pattern {pattern!r} matches no files"))
+        for path in sorted(required - mapped):
+            issues.append(("rules.module-map-required", f"{doc}:{path}",
+                           f"IMPL-{doc} required source module {path} is not covered by DOC_MODULES"))
+    return issues
+
+
+def check_doc_module_map():
+    for key, subject, message in doc_module_map_issues():
+        report("rules", f"{key}:{subject}", "error", message)
+
+
 def check_rules():
+    check_doc_module_map()
     defined = collections.defaultdict(set)
     for path in impl_docs():
         defined[doc_num(path)] |= {m.group(2) for m in RULE_DEF.finditer(read(path))}
@@ -687,10 +808,13 @@ def check_rules():
 
 
 # ------------------------------------------------------------------------------ 7. test ids
-# Same shape as verify_docs.py check 8b: design-spec tables may leave ids unquoted, while
-# implementation tables normally use code spans.
-TEST_DECL = re.compile(r"^\| `?(T-[A-Za-z0-9]+-\d+)`? \|", re.M)
-TEST_ANY = re.compile(r"\bT-[A-Za-z0-9]+-\d+\b")
+# Same table shape as verify_docs.py check 8b: design-spec tables may leave ids unquoted, while
+# implementation tables normally use code spans. Permit multiple namespaced components so checkpoint
+# regression ids such as T-P3-REG-001 are not silently invisible to the coverage ledger.
+TEST_ID = r"T-(?:[A-Za-z0-9]+-)*[A-Za-z0-9]+-\d+"
+TEST_DECL = re.compile(rf"^\|\s*`?({TEST_ID})`?\s*\|", re.M)
+TEST_ANY = re.compile(rf"\b{TEST_ID}\b")
+P3_REG_DECL = re.compile(r"^\|\s*`?(T-P3-REG-\d+)`?\s*\|", re.M)
 
 
 def historical_test_ids():
@@ -735,11 +859,19 @@ def test_work_package_owners():
 
 
 def check_tests():
-    # Numbered docs are the only declaration source: errata and generated STATUS rows are not tests.
+    # Numbered docs are the only general declaration source: errata and generated STATUS rows are
+    # not tests. The P3 closeout audit is an explicit, narrow supplement for T-P3-REG-* only.
     declared_docs = collections.defaultdict(set)
     for path in impl_docs() + spec_docs():
         for tid in TEST_DECL.findall(read(path)):
             declared_docs[tid].add(rel(path))
+    if os.path.exists(P3_AUDIT_PATH):
+        p3_ids = P3_REG_DECL.findall(read(P3_AUDIT_PATH))
+        for tid, count in collections.Counter(p3_ids).items():
+            if count > 1:
+                report("tests", f"tests.p3-reg-duplicate:{tid}", "error",
+                       f"{tid} appears {count} times in {rel(P3_AUDIT_PATH)}; each regression id must have one obligation row")
+            declared_docs[tid].add(rel(P3_AUDIT_PATH))
     declared = set(declared_docs)
     citations = collections.defaultdict(lambda: {"src": set(), "test": set()})
     for path in code_files():
@@ -769,7 +901,8 @@ def check_tests():
         docs = sorted(declared_docs[tid])
         owners = sorted(wp_owners.get(tid, set()))
         if not owners:
-            owners = ["doc-" + doc_num(doc) for doc in docs]
+            owners = ["P3-C7" if doc == rel(P3_AUDIT_PATH) else "doc-" + doc_num(doc)
+                      for doc in docs]
         coverage.append({"id": tid, "status": status, "declared_in": docs,
                          "owner": owners, "test_files": sorted(citation["test"]),
                          "source_files": sorted(citation["src"])})

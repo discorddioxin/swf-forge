@@ -77,7 +77,14 @@ export function buildFontAtlas(font: DefineFontModel): FontAtlasBuild {
   const sourceGlyphs = [...font.glyphs].sort((left, right) => left.index - right.index);
   const renderable = sourceGlyphs.flatMap((glyph) => {
     const shape = glyph.shape;
-    if (shape === null || shape.edges.length === 0 || shape.paths.length === 0) return [];
+    if (
+      glyph.quarantined ||
+      shape === null ||
+      shape.quarantined === true ||
+      shape.edges.length === 0 ||
+      shape.paths.length === 0
+    )
+      return [];
     const preview = renderShapePreview(normalizedShape(shape, factor));
     if (
       preview.width <= 0 ||

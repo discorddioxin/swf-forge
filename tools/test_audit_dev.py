@@ -62,12 +62,49 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
     def tearDown(self):
         audit_dev.findings.clear()
 
-    def test_every_deferred_code_has_a_real_roadmap_owner(self):
+    def test_every_deferred_code_has_a_real_later_phase_owner(self):
         packages = audit_dev.work_package_docs()
+        phases = audit_dev.work_package_phases()
         self.assertTrue(packages)
         for code, wp in audit_dev.DEFERRED_DIAGNOSTIC_WPS.items():
             with self.subTest(code=code):
                 self.assertIn(wp, packages)
+                self.assertTrue(phases.get(wp), f"{wp} must declare its phase owner")
+                self.assertTrue(phases[wp] <= audit_dev.DEFERRED_FORWARD_PHASES)
+
+    def test_p3_rule_module_map_covers_required_source_modules(self):
+        self.assertEqual(audit_dev.doc_module_map_issues(), [])
+
+    def test_p3_rule_module_map_detects_missing_documents_and_stale_globs(self):
+        with patch.object(audit_dev, "DOC_MODULES", {"060": ["packages/missing/*.ts"]}):
+            issues = audit_dev.doc_module_map_issues()
+        keys = {key for key, _subject, _message in issues}
+        self.assertIn("rules.module-map-missing", keys)
+        self.assertIn("rules.module-map-empty", keys)
+        self.assertIn("rules.module-map-required", keys)
+
+    def test_namespaced_regression_ids_are_declared_by_the_p3_audit(self):
+        audits_dir = Path(audit_dev.ROOT) / "audits"
+        tests_dir = Path(audit_dev.ROOT) / "packages/swf/test"
+        with tempfile.TemporaryDirectory(dir=audits_dir) as audit_tmp:
+            with tempfile.TemporaryDirectory(dir=tests_dir) as test_tmp:
+                audit_path = Path(audit_tmp) / "P3-AUDIT.md"
+                test_path = Path(test_tmp) / "p3-regression.test.ts"
+                audit_path.write_text(
+                    "| `T-P3-REG-901` | checkpoint regression | ✅ |\n", encoding="utf-8"
+                )
+                test_path.write_text("it('T-P3-REG-901', () => {});\n", encoding="utf-8")
+                with patch.object(audit_dev, "P3_AUDIT_PATH", str(audit_path)), \
+                        patch.object(audit_dev, "impl_docs", return_value=[]), \
+                        patch.object(audit_dev, "spec_docs", return_value=[]), \
+                        patch.object(audit_dev, "code_files", return_value=[str(test_path)]), \
+                        patch.object(audit_dev, "historical_test_ids", return_value=set()), \
+                        patch.object(audit_dev, "test_work_package_owners", return_value={}):
+                    declared, cited, coverage = audit_dev.check_tests()
+        self.assertEqual(declared, {"T-P3-REG-901"})
+        self.assertEqual(cited, {"T-P3-REG-901"})
+        self.assertEqual(coverage[0]["status"], "test-cited")
+        self.assertEqual(coverage[0]["owner"], ["P3-C7"])
 
     def test_pending_p3_diagnostics_are_owned_by_their_decoder_or_runtime_work_package(self):
         # Checkpoints retire these as they land: C1 took SF0277/SF0278 (zone and CSM targets) and

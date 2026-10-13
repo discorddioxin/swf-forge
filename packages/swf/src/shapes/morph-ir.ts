@@ -124,14 +124,15 @@ function lerpFill(a: FillStyle | null, b: FillStyle | null, t: number): FillStyl
   return a;
 }
 
-function lerpLine(a: LineStyle | null, b: LineStyle | null, t: number): LineStyle | null {
+function lerpLine(a: LineStyle | null, b: LineStyle | null, t: number, round: boolean): LineStyle | null {
   if (a === null || b === null) return a ?? b;
   // `MORPHLINESTYLE2` carries one shared flag word (`IMPL-070-R026`), so caps, joins, the miter
   // limit and the hinting flags are the same object on both sides by construction; only the width,
   // the colour and any fill vary.
+  const width = lerp(a.width, b.width, t);
   return {
     ...a,
-    width: roundTiesToEven(lerp(a.width, b.width, t)),
+    width: round ? roundTiesToEven(width) : width,
     color: lerpColor(a.color, b.color, t),
     ...(a.fill !== undefined && b.fill !== undefined ? { fill: lerpFill(a.fill, b.fill, t) ?? a.fill } : {}),
   };
@@ -157,10 +158,9 @@ function lerpEdge(a: Edge, b: Edge, t: number, round: boolean): Edge {
 
 export interface MorphInterpolateOptions {
   /**
-   * Round the result to integer twips (default `true`).
-   *
-   * Pass `false` to keep the rational twips R030 asks the IR to carry — a caller that is going to
-   * transform the geometry again should round once, at the end, not here and again later.
+   * Round geometric twips with ties-to-even (default `false`). Keep rational coordinates until the
+   * final tessellation boundary (`IMPL-070-R030`); pass `true` only when this call itself is that
+   * final boundary.
    */
   readonly round?: boolean;
 }
@@ -178,7 +178,8 @@ export function interpolateMorph(
   options: MorphInterpolateOptions = {},
 ): VectorShape {
   const clamped = ratio < 0 ? 0 : ratio > RATIO_MAX ? RATIO_MAX : ratio;
-  const round = options.round !== false;
+  const round = options.round === true;
+  const snap = (value: number): number => (round ? roundTiesToEven(value) : value);
   const t = clamped / RATIO_MAX;
   const atStart = clamped === 0;
   const atEnd = clamped === RATIO_MAX;
@@ -188,20 +189,48 @@ export function interpolateMorph(
 
   const edges = model.pairs.map((pair) => lerpEdge(pair.morphStart, pair.morphEnd, t, round));
   const fills = model.start.styles.fills.map((fill, index) => lerpFill(fill, model.end.styles.fills[index] ?? null, t));
-  const lines = model.start.styles.lines.map((line, index) => lerpLine(line, model.end.styles.lines[index] ?? null, t));
+  const lines = model.start.styles.lines.map((line, index) =>
+    lerpLine(line, model.end.styles.lines[index] ?? null, t, round),
+  );
 
   return {
     ...model.start,
     bounds: {
-      xMin: roundTiesToEven(lerp(model.startBounds.xMin, model.endBounds.xMin, t)),
-      xMax: roundTiesToEven(lerp(model.startBounds.xMax, model.endBounds.xMax, t)),
-      yMin: roundTiesToEven(lerp(model.startBounds.yMin, model.endBounds.yMin, t)),
-      yMax: roundTiesToEven(lerp(model.startBounds.yMax, model.endBounds.yMax, t)),
+      xMin: snap(lerp(model.startBounds.xMin, model.endBounds.xMin, t)),
+      xMax: snap(lerp(model.startBounds.xMax, model.endBounds.xMax, t)),
+      yMin: snap(lerp(model.startBounds.yMin, model.endBounds.yMin, t)),
+      yMax: snap(lerp(model.startBounds.yMax, model.endBounds.yMax, t)),
     },
     edgeBounds: null,
     recomputedBounds: null,
     styles: { fills, lines },
     edges,
+  };
+}
+
+/** Apply the R030 ties-to-even snap exactly once at the morph tessellation boundary. */
+export function roundMorphShapeForTessellation(shape: VectorShape): VectorShape {
+  if (shape.quarantined === true) return shape;
+  return {
+    ...shape,
+    bounds: {
+      xMin: roundTiesToEven(shape.bounds.xMin),
+      xMax: roundTiesToEven(shape.bounds.xMax),
+      yMin: roundTiesToEven(shape.bounds.yMin),
+      yMax: roundTiesToEven(shape.bounds.yMax),
+    },
+    edges: shape.edges.map((edge) => ({
+      fromX: roundTiesToEven(edge.fromX),
+      fromY: roundTiesToEven(edge.fromY),
+      toX: roundTiesToEven(edge.toX),
+      toY: roundTiesToEven(edge.toY),
+      ...(edge.controlX !== undefined ? { controlX: roundTiesToEven(edge.controlX) } : {}),
+      ...(edge.controlY !== undefined ? { controlY: roundTiesToEven(edge.controlY) } : {}),
+    })),
+    styles: {
+      ...shape.styles,
+      lines: shape.styles.lines.map((line) => (line === null ? null : { ...line, width: roundTiesToEven(line.width) })),
+    },
   };
 }
 
@@ -214,8 +243,8 @@ function verticesPerFrame(model: MorphShapeModel): number {
 
 export interface MorphBakeOptions {
   /**
-   * The finite set of ratios the renderer animates through (`GFX-D14`). Default **empty**, which
-   * means runtime interpolation — baking an arbitrary ratio is forbidden by `R032`.
+   * The finite set of ratios a renderer/build integration chooses to bake (`IMPL-070-R032`).
+   * Default **empty** means runtime interpolation; arbitrary ratios are never baked implicitly.
    */
   readonly ratioBake?: readonly number[];
   /**
@@ -242,9 +271,10 @@ export interface MorphBakeResult {
 /**
  * Decide how a morph reaches the renderer, and record the decision (`IMPL-070-R032`).
  *
- * The decision is always reported, including when nothing is baked: `SF0262` exists so a reader of
- * the report can tell "runtime interpolation" from "baked at these ratios" without re-deriving the
- * emitter's configuration. Silence would be indistinguishable from the stage not having run.
+ * The decision is always reported, including when nothing is baked or the requested set exceeds
+ * the vertex budget: `SF0262` lets a reader distinguish runtime interpolation from a configured
+ * finite bake set without re-deriving the emitter's configuration. `SF0263` separately reports a
+ * budget-driven drop; silence would be indistinguishable from the stage not having run.
  */
 export function bakeMorphRatios(model: MorphShapeModel, options: MorphBakeOptions = {}): MorphBakeResult {
   const emit = options.emit ?? ((): void => {});
@@ -256,15 +286,20 @@ export function bakeMorphRatios(model: MorphShapeModel, options: MorphBakeOption
 
   if (ratios.length === 0) {
     emit(
-      Codes.MORPH_RATIO_BAKED,
+      Codes.MORPH_STRATEGY_RECORDED,
       'info',
-      `morph ${model.id} uses runtime interpolation; no ratios baked (GFX-D14 default)`,
+      `morph ${model.id} uses runtime interpolation; no ratios baked (IMPL-070-R032 default)`,
     );
     return { strategy: 'runtime', frames: [], vertexCount: 0, vertexBudget };
   }
 
   const vertexCount = ratios.length * verticesPerFrame(model);
   if (vertexCount > vertexBudget) {
+    emit(
+      Codes.MORPH_STRATEGY_RECORDED,
+      'info',
+      `morph ${model.id} selected finite bake ratio(s) ${ratios.join(', ')}, but the requested frames exceed the vertex budget and will be dropped`,
+    );
     emit(
       Codes.MORPH_VERTEX_BUDGET_EXCEEDED,
       'error',
@@ -274,7 +309,7 @@ export function bakeMorphRatios(model: MorphShapeModel, options: MorphBakeOption
   }
 
   emit(
-    Codes.MORPH_RATIO_BAKED,
+    Codes.MORPH_STRATEGY_RECORDED,
     'info',
     `morph ${model.id} baked at ratio(s) ${ratios.join(', ')} (${vertexCount} vertices)`,
   );

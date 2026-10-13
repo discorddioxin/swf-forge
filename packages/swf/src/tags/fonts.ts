@@ -89,6 +89,15 @@ export interface FontNameModel {
   readonly copyright: string;
 }
 
+/** DefineFont4 (91) metadata needed to report and select a downstream system-font fallback. */
+export interface DefineFont4Model {
+  readonly id: number;
+  /** Raw FontFlags byte; bit 2 (`0x04`) is `HasFontData`. */
+  readonly flags: number;
+  readonly name: string;
+  readonly hasFontData: boolean;
+}
+
 /** One ZONEDATA alignment coordinate + range pair. */
 export interface FontZoneData {
   readonly alignmentCoordinate: number;
@@ -220,7 +229,7 @@ function glyphShape(
       fillRule: 'evenOdd',
     },
   );
-  return { shape, quarantined: violation !== null };
+  return { shape, quarantined: violation !== null || shape.quarantined === true };
 }
 
 function invalidFont(c: Cursor, message: string): void {
@@ -541,6 +550,14 @@ export function decodeFontInfo(tagCode: number, c: Cursor): FontInfoModel {
     languageCode,
     codes,
   };
+}
+
+/** `DefineFont4` (91): preserve its flags/name but never pass its CFF payload to the glyph decoder. */
+export function decodeDefineFont4(c: Cursor): DefineFont4Model {
+  const id = c.u16();
+  const flags = c.u8();
+  const name = c.string();
+  return { id, flags, name, hasFontData: (flags & 0x04) !== 0 };
 }
 
 /** `DefineFontName` (88): two NUL-terminated strings (PostScript name, copyright). */

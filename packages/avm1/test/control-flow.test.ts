@@ -1,12 +1,12 @@
 /**
- * CFG and `SetTarget` region splitting — `IMPL-050` §5.6/§7 (`T-AVM1-004`).
+ * CFG and `SetTarget` region splitting — `IMPL-050` §5.6/§7 (`T-AVM1-FE-004`).
  */
 
 import { describe, expect, it } from 'vitest';
 
 import { analyze, block, pushString, rec, setTarget } from './harness.js';
 
-describe('T-AVM1-004 SetTarget block splitting and region extent', () => {
+describe('T-AVM1-FE-004 SetTarget block splitting and region extent', () => {
   it('SetTarget ends a block and its target is a region parameter for the records that follow', () => {
     const bytes = block(pushString('x'), setTarget('/a'), rec(0x0a), setTarget(''), rec(0x0a));
     const { block: b } = analyze(bytes);

@@ -1,13 +1,14 @@
 /**
  * `forge-decompile` argument table and wiring (`TECH-SPEC` §3.2: no business logic in this file).
  *
- * Verbs (`TECH-SPEC` §5.2): `inspect` and `dump` (implemented), `diff`, `assets` (their own work
- * packages). Unknown verbs are rejected rather than guessed at, and every failure path returns one of
- * `CMP-R029`'s exit codes.
+ * Verbs (`TECH-SPEC` §5.2): `inspect`, `dump`, `analyze --tiers`, `assets`, and `render`; `diff` remains
+ * future work. Unknown verbs are rejected rather than guessed at, and every failure path returns one
+ * of `CMP-R029`'s exit codes.
  */
 
 import { SwfReadError } from '@swf-forge/swf';
 
+import { runAnalyze } from './commands/analyze.js';
 import { runDump } from './commands/dump.js';
 import { runInspect } from './commands/inspect.js';
 import { runRender } from './commands/render.js';
@@ -21,6 +22,7 @@ export const USAGE = `forge-decompile — inspect a SWF and report what it conta
 
 Usage:
   forge-decompile inspect <file.swf> [--json] [--verbose] [--actions] [--tags] [--symbols] [--shapes] [--strict] [--tolerate-length] [--strict-timeline]
+  forge-decompile analyze <file.swf> --tiers [--json] [--strict] [--tolerate-length] [--strict-timeline]
   forge-decompile dump <file.swf> [--json] [--verbose] [--strict] [--tolerate-length] [--strict-timeline] [--import <url>=<file.swf>]... [--out <dir>]
   forge-decompile assets dump <file.swf> --out <dir>
   forge-decompile render <file.swf> --out <dir> [--frames <n|a-b>] [--images] [--demo]
@@ -28,6 +30,7 @@ Usage:
 
 Commands:
   inspect   header, timeline, dictionary and diagnostics for one file
+  analyze   AVM1 front end and stable T0/T1/T2 report per action block/function
   dump      the whole movie model: header, dictionary, every frame, control tags, diagnostics
   assets dump  deterministic build-time previews and a relative asset manifest
   render    static render (P4): scene bundle, reference frames and per-frame hashes; --demo adds
@@ -37,6 +40,7 @@ Options:
   --json        machine-readable output on stdout (stable field order)
   --verbose     include info-level diagnostics and per-frame sprite detail
   --actions     inspect: run the AVM1 front end and print the disassembly (SF1000 -> exit 3)
+  --tiers       analyze: report every action block and nested function's T0/T1/T2 decision and reasons
   --tags        inspect: list every indexed tag (index, code, depth, sprite, offset, length)
   --symbols     inspect: print the export/import name tables in full
   --shapes      inspect: report decoded static-shape bounds, path counts and stable geometry hashes
@@ -138,6 +142,28 @@ export function runCli(argv: readonly string[], io: CliIo): number {
             tags: flags.has('--tags'),
             symbols: flags.has('--symbols'),
             shapes: flags.has('--shapes'),
+            strict: flags.has('--strict'),
+            strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
+            strictTimeline: flags.has('--strict-timeline'),
+          },
+          io,
+        );
+      }
+      case 'analyze': {
+        const file = files[0];
+        if (flags.has('--help')) {
+          io.out(USAGE);
+          return EXIT.ok;
+        }
+        if (file === undefined || files.length !== 1) {
+          io.out(USAGE);
+          return EXIT.unreadable;
+        }
+        return runAnalyze(
+          {
+            file,
+            tiers: flags.has('--tiers'),
+            json: flags.has('--json'),
             strict: flags.has('--strict'),
             strictLength: flags.has('--strict') && !flags.has('--tolerate-length'),
             strictTimeline: flags.has('--strict-timeline'),

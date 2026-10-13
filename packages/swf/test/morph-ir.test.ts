@@ -15,6 +15,8 @@ import {
   bakeMorphRatios,
   decodeDefineMorphShape,
   interpolateMorph,
+  quantiseScalar,
+  roundMorphShapeForTessellation,
   roundTiesToEven,
   serialiseVectorShape,
   vectorShapeDigest,
@@ -214,18 +216,32 @@ describe('IMPL-070-R030 rational twips survive to a single rounding', () => {
     expect(model.pairs[0]?.morphStart.controlX).toBe(50.5);
   });
 
-  it('keeps the unrounded value when the caller asks to round later', () => {
+  it('preserves rational twips by default and rounds only when explicitly asked', () => {
     const { model } = decodeMorph(straightStream([[101, 0]]), curveStream([50, 50, 51, -50]));
-    const exact = interpolateMorph(model, 32768, { round: false });
-    const rounded = interpolateMorph(model, 32768);
+    const exact = interpolateMorph(model, 32768);
+    const rounded = interpolateMorph(model, 32768, { round: true });
 
     expect(Number.isInteger(exact.edges[0]?.controlX ?? 0)).toBe(false);
     expect(Number.isInteger(rounded.edges[0]?.controlX ?? 0)).toBe(true);
   });
 
-  it('rounds once at the end rather than accumulating a per-component error', () => {
+  it('T-P3-REG-005 keeps static-grid and morph final-rounding policies distinct', () => {
     const { model } = decodeMorph(straightStream([[101, 0]]), curveStream([50, 50, 51, -50]));
-    const atHalf = interpolateMorph(model, 32768, { round: false });
+    const rational = interpolateMorph(model, 32768);
+    const tessellationShape = roundMorphShapeForTessellation(rational);
+
+    // Static shape quantisation is mirror-symmetric half-away-from-zero; morph rational twips use
+    // R030's ties-to-even exactly once at the tessellation boundary.
+    expect(quantiseScalar(0.5)).toBe(1);
+    expect(roundTiesToEven(0.5)).toBe(0);
+    expect(rational.edges[0]?.controlX).not.toBe(Math.round(rational.edges[0]?.controlX ?? 0));
+    expect(tessellationShape.edges[0]?.controlX).toBe(roundTiesToEven(rational.edges[0]?.controlX ?? 0));
+    expect(Number.isInteger(tessellationShape.bounds.xMax)).toBe(true);
+  });
+
+  it('keeps interpolation exact until the final rounding step, not per endpoint component', () => {
+    const { model } = decodeMorph(straightStream([[101, 0]]), curveStream([50, 50, 51, -50]));
+    const atHalf = interpolateMorph(model, 32768);
     const control = atHalf.edges[0]?.controlX ?? 0;
 
     // The interpolated value is the average of the two exact half-twip controls, not the average of
@@ -234,6 +250,7 @@ describe('IMPL-070-R030 rational twips survive to a single rounding', () => {
     const endControl = model.pairs[0]?.morphEnd.controlX ?? 0;
     const t = 32768 / 65535;
     expect(control).toBeCloseTo((1 - t) * startControl + t * endControl, 10);
+    expect(roundMorphShapeForTessellation(atHalf).edges[0]?.controlX).toBe(roundTiesToEven(control));
   });
 });
 
@@ -301,7 +318,7 @@ describe('T-MOD-402 morph style pairing', () => {
     expect(model.start.styles.lines[1]).toMatchObject({ width: 20 });
     expect(model.end.styles.lines[1]).toMatchObject({ width: 120 });
     const mid = interpolateMorph(model, 32768).styles.lines[1];
-    expect(mid?.width).toBe(70);
+    expect(mid?.width).toBeCloseTo(70.000762951, 6);
     expect(mid?.color.r).toBe(128);
   });
 
@@ -360,14 +377,14 @@ describe('IMPL-070-R032 ratio baking', () => {
     expect(a.frames.map((f) => vectorShapeDigest(f.shape))).toEqual(b.frames.map((f) => vectorShapeDigest(f.shape)));
   });
 
-  it('drops the mesh with SF0263 when the baked frames exceed the vertex budget', () => {
+  it('T-P3-REG-009 records the finite strategy before SF0263 drops an over-budget bake', () => {
     const sink = collect();
     const result = bakeMorphRatios(model(), { ratioBake: [0, 32768, 65535], vertexBudget: 4, emit: sink.emit });
 
     expect(result.strategy).toBe('dropped');
     expect(result.frames).toEqual([]);
     expect(result.vertexCount).toBeGreaterThan(result.vertexBudget);
-    expect(sink.codes).toEqual(['SF0263']);
+    expect(sink.codes).toEqual(['SF0262', 'SF0263']);
   });
 
   it('rejects out-of-range ratios instead of baking a clamped duplicate', () => {

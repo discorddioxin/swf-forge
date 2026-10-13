@@ -14,7 +14,14 @@
 import type { MovieModel, SwfFile } from '@swf-forge/swf';
 
 import { scanRecords, type ActionRecord, type Emit } from './record.js';
-import { decodeRecord, makeStringReader, newResidualFlags, type DecodedOp, type OperandContext } from './operands.js';
+import {
+  decodeRecord,
+  makeStringReader,
+  newResidualFlags,
+  type DecodedOp,
+  type LegacyStringEncoding,
+  type OperandContext,
+} from './operands.js';
 import type { FunctionDefShell } from './functions.js';
 import { buildBlockFrames, collectBodyRanges } from './control-flow.js';
 import { simulateFrames, type SimulateOptions } from './stack.js';
@@ -41,6 +48,8 @@ export interface AnalyzeBlockInput {
   /** Stable emitted symbol base name. */
   readonly id: string;
   readonly version: number;
+  /** Caller-selected decoder for SWF ≤5 strings; there is no in-file selector. */
+  readonly legacyEncoding?: LegacyStringEncoding;
   readonly emit: Emit;
   /** `true` for a `DefineFunction*` body (pool references are dynamic there, R022). */
   readonly inFunction?: boolean;
@@ -205,7 +214,7 @@ function scanWithRegionBodies(bytes: Uint8Array, emit: Emit, decode: (record: Ac
     const sub = scanRecords(
       bytes.subarray(range.start, range.end),
       (code, severity, message, offset, context) => emit(code, severity, message, offset + range.start, context),
-      { requireEnd: false },
+      { requireEnd: false, stopAtEnd: false },
     );
     if (sub.desync) desync = true;
     const newRecords: ActionRecord[] = [];
@@ -283,11 +292,12 @@ class BlockContext {
 
   operandContext(): OperandContext {
     const input = this.input;
-    const closedReader = makeStringReader(input.bytes, input.version, 'windows-1252');
+    const legacyEncoding = input.legacyEncoding ?? 'windows-1252';
+    const closedReader = makeStringReader(input.bytes, input.version, legacyEncoding);
     return {
       version: input.version,
       registerCount: input.shell?.registerCount ?? null,
-      legacyEncoding: 'windows-1252',
+      legacyEncoding,
       emit: input.emit,
       string: (_bytes, from, to) => closedReader(from, to),
       decodeFunctionBody: (shell) => this.decodeFunctionBody(shell),
@@ -326,6 +336,7 @@ class BlockContext {
         kind: 'function',
         id: defId,
         version: this.input.version,
+        legacyEncoding: this.input.legacyEncoding ?? 'windows-1252',
         emit: this.input.emit,
         inFunction: true,
         shell,
@@ -568,6 +579,8 @@ export interface MovieAnalysis {
 
 export interface AnalyzeMovieOptions {
   readonly emit: Emit;
+  /** Caller-selected decoder for SWF ≤5 strings; there is no in-file selector. */
+  readonly legacyEncoding?: LegacyStringEncoding;
 }
 
 /**
@@ -576,6 +589,7 @@ export interface AnalyzeMovieOptions {
  */
 export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeMovieOptions): MovieAnalysis {
   const emit = options.emit;
+  const legacyEncoding = options.legacyEncoding ?? 'windows-1252';
   const avm2 = detectAvm2(file, model);
   if (avm2.present) {
     emit(
@@ -609,6 +623,7 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
         kind: 'timeline',
         id: `frame_${entry.frame}_${entry.order}`,
         version: file.version,
+        legacyEncoding,
         emit,
         frameAssociations: [entry.frame],
       }),
@@ -628,6 +643,7 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
         kind: 'init',
         id: `init_${entry.spriteId}_${entry.initOrder}`,
         version: file.version,
+        legacyEncoding,
         emit,
         initOrder: entry.initOrder,
         frameAssociations: [entry.frame],
@@ -652,6 +668,7 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
             kind: 'clipEvent',
             id: `clip_${clipIndex++}`,
             version: file.version,
+            legacyEncoding,
             emit,
           }),
         );
@@ -681,6 +698,7 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
           kind: 'button',
           id: `button_${button.id}_${index}`,
           version: file.version,
+          legacyEncoding,
           emit,
         }),
       );

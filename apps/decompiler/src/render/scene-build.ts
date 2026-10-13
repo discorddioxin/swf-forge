@@ -88,7 +88,7 @@ export function buildStaticScene(model: MovieModel, options: BuildStaticSceneOpt
   const stateCache = new Map<TimelineModel, TimelineState[]>();
 
   function geometryFor(character: CharacterModel): ShapeGeometry | null {
-    if (!character.vectorShape) return null;
+    if (!character.vectorShape || character.vectorShape.quarantined === true) return null;
     const id = `shape-${character.id}`;
     const existing = geometries.get(id);
     if (existing) return existing;

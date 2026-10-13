@@ -1,9 +1,9 @@
 /**
  * Strings — `IMPL-010` §5.4.
  *
- * A string is a NUL-terminated byte run. Version >= 6 is UTF-8; versions 1–5 carried no encoding tag
- * and the player guessed from the locale, so we apply the documented fallback ladder and say so
- * (`SF0012`).
+ * A string is a NUL-terminated byte run. Version >= 6 is UTF-8; versions 1–5 carried no encoding
+ * selector, and Flash Player chose ANSI or Shift-JIS decoding from its locale. We use an explicit
+ * caller-selected legacy encoding (defaulting to Windows-1252 as a deterministic porting policy).
  */
 
 export interface DecodedString {
@@ -64,7 +64,7 @@ export function decodeUtf8(bytes: Uint8Array): { value: string; invalid: boolean
 export interface StringReadOptions {
   /** Movie version; decides UTF-8 (>= 6) vs legacy decoding (<= 5). */
   version?: number;
-  /** How to decode when version <= 5 and no better signal exists. Default 'windows-1252'. */
+  /** Caller-selected decoding policy for SWF <= 5 (no encoding selector is stored in the file). Default 'windows-1252'. */
   legacyEncoding?: 'windows-1252' | 'latin1' | 'shift-jis';
   /** Hard cap on raw bytes. Default 65536. */
   maxBytes?: number;
@@ -92,7 +92,7 @@ export function decodeString(
 
   const legacy = opts.legacyEncoding ?? 'windows-1252';
   if (legacy === 'shift-jis') {
-    // Shift-JIS is supplied by a pre-scan of DefineFontInfo (doc 080); TextDecoder handles it.
+    // The caller selects Shift-JIS as the target-locale policy; STRING has no in-file selector (SWF v19 §1).
     const value = new TextDecoder('shift-jis', { fatal: false }).decode(slice);
     return {
       decoded: { value, byteLength: slice.length, invalidUtf8: false, encoding: 'shift-jis' },

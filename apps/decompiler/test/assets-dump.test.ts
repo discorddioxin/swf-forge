@@ -9,8 +9,10 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { encodeBitmapPng, spliceJpegTables } from '@swf-forge/assets';
 import { EXIT, runCli, type CliIo } from '@swf-forge/decompiler';
-import { Tag } from '@swf-forge/swf';
+import { Tag, buildMovieModel, openSwf } from '@swf-forge/swf';
 import { ByteWriter, buildSwf, concat, endTag, showFrames, tag, writeRect } from '@swf-forge/swf/test-support';
+
+import { buildFontAtlas } from '../src/assets/font-atlas.js';
 
 const WORK = mkdtempSync(join(tmpdir(), 'swf-forge-assets-'));
 afterAll(() => rmSync(WORK, { recursive: true, force: true }));
@@ -42,6 +44,16 @@ function shapeBody(id: number): Uint8Array {
   straight(-40, 0);
   straight(0, -40);
   writer.bits(0, 6).align(); // EndShapeRecord
+  return writer.toUint8Array();
+}
+
+function unknownFillShapeBody(id: number): Uint8Array {
+  const writer = new ByteWriter();
+  writer.u16(id);
+  writeRect(writer, { xMin: 0, xMax: 40, yMin: 0, yMax: 40 });
+  writer.u8(1).u8(0x7f).u8(0xff); // one unknown FillStyleType followed by opaque bytes
+  writer.u8(0); // bytes that resemble a LINESTYLEARRAY must not be parsed
+  writer.bits(0, 4).bits(0, 4).bits(0, 6).align();
   return writer.toUint8Array();
 }
 
@@ -718,6 +730,30 @@ describe('forge-decompile assets dump', () => {
     expect(readFileSync(join(secondDir, 'manifest.json'))).toEqual(readFileSync(join(firstDir, 'manifest.json')));
   });
 
+  it('T-P3-REG-006 retains a quarantined glyph slot but leaves its atlas outline absent', () => {
+    const decoded = buildMovieModel(openSwf(fontSwf())).characters.get(17)?.font;
+    if (decoded === null || decoded === undefined) throw new Error('font fixture did not decode');
+    const glyph = decoded.glyphs[0];
+    if (glyph === undefined) throw new Error('font fixture has no glyph');
+    const font = {
+      ...decoded,
+      glyphs: [glyph, { ...glyph, index: 1, code: 66, advance: 610, quarantined: true }],
+    };
+
+    const atlas = buildFontAtlas(font);
+    expect(atlas.pages).toHaveLength(1); // the valid glyph is still rendered
+    expect(atlas.glyphs).toHaveLength(2);
+    expect(atlas.glyphs[0]).toMatchObject({ index: 0, code: 65, page: 0, rect: expect.any(Object) });
+    expect(atlas.glyphs[1]).toMatchObject({
+      index: 1,
+      code: 66,
+      advance: 610,
+      boundsEm1024: expect.any(Object),
+      page: null,
+      rect: null,
+    });
+  });
+
   it('T-AUD-101–105/115 writes PCM/ADPCM WAV, byte-identical MP3, and diagnosed silent fallbacks', () => {
     const source = write('audio.swf', audioSwf());
     const outDir = join(WORK, 'audio-bundle');
@@ -988,10 +1024,62 @@ describe('forge-decompile assets dump', () => {
     }
   });
 
+  it('T-P3-REG-003 reports quarantined shape assets as unsupported without writing placeholder PNGs', () => {
+    const source = write(
+      'unknown-fill-shape.swf',
+      buildSwf({
+        version: 10,
+        body: concat(
+          tag(Tag.DefineShape3, unknownFillShapeBody(7)),
+          tag(Tag.DefineShape3, shapeBody(8)),
+          showFrames(1),
+          endTag(),
+        ),
+        frameCount: 1,
+      }),
+    );
+    const outDir = join(WORK, 'unknown-fill-shape-assets');
+    const captured = capture();
+    expect(runCli(['assets', 'dump', source, '--out', outDir], captured.io)).toBe(EXIT.failed);
+    expect(captured.err.join('\n')).toContain('SF0180 #7');
+    expect(readdirSync(outDir).sort()).toEqual(['manifest.json', 'shape-8.png']);
+
+    const manifest = JSON.parse(readFileSync(join(outDir, 'manifest.json'), 'utf8')) as {
+      assets: readonly {
+        characterId: number;
+        status: string;
+        outputType: string | null;
+        path: string | null;
+        diagnostics: readonly { code: string; severity: string; message: string }[];
+      }[];
+    };
+    expect(manifest.assets).toHaveLength(2);
+    expect(manifest.assets[0]).toMatchObject({
+      characterId: 7,
+      status: 'unsupported',
+      outputType: null,
+      path: null,
+      diagnostics: [
+        { code: 'SF0180', severity: 'error' },
+        {
+          code: 'ASSET_UNSUPPORTED',
+          severity: 'error',
+          message: 'unknown fill style quarantined the shape; no PNG was written',
+        },
+      ],
+    });
+    expect(manifest.assets[1]).toMatchObject({ characterId: 8, status: 'written', path: 'shape-8.png' });
+  });
+
   it('T-AST-027: records quarantined bitmap/font inputs and exact-duration silent audio fallbacks', () => {
     const noJpegTables = concat(u16(61), Uint8Array.from([0xff, 0xd8]));
     const unknownLossless = concat(u16(62), Uint8Array.from([9]), u16(1), u16(1), Uint8Array.from([0]));
-    const cffFont = concat(u16(63), Uint8Array.from([0x04, 0]));
+    const cffFont = concat(
+      u16(63),
+      Uint8Array.from([0x04]),
+      new TextEncoder().encode('Test CFF Font\0'),
+      Uint8Array.from([0x01, 0x02]),
+    );
     const malformedJpeg = concat(u16(64), Uint8Array.from([0xff, 0xd8]));
     const source = write(
       'unsupported-fallbacks.swf',
@@ -1119,6 +1207,10 @@ describe('forge-decompile assets dump', () => {
         codes: ['SF0301'],
       },
     ]);
+    expect(manifest.assets.find((asset) => asset.characterId === 63)).toMatchObject({
+      metadata: { familyName: 'Test CFF Font', fontFlags: 0x04, hasEmbeddedCff: true },
+      diagnostics: [{ code: 'SF0270', severity: 'error' }],
+    });
     expect(manifest.assets.find((asset) => asset.characterId === 63)?.diagnostics[0]?.severity).toBe('error');
     expect(
       manifest.assets.filter((asset) => asset.characterId >= 71).every((asset) => asset.metadata?.silent === true),

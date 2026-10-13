@@ -16,6 +16,7 @@ import type { VectorShape } from '../tags/shape.js';
 import type { BitmapAssetModel } from '../tags/images.js';
 import type {
   CsmTextSettingsModel,
+  DefineFont4Model,
   DefineFontModel,
   DefineFontV1Model,
   FontAlignZonesModel,
@@ -232,6 +233,8 @@ export interface CharacterModel {
    * view for DefineFont v1 + FontInfo/Info2. Rasterisation stays in `packages/assets`.
    */
   readonly font: DefineFontModel | null;
+  /** DefineFont4's embedded family name and raw flags; CFF bytes remain an unsupported payload view. */
+  readonly font4?: DefineFont4Model | null;
   /** DefineFont (10) v1 pre-Info view, kept so Info code-table overrides can be inspected. Null once resolved. */
   readonly fontV1: DefineFontV1Model | null;
   /** DefineFontInfo/Info2 for this font, when provided before resolve. */

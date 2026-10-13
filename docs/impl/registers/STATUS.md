@@ -1,7 +1,7 @@
 # IMPL STATUS — implementation-spec coverage
 
 **Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.
-**Snapshot:** 2026-10-09 · source: `docs/impl/**/*.md`
+**Snapshot:** 2026-10-11 · source: `docs/impl/**/*.md`
 
 State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =
 chapter-independent · ⏳ partial = open items remain (each listed in that document's §Open items).
@@ -17,16 +17,16 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [070](../decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 15 | 53 | 9 | 21 | 20 | ✅ |
 | [080](../decompiler/080-fonts-and-text.md) | Fonts and Text | 14 | 45 | 7 | 18 | 16 | ✅ |
 | [090](../decompiler/090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 | 6 | 15 | 19 | ✅ |
-| [100](../decompiler/100-buttons.md) | Buttons, Tracking, and Hit Testing | 10 | 26 | 5 | 17 | 10 | ✅ |
+| [100](../decompiler/100-buttons.md) | Buttons, Tracking, and Hit Testing | 10 | 26 | 5 | 19 | 10 | ✅ |
 | [110](../decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 | 6 | 16 | 16 | ✅ |
 | [160](../engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 | 0 | 14 | 17 | ✅ |
-| [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 19 | 0 | ✅ |
+| [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 20 | 0 | ✅ |
 | [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 2 | 10 | 30 | ✅ |
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
-| [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 6 | 30 | 26 | ✅ |
+| [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 7 | 33 | 26 | ✅ |
 | [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 | 0 | 8 | 2 | ✅ |
-| **Total** | 16 documents | **211** | **≈ 658.5** | **71** | **275** | **255** | |
+| **Total** | 16 documents | **211** | **≈ 658.5** | **72** | **281** | **255** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -67,14 +67,14 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | 070 | `T-MOD-301`, `T-MOD-302`, `T-MOD-303`, `T-MOD-304`, `T-MOD-305`, `T-MOD-306`, `T-MOD-307`, `T-MOD-308`, `T-MOD-309`, `T-MOD-310`, `T-MOD-311`, `T-MOD-312`, `T-MOD-313`, `T-MOD-401`, `T-MOD-402`, `T-MOD-403`, `T-MOD-404`, `T-MOD-405`, `T-MOD-406`, `T-MOD-407`, `T-MOD-408` |
 | 080 | `T-MOD-501`, `T-MOD-502`, `T-MOD-503`, `T-MOD-504`, `T-MOD-505`, `T-MOD-506`, `T-MOD-507`, `T-MOD-508`, `T-MOD-509`, `T-MOD-510`, `T-MOD-511`, `T-MOD-512`, `T-MOD-513`, `T-MOD-514`, `T-MOD-515`, `T-MOD-516`, `T-MOD-517`, `T-MOD-518` |
 | 090 | `T-AUD-101`, `T-AUD-102`, `T-AUD-103`, `T-AUD-104`, `T-AUD-105`, `T-AUD-106`, `T-AUD-107`, `T-AUD-108`, `T-AUD-109`, `T-AUD-110`, `T-AUD-111`, `T-AUD-112`, `T-AUD-113`, `T-AUD-114`, `T-AUD-115` |
-| 100 | `T-MOD-801`, `T-MOD-802`, `T-MOD-803`, `T-MOD-804`, `T-MOD-805`, `T-MOD-806`, `T-MOD-807`, `T-MOD-808`, `T-MOD-809`, `T-MOD-810`, `T-MOD-811`, `T-MOD-812`, `T-MOD-813`, `T-MOD-814`, `T-MOD-815`, `T-MOD-816`, `T-MOD-817` |
+| 100 | `T-MOD-801`, `T-MOD-802`, `T-MOD-803`, `T-MOD-804`, `T-MOD-805`, `T-MOD-806`, `T-MOD-807`, `T-MOD-808`, `T-MOD-809`, `T-MOD-810`, `T-MOD-811`, `T-MOD-812`, `T-MOD-813`, `T-MOD-814`, `T-MOD-815`, `T-MOD-816`, `T-MOD-817`, `T-MOD-841`, `T-MOD-842` |
 | 110 | `T-MOD-901`, `T-MOD-902`, `T-MOD-903`, `T-MOD-904`, `T-MOD-905`, `T-MOD-906`, `T-MOD-907`, `T-MOD-908`, `T-MOD-909`, `T-MOD-910`, `T-MOD-911`, `T-MOD-912`, `T-MOD-913`, `T-MOD-914`, `T-MOD-915`, `T-MOD-916` |
 | 160 | `T-CLN-101`, `T-CLN-102`, `T-CLN-103`, `T-CLN-104`, `T-CLN-105`, `T-CLN-106`, `T-CLN-107`, `T-CLN-108`, `T-CLN-109`, `T-CLN-110`, `T-CLN-111`, `T-CLN-112`, `T-CLN-113`, `T-CLN-114` |
-| 130 | `T-RT-101`, `T-RT-102`, `T-RT-103`, `T-RT-104`, `T-RT-105`, `T-RT-106`, `T-RT-107`, `T-RT-108`, `T-RT-109`, `T-RT-110`, `T-RT-111`, `T-RT-112`, `T-RT-113`, `T-RT-114`, `T-RT-115`, `T-RT-116`, `T-RT-117`, `T-RT-118`, `T-RT-120` |
+| 130 | `T-RT-101`, `T-RT-102`, `T-RT-103`, `T-RT-104`, `T-RT-105`, `T-RT-106`, `T-RT-107`, `T-RT-108`, `T-RT-109`, `T-RT-110`, `T-RT-111`, `T-RT-112`, `T-RT-113`, `T-RT-114`, `T-RT-115`, `T-RT-116`, `T-RT-117`, `T-RT-118`, `T-RT-120`, `T-RT-121` |
 | 010 | `T-SWF-001`, `T-SWF-003`, `T-SWF-004`, `T-SWF-009`, `T-SWF-013`, `T-SWF-014`, `T-SWF-015`, `T-SWF-016`, `T-SWF-017`, `T-SWF-024` |
 | 020 | `T-SWF-001`, `T-SWF-002`, `T-SWF-003`, `T-SWF-007`, `T-SWF-008`, `T-SWF-010`, `T-SWF-011`, `T-SWF-012`, `T-SWF-018`, `T-SWF-019`, `T-SWF-020`, `T-SWF-021`, `T-SWF-022`, `T-SWF-023` |
 | 140 | `T-TST-101`, `T-TST-102`, `T-TST-103`, `T-TST-104` |
-| 050 | `T-AVM1-001`, `T-AVM1-002`, `T-AVM1-003`, `T-AVM1-004`, `T-AVM1-005`, `T-AVM1-006`, `T-AVM1-007`, `T-AVM1-008`, `T-AVM1-009`, `T-AVM1-010`, `T-AVM1-011`, `T-AVM1-012`, `T-AVM1-013`, `T-AVM1-014`, `T-AVM1-015`, `T-AVM1-016`, `T-AVM1-017`, `T-AVM1-018`, `T-AVM1-019`, `T-AVM1-020`, `T-AVM1-021`, `T-AVM1-022`, `T-AVM1-023`, `T-AVM1-024`, `T-AVM1-025`, `T-AVM1-026`, `T-AVM1-027`, `T-AVM1-028`, `T-AVM1-029`, `T-AVM1-030` |
+| 050 | `T-AVM1-FE-001`, `T-AVM1-FE-002`, `T-AVM1-FE-003`, `T-AVM1-FE-004`, `T-AVM1-FE-005`, `T-AVM1-FE-006`, `T-AVM1-FE-007`, `T-AVM1-FE-008`, `T-AVM1-FE-009`, `T-AVM1-FE-010`, `T-AVM1-FE-011`, `T-AVM1-FE-012`, `T-AVM1-FE-013`, `T-AVM1-FE-014`, `T-AVM1-FE-015`, `T-AVM1-FE-016`, `T-AVM1-FE-017`, `T-AVM1-FE-018`, `T-AVM1-FE-019`, `T-AVM1-FE-020`, `T-AVM1-FE-021`, `T-AVM1-FE-022`, `T-AVM1-FE-023`, `T-AVM1-FE-024`, `T-AVM1-FE-025`, `T-AVM1-FE-026`, `T-AVM1-FE-027`, `T-AVM1-FE-028`, `T-AVM1-FE-029`, `T-AVM1-FE-030`, `T-AVM1-FE-031`, `T-AVM1-FE-032`, `T-AVM1-FE-033` |
 | 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008` |
 
 `T-SWF-*` is shared by the two container documents (010 declares the primitive tests; 020 the header,
@@ -83,6 +83,7 @@ tag-stream and dictionary tests, and each cites the other explicitly). `030` own
 `100` the `8xx` and `110` the `9xx`; design-spec gate ids `T-TST-001`–`006` are mirrored by the
 harness's `T-TST-101`–`104` (`E-023`).
 
+`050` owns front-end identifiers `T-AVM1-FE-*`; the language spec's runtime-semantic `T-AVM1-*` ids remain distinct.
 ## 4. Chapter coverage
 
 | Format-spec chapter | Grounded in | Remaining work |

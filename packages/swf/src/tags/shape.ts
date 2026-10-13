@@ -82,6 +82,8 @@ export interface StrokePath {
 export interface VectorShape {
   readonly id: number;
   readonly version: ShapeVersion;
+  /** True when an unknown style payload made the remainder of its owning tag unsafe to parse. */
+  readonly quarantined?: boolean;
   /** Raw DefineShape4 flag byte, preserved for reporting; null on older shape tags. */
   readonly rawShape4Flags: number | null;
   readonly bounds: Rect;
@@ -266,7 +268,12 @@ function reportStyleDedupe(c: Cursor, count: number, duplicate: boolean): void {
   }
 }
 
-function readFillStyleArray(c: Cursor, version: ShapeVersion): (FillStyle | null)[] {
+interface ParsedStyleArray<T> {
+  readonly styles: (T | null)[];
+  readonly quarantined: boolean;
+}
+
+function readFillStyleArray(c: Cursor, version: ShapeVersion): ParsedStyleArray<FillStyle> {
   let count = c.u8();
   if (count === 0xff && version > 1) {
     if (version === 4) {
@@ -280,19 +287,25 @@ function readFillStyleArray(c: Cursor, version: ShapeVersion): (FillStyle | null
   for (let i = 0; i < count; i += 1) {
     const start = c.offset;
     const style = readFillStyle(c, version);
+    if (style === null) {
+      fills.push(null);
+      // The unknown payload has no inferable width. Do not read a line array or record bitstream
+      // from the next byte: the only safe recovery boundary is the end of this owning tag.
+      c.seek(c.limit);
+      return { styles: fills, quarantined: true };
+    }
     if (keys !== null) {
       const key = styleByteKey(c, start);
       if (keys.has(key)) duplicate = true;
       else keys.add(key);
     }
     fills.push(style);
-    if (style === null) break; // unknown type: the array length is unknowable, stop cleanly
   }
   reportStyleDedupe(c, count, duplicate);
-  return fills;
+  return { styles: fills, quarantined: false };
 }
 
-function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null)[] {
+function readLineStyleArray(c: Cursor, version: ShapeVersion): ParsedStyleArray<LineStyle> {
   let count = c.u8();
   if (count === 0xff && version > 1) {
     if (version === 4) {
@@ -311,7 +324,16 @@ function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null
       lines.push({ width, color: withAlpha ? readRgba(c) : readRgb(c) });
     } else {
       const header = readLineStyle2Header(c);
-      const fill = header.hasFill ? readFillStyle(c, version) : undefined;
+      let fill: FillStyle | undefined;
+      if (header.hasFill) {
+        const parsedFill = readFillStyle(c, version);
+        if (parsedFill === null) {
+          lines.push(null);
+          c.seek(c.limit);
+          return { styles: lines, quarantined: true };
+        }
+        fill = parsedFill;
+      }
       const color = header.hasFill ? { r: 0, g: 0, b: 0, a: 255 } : readRgba(c);
       lines.push({
         width,
@@ -323,7 +345,7 @@ function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null
         noVScale: header.noVScale,
         pixelHinting: header.pixelHinting,
         noClose: header.noClose,
-        ...(fill ? { fill } : {}),
+        ...(fill !== undefined ? { fill } : {}),
       });
     }
     if (keys !== null) {
@@ -333,7 +355,7 @@ function readLineStyleArray(c: Cursor, version: ShapeVersion): (LineStyle | null
     }
   }
   reportStyleDedupe(c, count, duplicate);
-  return lines;
+  return { styles: lines, quarantined: false };
 }
 
 interface Pen {
@@ -342,6 +364,31 @@ interface Pen {
 }
 
 /** `SHAPEWITHSTYLE` — the body of `DefineShape` 1–4 (`IMPL-060` §5). */
+function quarantinedShape(
+  id: number,
+  version: ShapeVersion,
+  bounds: Rect,
+  styles: { readonly fills: readonly (FillStyle | null)[]; readonly lines: readonly (LineStyle | null)[] },
+  fillRule: 'evenOdd' | 'nonZero',
+): VectorShape {
+  return {
+    id,
+    version,
+    quarantined: true,
+    rawShape4Flags: null,
+    bounds,
+    edgeBounds: null,
+    recomputedBounds: null,
+    fillRule,
+    nonScalingStrokes: false,
+    scalingStrokes: false,
+    styles,
+    paths: [],
+    edges: [],
+    strokes: [],
+  };
+}
+
 export function readShapeWithStyle(
   c: Cursor,
   id: number,
@@ -371,8 +418,20 @@ export function readShapeWithStyle(
     fillRule?: 'evenOdd' | 'nonZero';
   } = {},
 ): VectorShape {
-  const fills = opts.initialStyles ? [...opts.initialStyles.fills] : readFillStyleArray(c, version);
-  const lines = opts.initialStyles ? [...opts.initialStyles.lines] : readLineStyleArray(c, version);
+  const parsedFills = opts.initialStyles
+    ? { styles: [...opts.initialStyles.fills], quarantined: false }
+    : readFillStyleArray(c, version);
+  const fills = parsedFills.styles;
+  if (parsedFills.quarantined) {
+    return quarantinedShape(id, version, declaredBounds, { fills, lines: [null] }, opts.fillRule ?? 'nonZero');
+  }
+  const parsedLines = opts.initialStyles
+    ? { styles: [...opts.initialStyles.lines], quarantined: false }
+    : readLineStyleArray(c, version);
+  const lines = parsedLines.styles;
+  if (parsedLines.quarantined) {
+    return quarantinedShape(id, version, declaredBounds, { fills, lines }, opts.fillRule ?? 'nonZero');
+  }
 
   let numFillBits = c.ub(4);
   let numLineBits = c.ub(4);
@@ -522,12 +581,21 @@ export function readShapeWithStyle(
         flushAll();
         // StateNewStyles aligns its style arrays to the next byte and restarts local indexes.
         c.align();
-        const moreFills = readFillStyleArray(c, version);
-        const moreLines = readLineStyleArray(c, version);
+        const moreFillStyles = readFillStyleArray(c, version);
+        if (moreFillStyles.quarantined) {
+          fills.push(...moreFillStyles.styles.slice(1));
+          return quarantinedShape(id, version, declaredBounds, { fills, lines }, opts.fillRule ?? 'nonZero');
+        }
+        const moreLineStyles = readLineStyleArray(c, version);
+        if (moreLineStyles.quarantined) {
+          fills.push(...moreFillStyles.styles.slice(1));
+          lines.push(...moreLineStyles.styles.slice(1));
+          return quarantinedShape(id, version, declaredBounds, { fills, lines }, opts.fillRule ?? 'nonZero');
+        }
         fillStyleBase = fills.length - 1;
         lineStyleBase = lines.length - 1;
-        fills.push(...moreFills.slice(1));
-        lines.push(...moreLines.slice(1));
+        fills.push(...moreFillStyles.styles.slice(1));
+        lines.push(...moreLineStyles.styles.slice(1));
         numFillBits = c.ub(4);
         numLineBits = c.ub(4);
         if (numFillBits > 16 || numLineBits > 16) {

@@ -1,0 +1,99 @@
+{
+  "probe": "synthetic-t0-t1-t2-avm1-process-restart-determinism",
+  "evidenceClass": "synthetic-local-only",
+  "freshDirectProcessesCompared": 2,
+  "directReportsIdentical": true,
+  "directReportSha256": "419065d68366a47200ee5b516c23dc67157ba4ba9126e3f308ae83ed9ee26028",
+  "freshCliProcessesCompared": 2,
+  "cliReportsIdentical": true,
+  "normalizedCliReportSha256": "f2897b1470435d4c3e4f589d9780871efc38258cd721b8de734cba331172086e",
+  "inputSha256": "59237b7b1007a57d24efb843595911d9c31534742ffa187924f8d8a2d2556c4e",
+  "actionBlocks": 1,
+  "functions": 3,
+  "tierCounts": {
+    "T0": 2,
+    "T1": 1,
+    "T2": 1
+  },
+  "diagnostics": {
+    "total": 2,
+    "errors": 0,
+    "warnings": 2,
+    "infos": 0
+  },
+  "cliEntries": [
+    {
+      "id": "frame_0_0",
+      "role": "actionBlock",
+      "name": null,
+      "tier": 0,
+      "reasons": []
+    },
+    {
+      "id": "fn_37",
+      "role": "function",
+      "name": "tick",
+      "tier": 0,
+      "reasons": []
+    },
+    {
+      "id": "fn_5b",
+      "role": "function",
+      "name": "poolReader",
+      "tier": 1,
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "id": "fn_78",
+      "role": "function",
+      "name": "unknownBytecode",
+      "tier": 2,
+      "reasons": ["unknown-opcode:0x01"]
+    }
+  ],
+  "recoveredNames": ["tick", "poolReader", "unknownBytecode"],
+  "actionRequirements": [
+    {
+      "group": "core-objects",
+      "via": "push",
+      "offset": null
+    },
+    {
+      "group": "timeline",
+      "via": "timeline:stop",
+      "offset": null
+    }
+  ],
+  "functionReports": [
+    {
+      "name": "tick",
+      "tier": 0,
+      "reasons": [],
+      "requirements": [
+        {
+          "group": "core-objects",
+          "via": "push",
+          "offset": null
+        }
+      ]
+    },
+    {
+      "name": "poolReader",
+      "tier": 1,
+      "reasons": ["dynamic-pool"],
+      "requirements": [
+        {
+          "group": "core-objects",
+          "via": "push",
+          "offset": null
+        }
+      ]
+    },
+    {
+      "name": "unknownBytecode",
+      "tier": 2,
+      "reasons": ["unknown-opcode:0x01"],
+      "requirements": []
+    }
+  ]
+}

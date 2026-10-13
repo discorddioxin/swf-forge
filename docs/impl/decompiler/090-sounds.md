@@ -37,21 +37,19 @@ claim from this document.
 ## 2. Module layout
 
 ```
-packages/swf/src/sounds/
-  define-sound.ts        DefineSound (14): format/rate/size/type/sampleCount + payload view
-  sound-info.ts          SOUNDINFO + SOUNDENVELOPE
-  start-sound.ts         StartSound (15), StartSound2 (89)
-  stream-head.ts         SoundStreamHead (18), SoundStreamHead2 (45)
-  stream-blocks.ts       SoundStreamBlock (19) ordering, frame association, MP3STREAMSOUNDDATA
-  codec-detect.ts        format dispatch + reserved-format reporting
+packages/swf/src/tags/sounds.ts
+  DefineSound, SOUNDINFO, StartSound/2, stream heads/blocks, payload ranges and diagnostics
+packages/swf/src/model/{movie,timeline}.ts
+  sound character assembly, sound scheduling models, per-frame stream-block association
 packages/audio/src/codecs/
-  adpcm.ts               SWF IMA ADPCM: packets, predictors, 2–5-bit codes
-  mp3-frames.ts          frame parser: sync, header fields, sample counts, frame size
-  mp3-pass.ts            pass-through scheduling (no re-encode)
-  nellymoser.ts          detect + report (+ optional transcode hook)
-  speex.ts               detect + report
-  resample.ts            48 kHz canonical conversion (deterministic)
-  pcm.ts                 PCM emission + metadata (peak, RMS, loop points)
+  adpcm.ts               SWF ADPCM: packet framing, predictors, 2–5-bit codes
+  pcm.ts                 PCM formats 0/3 → signed 16-bit planes
+  mp3.ts                 MPEG frame parse + event-payload seek/header parse
+  resample.ts            deterministic 48 kHz conversion
+  wav.ts                 canonical PCM16 WAV writer
+  measure.ts             peak/RMS/null gate/chunk and loop metadata
+apps/decompiler/src/assets/dump.ts
+  codec dispatch, MP3 pass-through, WAV asset/manifest emission and silent fallbacks
 ```
 
 **IMPL-090-R001** `packages/audio` MUST be usable in the asset worker (build) and the browser
@@ -360,7 +358,7 @@ sets can never be confused in a test report.
 | --- | --- | --- | --- |
 | `T-AUD-101` | ADPCM decode vs reference vectors on 200 packets (bit-exact) | F1 | P3 decode/build |
 | `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet, and real-world payload lengths pinning 4096 samples per packet against `ruffle`'s 4095 (`IMPL-090-R012`/`R034`) | F1 | P3 decode/build |
-| `T-AUD-103` | uncompressed 0 vs 3 produce identical PCM (8-bit) and byte-swapped PCM (16-bit) | F1 | P3 decode/build |
+| `T-AUD-103` | formats 0/3 produce identical 8-bit PCM; both read 16-bit PCM little-endian, with `SF0302` recording format 0's assumed order | F1 | P3 decode/build |
 | `T-AUD-104` | MP3 frame parser: sync, version/layer/rate/bitrate/padding, size formula incl. the 414-byte example | F1 | P3 decode/build |
 | `T-AUD-105` | MP3 pass-through: bytes unchanged (hash equality), latency trim applied at scheduling | F1 | P3 decode/build |
 | `T-AUD-106` | stream block → frame offset table with exact sample offsets (silent frames, empty blocks) | F1 | P3 decode/build |

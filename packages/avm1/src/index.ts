@@ -23,7 +23,14 @@ export type { ActionRecord, Emit, ScanResult } from './frontend/record.js';
 
 // ---- operands (WP-050-03) -----------------------------------------------------------------------------
 export { decodeRecord, makeStringReader, newResidualFlags, validateRegister } from './frontend/operands.js';
-export type { DecodedOp, OperandContext, PushValue, ResidualFlags, TryHeader } from './frontend/operands.js';
+export type {
+  DecodedOp,
+  LegacyStringEncoding,
+  OperandContext,
+  PushValue,
+  ResidualFlags,
+  TryHeader,
+} from './frontend/operands.js';
 
 // ---- functions (WP-050-04) -----------------------------------------------------------------------------
 export { DF2_MASKS, PRELOAD_ORDER, decodeDefineFunction, decodeDefineFunction2 } from './frontend/functions.js';

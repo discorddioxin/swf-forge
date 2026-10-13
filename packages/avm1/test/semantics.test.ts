@@ -1,12 +1,12 @@
 /**
  * Version-sensitive and AS2-era semantics at the decode level — `IMPL-050` §5
- * (`T-AVM1-019` GotoFrame2 flags, `T-AVM1-021` property ids, `T-AVM1-022` SWF 4 vs SWF 5
- * result types, `T-AVM1-023` Enumerate, `T-AVM1-026` Extends/ImplementsOp/CastOp stack effects).
+ * (`T-AVM1-FE-019` GotoFrame2 flags, `T-AVM1-FE-021` property ids, `T-AVM1-FE-022` SWF 4 vs SWF 5
+ * result types, `T-AVM1-FE-023` Enumerate, `T-AVM1-FE-026` Extends/ImplementsOp/CastOp stack effects).
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { analyze, block } from './harness.js';
+import { analyze, block, pair, push } from './harness.js';
 import { foldBin, foldUn, PROPERTY_NAMES, isDefinedPropertyId, propertyName } from '../src/index.js';
 import type { Avm1Value, Op } from '../src/index.js';
 
@@ -17,7 +17,7 @@ const pushInt = (v: number): number[] => [0x96, 5, 0, 7, v & 0xff, (v >> 8) & 0x
 /** Push "" — type 0, NUL-terminated. */
 const pushEmptyString = [0x96, 2, 0, 0, 0];
 
-describe('T-AVM1-019 GotoFrame2 play flag + scene bias resolution', () => {
+describe('T-AVM1-FE-019 GotoFrame2 play flag + scene bias resolution', () => {
   /**
    * GotoFrame2 (0x9f) pops the frame from the stack; the payload carries only the flag byte and,
    * when SceneBiasFlag (0x02) is set, a UI16 scene bias (R039).
@@ -52,7 +52,7 @@ describe('T-AVM1-019 GotoFrame2 play flag + scene bias resolution', () => {
   });
 });
 
-describe('T-AVM1-021 property ids 0-21 and the >=22 policy', () => {
+describe('T-AVM1-FE-021 property ids 0-21 and the >=22 policy', () => {
   it('all 22 defined ids map to their names; 0 and 21 are the endpoints', () => {
     expect(PROPERTY_NAMES.length).toBe(22);
     expect(propertyName(0)).toBe('_x');
@@ -75,7 +75,7 @@ describe('T-AVM1-021 property ids 0-21 and the >=22 policy', () => {
   });
 });
 
-describe('T-AVM1-022 SWF 4 vs SWF 5 result types', () => {
+describe('T-AVM1-FE-022 SWF 4 vs SWF 5 result types', () => {
   it('Equals/Less/And/Or: numbers in SWF 4, booleans in SWF 5+', () => {
     for (const code of [0x0e, 0x0f, 0x10, 0x11]) {
       const v4 = foldBin(code, num(1), num(1), 4);
@@ -100,7 +100,112 @@ describe('T-AVM1-022 SWF 4 vs SWF 5 result types', () => {
   });
 });
 
-describe('T-AVM1-023 Enumerate / Enumerate2', () => {
+describe('T-AVM1-FE-031 Add / Add2 / StringAdd literal-fold coercion matrix', () => {
+  const literals: Array<{ readonly name: string; readonly value: Avm1Value }> = [
+    { name: 'empty string', value: { type: 'string', value: '' } },
+    { name: 'numeric string', value: { type: 'string', value: '2.5' } },
+    { name: 'non-numeric string', value: { type: 'string', value: 'nope' } },
+    { name: 'number', value: num(2.5) },
+    { name: 'integer', value: { type: 'integer', value: 2, bits: 32 } },
+    { name: 'true', value: { type: 'boolean', value: true } },
+    { name: 'false', value: { type: 'boolean', value: false } },
+    { name: 'null', value: { type: 'null' } },
+    { name: 'undefined', value: { type: 'undefined' } },
+  ];
+
+  const toNumber = (value: Avm1Value): number | null => {
+    switch (value.type) {
+      case 'number':
+      case 'integer':
+        return value.value;
+      case 'boolean':
+        return value.value ? 1 : 0;
+      case 'null':
+        return 0;
+      case 'undefined':
+        return Number.NaN;
+      case 'string':
+        return value.value.trim() === '' ? 0 : Number(value.value.trim());
+      default:
+        return null;
+    }
+  };
+
+  // Mirrors the contract's deliberately conservative constant-fold boundary: string conversions
+  // of number literals stay dynamic because their AVM1 15-digit formatting belongs to runtime.
+  const toFoldableString = (value: Avm1Value): string | null => {
+    switch (value.type) {
+      case 'string':
+        return value.value;
+      case 'boolean':
+        return value.value ? 'true' : 'false';
+      case 'null':
+        return 'null';
+      case 'undefined':
+        return 'undefined';
+      default:
+        return null;
+    }
+  };
+
+  const expected = (opcode: number, lhs: Avm1Value, rhs: Avm1Value): Avm1Value | null => {
+    if (opcode === 0x0a && lhs.type === 'string') {
+      const rhsString = toFoldableString(rhs);
+      return rhsString === null ? null : { type: 'string', value: lhs.value + rhsString };
+    }
+    if ((opcode === 0x47 && (lhs.type === 'string' || rhs.type === 'string')) || opcode === 0x21) {
+      const lhsString = toFoldableString(lhs);
+      const rhsString = toFoldableString(rhs);
+      return lhsString === null || rhsString === null ? null : { type: 'string', value: lhsString + rhsString };
+    }
+    const lhsNumber = toNumber(lhs);
+    const rhsNumber = toNumber(rhs);
+    return lhsNumber === null || rhsNumber === null ? null : { type: 'number', value: lhsNumber + rhsNumber };
+  };
+
+  for (const [opcode, name] of [
+    [0x0a, 'ActionAdd'],
+    [0x47, 'ActionAdd2'],
+    [0x21, 'StringAdd'],
+  ] as const) {
+    it(`${name}: all 81 pairs across nine known literal kinds`, () => {
+      for (const lhs of literals) {
+        for (const rhs of literals) {
+          expect(foldBin(opcode, lhs.value, rhs.value, 8), `${name}: ${lhs.name} + ${rhs.name}`).toEqual(
+            expected(opcode, lhs.value, rhs.value),
+          );
+        }
+      }
+    });
+  }
+});
+
+describe('T-AVM1-FE-030 DBCS string-length folding boundary', () => {
+  const dbcsPush = push(pair(0, [0x82, 0xa0, 0])); // SWF 5 Shift-JIS: U+3042 (あ), then NUL.
+
+  const analyzeLength = (code: 0x14 | 0x31) => {
+    const { block: analyzed } = analyze(block(dbcsPush, [code]), { version: 5, legacyEncoding: 'shift-jis' });
+    const op = analyzed.ir.blocks
+      .flatMap((basic) => basic.ops)
+      .find((candidate) => candidate.kind === 'unop' && candidate.code === code);
+    if (op?.kind !== 'unop') throw new Error(`expected unary length action 0x${code.toString(16)}`);
+    return op;
+  };
+
+  it('decodes the raw Shift-JIS fixture and folds only the spec-backed DBCS character count', () => {
+    const stringLength = analyzeLength(0x14);
+    expect(stringLength.a).toEqual({ kind: 'lit', value: { type: 'string', value: 'あ' } });
+    // Adobe specifies MBStringLength's DBCS character count, but does not state ActionStringLength's
+    // unit explicitly; keep the latter dynamic rather than asserting an unsupported byte result.
+    expect(stringLength.result.kind).toBe('temp');
+
+    const mbStringLength = analyzeLength(0x31);
+    expect(mbStringLength.a).toEqual({ kind: 'lit', value: { type: 'string', value: 'あ' } });
+    expect(mbStringLength.result).toEqual({ kind: 'lit', value: { type: 'number', value: 1 } });
+  });
+});
+
+describe('T-AVM1-FE-023 Enumerate / Enumerate2', () => {
   it('decodes with one popped operand and an unknown-depth marker (order is undefined)', () => {
     const { block: b } = analyze(block(pushEmptyString, [0x46], [0x00]));
     const op = b.ir.blocks[0]?.ops.find((o) => o.kind === 'enumerate') as
@@ -119,7 +224,7 @@ describe('T-AVM1-023 Enumerate / Enumerate2', () => {
   });
 });
 
-describe('T-AVM1-026 Extends / ImplementsOp / CastOp stack effects', () => {
+describe('T-AVM1-FE-026 Extends / ImplementsOp / CastOp stack effects', () => {
   it('Extends pops superclass then subclass and pushes nothing', () => {
     const { block: b } = analyze(block(pushInt(1), pushInt(1), [0x69], [0x00]));
     const op = b.ir.blocks[0]?.ops.find((o) => o.kind === 'extends');

@@ -455,9 +455,11 @@ export function foldBin(code: number, a: Avm1Value, b: Avm1Value, version: numbe
       return num(aN + bN);
     }
     case 0x47: {
-      const aStr = toStringLit(a);
-      const bStr = toStringLit(b);
-      if (aStr !== null || bStr !== null) {
+      // Add2 concatenates only if either primitive is a string. Booleans/null/undefined
+      // stringify when a string operand selects concatenation; they do not select it themselves.
+      if (a.type === 'string' || b.type === 'string') {
+        const aStr = toStringLit(a);
+        const bStr = toStringLit(b);
         if (aStr === null || bStr === null) return null;
         return str(aStr + bStr);
       }
@@ -509,7 +511,7 @@ export function foldBin(code: number, a: Avm1Value, b: Avm1Value, version: numbe
     case 0x68: {
       if (a.type !== 'string' || b.type !== 'string') return null;
       if (code === 0x13) return bool(a.value === b.value);
-      if (!isAscii(a.value) || !isAscii(b.value)) return null; // byte order needs the code page (R048)
+      if (!isAscii(a.value) || !isAscii(b.value)) return null; // byte order needs the selected encoding (R048)
       if (code === 0x29) return bool(a.value < b.value);
       return bool(a.value > b.value);
     }
@@ -610,7 +612,7 @@ export function foldUn(code: number, a: Avm1Value, version: number): Avm1Value |
       }
     }
     case 0x14:
-      if (a.type !== 'string' || !isAscii(a.value)) return null; // byte counts depend on the code page (R048)
+      if (a.type !== 'string' || !isAscii(a.value)) return null; // Ch. 5 does not specify non-ASCII units (R048)
       return num(a.value.length);
     case 0x31:
       return a.type === 'string' ? num(a.value.length) : null;
@@ -741,7 +743,7 @@ function simulateOne(options: SimulateOptions, frame: BlockFrame, inDepth: Depth
     code: number,
     name: Operand | null,
     object: Operand | null,
-    count: number,
+    count: number | null,
     args: readonly Operand[],
   ): Op => {
     const sourceOrder = [...args].reverse(); // R043: normalise once to source order
@@ -1003,7 +1005,7 @@ interface SimpleHandlers {
     code: number,
     name: Operand | null,
     object: Operand | null,
-    count: number,
+    count: number | null,
     args: readonly Operand[],
   ) => Op;
   readonly setVariable: (value: boolean) => void;
@@ -1044,6 +1046,10 @@ function handleSimple(
       return;
     case 0x09:
       ops.push({ kind: 'timeline', timeline: { op: 'stopSounds' } });
+      return;
+    case 0x9e:
+      // Preserve the frame selector for analysis/tiering; runtime execution remains a separate gate.
+      ops.push({ kind: 'timeline', timeline: { op: 'call', frame: h.pop() } });
       return;
     case 0x34:
       ops.push({ kind: 'getTime' });
@@ -1224,8 +1230,8 @@ function handleSimple(
     case 0x40: {
       const name = h.pop();
       const count = h.popCount();
-      const args = count === null ? null : h.popArgs(count);
-      if (args === null || count === null) return;
+      // Preserve the call node with numArgs=null so tier collection can report dynamic-args.
+      const args = count === null ? [] : (h.popArgs(count) ?? []);
       ops.push(h.finishCall(code, name, null, count, args));
       return;
     }
@@ -1234,17 +1240,16 @@ function handleSimple(
       const name = h.pop();
       const object = h.pop();
       const count = h.popCount();
-      const args = count === null ? null : h.popArgs(count);
-      if (args === null || count === null) return;
+      const args = count === null ? [] : (h.popArgs(count) ?? []);
       ops.push(h.finishCall(code, name, object, count, args));
       return;
     }
     case 0x42:
     case 0x43: {
       const count = h.popCount();
-      const elements = h.popArgs(count === null ? null : count * (code === 0x43 ? 2 : 1));
-      if (elements === null) return;
-      ops.push(h.finishCall(code, null, null, count ?? elements.length, elements));
+      const elementCount = count === null ? null : count * (code === 0x43 ? 2 : 1);
+      const elements = elementCount === null ? [] : (h.popArgs(elementCount) ?? []);
+      ops.push(h.finishCall(code, null, null, count, elements));
       return;
     }
     case 0x45: {

@@ -214,19 +214,34 @@ describe('T-MOD-104 bitmap fills', () => {
     expect(shape.styles.fills[2]).toMatchObject({ bitmapId: 8, matrix: { a: 0.5, d: 2, c: 0.25, b: -0.25 } });
   });
 
-  it('quarantines an unknown FillStyleType with SF0180 instead of desynchronising the array', () => {
-    const { shape, codes } = buildAndDecode({
+  it('T-P3-REG-001 quarantines unknown static fill payloads and consumes the owning tag once', () => {
+    const arrayFill = buildAndDecode({
       version: 3,
-      fills: (w) => {
-        w.u8(2).u8(0x7f); // 0x7f is not one of the eight defined types
-        writeColor(w, 3, RED);
-        w.u8(0x00);
-        writeColor(w, 3, RED);
+      fills: (w) => w.u8(2).u8(0x7f).u8(0x00).u8(0xff),
+    });
+    const stateNewStylesFill = buildAndDecode({
+      version: 3,
+      records: (w) => {
+        w.bits(0, 1).bits(1, 1).bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1).align();
+        w.u8(1).u8(0x7f).u8(0); // unknown new fill, then bytes that must not be parsed as a line array
+      },
+    });
+    const lineFill = buildAndDecode({
+      version: 4,
+      lines: (w) => {
+        w.u8(1).u16(20); // one LINESTYLE2
+        w.bits(0, 2).bits(0, 2).bits(1, 1).bits(0, 1).bits(0, 1).bits(0, 1);
+        w.bits(0, 5).bits(0, 1).bits(0, 2).align(); // HasFillFlag, no miter
+        w.u8(0x7f); // unknown FillStyleType inside LINESTYLE2
       },
     });
 
-    expect(codes).toContain('SF0180');
-    expect(shape.styles.fills).toEqual([null, null]);
+    for (const decoded of [arrayFill, stateNewStylesFill, lineFill]) {
+      expect(decoded.codes).toEqual(['SF0180']);
+      expect(decoded.consumed).toBe(decoded.bytes.length);
+      expect(decoded.shape).toMatchObject({ quarantined: true, edges: [], paths: [], strokes: [] });
+    }
+    expect(arrayFill.shape.styles.fills).toEqual([null, null]);
   });
 });
 

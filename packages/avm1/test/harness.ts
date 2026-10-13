@@ -6,7 +6,13 @@
  * branches, `Try`/`With` bodies, `DefineFunction2`) so the tests read like pseudocode.
  */
 
-import { analyzeActionBlock, type AnalyzedBlock, type BlockKind, type Operand } from '../src/index.js';
+import {
+  analyzeActionBlock,
+  type AnalyzedBlock,
+  type BlockKind,
+  type LegacyStringEncoding,
+  type Operand,
+} from '../src/index.js';
 
 // ---- byte primitives --------------------------------------------------------------------------------------
 
@@ -259,6 +265,7 @@ export function collector(): { fn: EmitFn; all: Diag[]; has: (code: string) => b
 
 export interface AnalyzeOpts {
   version?: number;
+  legacyEncoding?: LegacyStringEncoding;
   inFunction?: boolean;
   id?: string;
   kind?: BlockKind;
@@ -276,6 +283,7 @@ export function analyze(
     kind: opts.kind ?? 'timeline',
     id: opts.id ?? 'test',
     version: opts.version ?? 7,
+    ...(opts.legacyEncoding !== undefined ? { legacyEncoding: opts.legacyEncoding } : {}),
     emit: diag.fn,
   };
   const input = opts.inFunction !== undefined ? { ...base, inFunction: opts.inFunction } : base;

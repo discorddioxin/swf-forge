@@ -29,6 +29,8 @@ export interface MorphEdgePair {
 export interface MorphShapeModel {
   readonly id: number;
   readonly version: 1 | 2;
+  /** True when an unknown style payload made the remainder of the owning morph tag unsafe to parse. */
+  readonly quarantined?: boolean;
   readonly startBounds: Rect;
   readonly endBounds: Rect;
   readonly startEdgeBounds: Rect | null;
@@ -40,17 +42,20 @@ export interface MorphShapeModel {
   readonly correspondence: 'index';
   readonly flags: { readonly nonScalingStrokes: boolean; readonly scalingStrokes: boolean };
   readonly offset: number;
-  readonly offsetMatches: boolean;
+  /** `null` when quarantine prevented a trustworthy Offset comparison. */
+  readonly offsetMatches: boolean | null;
 }
 
 interface MorphFillPair {
   readonly start: FillStyle | null;
   readonly end: FillStyle | null;
+  readonly quarantined?: boolean;
 }
 
 interface MorphLinePair {
   readonly start: LineStyle | null;
   readonly end: LineStyle | null;
+  readonly quarantined?: boolean;
 }
 
 function styleCount(c: Cursor): number {
@@ -147,11 +152,15 @@ function morphFill(c: Cursor): MorphFillPair {
         `unknown MORPHFILLSTYLE type 0x${type.toString(16)}; morph shape quarantined`,
       );
       c.seek(c.limit);
-      return { start: null, end: null };
+      return { start: null, end: null, quarantined: true };
   }
 }
 
-function morphFillArrays(c: Cursor): { start: (FillStyle | null)[]; end: (FillStyle | null)[] } {
+function morphFillArrays(c: Cursor): {
+  start: (FillStyle | null)[];
+  end: (FillStyle | null)[];
+  quarantined: boolean;
+} {
   const count = styleCount(c);
   const start: (FillStyle | null)[] = [null];
   const end: (FillStyle | null)[] = [null];
@@ -159,9 +168,12 @@ function morphFillArrays(c: Cursor): { start: (FillStyle | null)[]; end: (FillSt
     const pair = morphFill(c);
     start.push(pair.start);
     end.push(pair.end);
-    if (c.offset >= c.limit) break;
+    if (pair.quarantined) {
+      c.seek(c.limit);
+      return { start, end, quarantined: true };
+    }
   }
-  return { start, end };
+  return { start, end, quarantined: false };
 }
 
 function readMorphLineStyle(c: Cursor, version: 1 | 2): MorphLinePair {
@@ -201,10 +213,18 @@ function readMorphLineStyle(c: Cursor, version: 1 | 2): MorphLinePair {
       ...common,
       ...(endFill !== undefined && endFill !== null ? { fill: endFill } : {}),
     },
+    ...(fills?.quarantined ? { quarantined: true } : {}),
   };
 }
 
-function morphLineArrays(c: Cursor, version: 1 | 2): { start: (LineStyle | null)[]; end: (LineStyle | null)[] } {
+function morphLineArrays(
+  c: Cursor,
+  version: 1 | 2,
+): {
+  start: (LineStyle | null)[];
+  end: (LineStyle | null)[];
+  quarantined: boolean;
+} {
   const count = styleCount(c);
   const start: (LineStyle | null)[] = [null];
   const end: (LineStyle | null)[] = [null];
@@ -212,8 +232,12 @@ function morphLineArrays(c: Cursor, version: 1 | 2): { start: (LineStyle | null)
     const pair = readMorphLineStyle(c, version);
     start.push(pair.start);
     end.push(pair.end);
+    if (pair.quarantined) {
+      c.seek(c.limit);
+      return { start, end, quarantined: true };
+    }
   }
-  return { start, end };
+  return { start, end, quarantined: false };
 }
 
 function padEdges(shape: VectorShape, targetCount: number): VectorShape {
@@ -224,6 +248,61 @@ function padEdges(shape: VectorShape, targetCount: number): VectorShape {
   const y = last?.toY ?? 0;
   while (edges.length < targetCount) edges.push({ fromX: x, fromY: y, toX: x, toY: y });
   return { ...shape, edges };
+}
+
+function quarantinedMorph(
+  id: number,
+  version: 1 | 2,
+  startBounds: Rect,
+  endBounds: Rect,
+  startEdgeBounds: Rect | null,
+  endEdgeBounds: Rect | null,
+  flags: { readonly nonScalingStrokes: boolean; readonly scalingStrokes: boolean },
+  offset: number,
+  startFills: readonly (FillStyle | null)[],
+  endFills: readonly (FillStyle | null)[],
+  startLines: readonly (LineStyle | null)[],
+  endLines: readonly (LineStyle | null)[],
+): MorphShapeModel {
+  const shapeVersion = version === 2 ? 4 : 3;
+  const endpoint = (
+    bounds: Rect,
+    edgeBounds: Rect | null,
+    fills: readonly (FillStyle | null)[],
+    lines: readonly (LineStyle | null)[],
+  ): VectorShape => ({
+    id,
+    version: shapeVersion,
+    quarantined: true,
+    rawShape4Flags: null,
+    bounds,
+    edgeBounds,
+    recomputedBounds: null,
+    fillRule: 'evenOdd',
+    nonScalingStrokes: flags.nonScalingStrokes,
+    scalingStrokes: flags.scalingStrokes,
+    styles: { fills, lines },
+    paths: [],
+    edges: [],
+    strokes: [],
+  });
+  return {
+    id,
+    version,
+    quarantined: true,
+    startBounds,
+    endBounds,
+    startEdgeBounds,
+    endEdgeBounds,
+    start: endpoint(startBounds, startEdgeBounds, startFills, startLines),
+    end: endpoint(endBounds, endEdgeBounds, endFills, endLines),
+    edgeCounts: { start: 0, end: 0 },
+    pairs: [],
+    correspondence: 'index',
+    flags,
+    offset,
+    offsetMatches: null,
+  };
 }
 
 function compatibleStyles(
@@ -278,10 +357,43 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
   }
   const offset = c.u32();
   const offsetBase = c.offset;
-  const fillArrays = morphFillArrays(c);
-  const lineArrays = morphLineArrays(c, version);
-  compatibleStyles(fillArrays.start, fillArrays.end, c, id);
   const shapeVersion = version === 2 ? 4 : 3;
+  const flagsModel = { nonScalingStrokes: (flags & 0x02) !== 0, scalingStrokes: (flags & 0x01) !== 0 };
+  const fillArrays = morphFillArrays(c);
+  if (fillArrays.quarantined) {
+    return quarantinedMorph(
+      id,
+      version,
+      startBounds,
+      endBounds,
+      startEdgeBounds,
+      endEdgeBounds,
+      flagsModel,
+      offset,
+      fillArrays.start,
+      fillArrays.end,
+      [null],
+      [null],
+    );
+  }
+  const lineArrays = morphLineArrays(c, version);
+  if (lineArrays.quarantined) {
+    return quarantinedMorph(
+      id,
+      version,
+      startBounds,
+      endBounds,
+      startEdgeBounds,
+      endEdgeBounds,
+      flagsModel,
+      offset,
+      fillArrays.start,
+      fillArrays.end,
+      lineArrays.start,
+      lineArrays.end,
+    );
+  }
+  compatibleStyles(fillArrays.start, fillArrays.end, c, id);
   const start = readShapeWithStyle(c, id, shapeVersion, startBounds, {
     initialStyles: { fills: fillArrays.start, lines: lineArrays.start },
     // F-P3-10: neither morph tag has a fill-winding flag. `DefineMorphShape2`'s flag byte carries
@@ -291,7 +403,43 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
     // their static counterparts agree in the IR (`IMPL-070-R031`).
     fillRule: 'evenOdd',
   });
+  if (start.quarantined === true) {
+    return quarantinedMorph(
+      id,
+      version,
+      startBounds,
+      endBounds,
+      startEdgeBounds,
+      endEdgeBounds,
+      flagsModel,
+      offset,
+      fillArrays.start,
+      fillArrays.end,
+      lineArrays.start,
+      lineArrays.end,
+    );
+  }
   const actualEndEdges = c.offset;
+  const endRaw = readShapeWithStyle(c, id, shapeVersion, endBounds, {
+    initialStyles: { fills: fillArrays.end, lines: lineArrays.end },
+    fillRule: 'evenOdd',
+  });
+  if (endRaw.quarantined === true) {
+    return quarantinedMorph(
+      id,
+      version,
+      startBounds,
+      endBounds,
+      startEdgeBounds,
+      endEdgeBounds,
+      flagsModel,
+      offset,
+      fillArrays.start,
+      fillArrays.end,
+      lineArrays.start,
+      lineArrays.end,
+    );
+  }
   const expectedEndEdges = offsetBase + offset;
   const offsetMatches = actualEndEdges === expectedEndEdges;
   if (!offsetMatches) {
@@ -301,10 +449,6 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
       `morph ${id} Offset resolves to ${expectedEndEdges}, parsed EndEdges begin at ${actualEndEdges}`,
     );
   }
-  const endRaw = readShapeWithStyle(c, id, shapeVersion, endBounds, {
-    initialStyles: { fills: fillArrays.end, lines: lineArrays.end },
-    fillRule: 'evenOdd',
-  });
   const startMoves = start.recordTrace?.moveToEdgeIndices ?? [];
   const endMoves = endRaw.recordTrace?.moveToEdgeIndices ?? [];
   const sameMoves =
@@ -391,7 +535,7 @@ export function decodeDefineMorphShape(tagCode: number, c: Cursor): MorphShapeMo
     edgeCounts: { start: startCount, end: endCount },
     pairs,
     correspondence: 'index',
-    flags: { nonScalingStrokes: (flags & 0x02) !== 0, scalingStrokes: (flags & 0x01) !== 0 },
+    flags: flagsModel,
     offset,
     offsetMatches,
   };

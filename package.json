@@ -13,6 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:fuzz": "vitest run packages/swf/test/fuzz.test.ts",
+    "test:avm1-fuzz": "AVM1_FUZZ_1M=1 vitest run packages/avm1/test/actions-mutation.gate.test.ts",
+    "test:avm1-restart": "corepack pnpm build && node tools/avm1-restart-probe.mjs",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "spec:verify": "python3 tools/verify_docs.py",

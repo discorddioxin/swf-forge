@@ -7,7 +7,9 @@
 `MORPHFILLSTYLE`, `MORPHGRADIENT`/`MORPHGRADRECORD`, `MORPHLINESTYLEARRAY`/`MORPHLINESTYLE`/
 `MORPHLINESTYLE2`, start/end edge streams, morph ratio semantics)
 **Design specs:** AST-§3–§5 (decode, re-encode, KTX2 upload ladder), AST-§7 (`.sfa`), GFX-§5 (IR),
-GFX-R041–R047 (gradient sampling), GFX-R052/R053 (morph rendering), GFX-§12 (texture budget)
+GFX-R041–R047 (gradient sampling), GFX-§12 (texture budget). Morph ratio interpolation and baking are
+specified locally by IMPL-070-R023/R029–R032; GFX-R052/R053 cover 8-bit textures and draw batching,
+not morph rendering.
 **Pinned byte layouts:** APP-§10.6 (Ch.8 bitmap structures) and APP-§10.7 (Ch.9 morph structures) — this document carries semantics, tolerance
 policy, and the pixel model.
 
@@ -41,30 +43,29 @@ P3 closure.
 ## 2. Module layout
 
 ```
-packages/swf/src/images/
-  define-bits.ts         DefineBits (6) — JPEG without tables
-  jpeg-tables.ts         JPEGTables (8) — single-table rule, splice, tolerance
-  define-bits-jpeg2.ts   DefineBitsJPEG2 (21) — complete JPEG or PNG/GIF passthrough
-  define-bits-jpeg3.ts   DefineBitsJPEG3 (35) — AlphaDataOffset + zlib alpha plane
-  define-bits-jpeg4.ts   DefineBitsJPEG4 (90) — alpha + DeblockParam
-  define-bits-lossless.ts  DefineBitsLossless (20) — formats 3/4/5
-  define-bits-lossless2.ts DefineBitsLossless2 (36) — formats 3/5 (+ observed 4)
-  lossless-layout.ts     row padding, PIX15/PIX24, colormap and alpha-colormap readers
-  pixel-model.ts         canonical straight-alpha RGBA8 conversion + un-premultiply
-  image-model.ts         BitmapAsset classification + provenance
-  jpeg-extract.ts        JPEG dimension/table parsing without a full decoder
-  png-gif-pass.ts        embedded PNG/GIF detection in JPEG2/3/4
-packages/assets/src/images/
-  decode.ts              native decode (createImageBitmap) in the asset worker
-  classify.ts            photographic vs synthetic heuristics (AST-§4)
-  reencode.ts            KTX2/UASTC/ETC1S + WebP/PNG fallback ladder
-  mips.ts                mip ladder generation and residual-error check (AST-R021)
-packages/swf/src/morph/
-  morph-def.ts           DefineMorphShape/2 headers, bounds pairs, offsets, flags
-  morph-edges.ts         the two SHAPE edge streams + style-change consistency
-  morph-styles.ts        MORPHFILLSTYLE / MORPHGRADIENT / MORPHLINESTYLE(2)
-  morph-ir.ts            MorphShape IR, edge-pair correspondence, rounding policy
+packages/swf/src/tags/images.ts
+  bitmap tag headers, source format, dimensions, compression payload views, alpha offsets
+packages/swf/src/tags/morph.ts
+  DefineMorphShape/2 headers, bounds/offsets, paired styles, both edge streams, quarantine
+packages/swf/src/shapes/morph-ir.ts
+  MorphShape IR, edge-pair correspondence, rational interpolation, ratio-bake decision
+packages/assets/src/images/decode.ts
+  build-time pixel decoding, lossless layouts, alpha reconstruction and PNG encoding
+packages/gfx/src/raster/
+  deterministic CPU raster primitives used by the decompiler preview adapter
+apps/decompiler/src/assets/{dump,shape-preview}.ts
+  sorted asset manifest, JPEG/JPEGTables policy, CPU endpoint previews and unsupported quarantine records
+apps/decompiler/src/render/vector-ir.ts
+  static VectorShape adapter; `morphToGeometry()` is a tested integration boundary awaiting a P4 caller
 ```
+
+P6 re-encoding (`.sfa`, KTX2 and texture budgets) has no implementation module in this P3 checkout;
+its owner remains WP-070-06…09. P3 asset previews intentionally emit morph endpoints, not timeline-ratio
+frames. `morphToGeometry()` is not yet on a production call path: the P3 model preserves `PlacementOp.ratio`
+(IMPL-030-R016), but the static-scene bridge in `scene-build.ts` and GFX's structural placement type do not
+carry a morph ratio. P4's display-list/scene integration (IMPL-130 WP-130-04/05) owns binding each placement's
+ratio and calling the adapter. This is a scoped integration boundary, not a missing P3 decode/interpolation
+implementation; the adapter's final ties-to-even behavior is pinned by `T-P3-REG-007`.
 
 **IMPL-070-R001** Bitmap payloads MUST NOT be decoded at parse time. `DefineBits*` produces a
 `BitmapAsset` holding the compressed bytes *as a view*; decoding happens in the asset worker (AST-§3)
@@ -121,8 +122,9 @@ names the asset.
 pixel** whose inflated length must equal `width × height` exactly (mismatch = `SF0253`, error, alpha
 dropped, image still usable). The plane is coverage, not premultiplied colour; combining it with the
 decoded JPEG colour is the asset pipeline's job (R013). **When `ImageData` is PNG or GIF89a, the alpha
-data is not supported** (chapter) — a trailing alpha plane is `SF0263`-class (error), ignored, and the
-payload's own alpha (PNG) or lack thereof (GIF) is used instead.
+data is not supported** (chapter) — a trailing alpha plane is `SF0269` (error), ignored, and the
+payload's own alpha (PNG) or lack thereof (GIF) is used instead. `SF0263` belongs to the morph vertex
+budget, not image alpha.
 
 **IMPL-070-R007** `DefineBitsJPEG4`'s `DeblockParam` is a `UI16` **8.8 fixed-point** value expressing a
 relative deblocking strength of **0–100 %**. It MUST be captured and echoed into the manifest for
@@ -270,9 +272,10 @@ forbidden (real files exist where the field is stale).
 
 **IMPL-070-R023** `PlaceObject2`'s `Ratio` drives the morph: `0` = exactly the start state, `65535` =
 exactly the end state, values in between interpolate (chapter). Our model accepts `Ratio` from
-`PlaceObject2` *and* `PlaceObject3` (the field is shared) and passes it through as a 16-bit value; the
-renderer writes the interpolated geometry (GFX-R052). The IIR MUST NOT bake a single ratio into the
-character.
+`PlaceObject2` *and* `PlaceObject3` (the field is shared) and preserves it on the placement as a 16-bit
+value (`IMPL-030-R016`). P3 does not render timeline placements; P4's scene/display-list integration passes
+the ratio to `morphToGeometry()` before geometry conversion. The IIR MUST NOT bake a single ratio into the
+character. `GFX-R052` concerns 8-bit texture expansion and is not a morph-rendering requirement.
 
 ### 6.2 Morph styles
 
@@ -338,36 +341,40 @@ export interface MorphShape {
   readonly endEdgeBounds: Rect | null;        // v2 only
   readonly edgeCounts: { start: number; end: number };
   readonly pairs: readonly EdgePair[];        // index-correlated start/end edges
-  readonly correspondence: MorphCorrespondence | null;   // null => ratio-baked meshes (GFX-D14)
+  readonly correspondence: MorphCorrespondence | null;   // null => finite ratio-bake strategy selected under R032
   readonly flags: { nonScalingStrokes: boolean; scalingStrokes: boolean };
 }
 ```
 
 - **IMPL-070-R029** Morph geometry MUST be decoded into the same `VectorShape` IR as static shapes, plus
-  an explicit `pairs` list. Where the edge counts differ (malformed), `SF0261` (warning) and the extra
-  edges are paired with a degenerate counterpart (zero-length at the neighbouring anchor) so
-  interpolation stays defined.
+  an explicit `pairs` list. Where edge counts differ (malformed), emit `SF0261` (warning) and pair the
+  unmatched suffix with zero-length edges at the shorter endpoint's last decoded anchor; use `(0, 0)`
+  when that endpoint has no edges. Preserve all authored edge indices so interpolation remains defined.
 - **IMPL-070-R030** **Straight ↔ curved pairing** (chapter): when one state's edge is straight and the
   other's is curved, *both* are treated as quadratic curves; the straight edge becomes a curve with
   `control = delta / 2` and `anchor = delta / 2`. Odd delta components therefore halve to fractional
-  twips: the IR MUST keep rational twips for morph pairs and round **once** at tessellation (banker's
-  rounding, deterministic), rather than rounding each half independently (`T-MOD-407`; the naive
-  round-half-up of both halves loses the endpoint by a twip).
+  twips. Interpolation MUST preserve rational twips by default; `roundMorphShapeForTessellation`
+  applies ties-to-even exactly once at the final tessellation boundary. An explicit `round: true` is
+  for callers whose interpolation call is itself that boundary, never a pre-pass followed by the
+  generic static quantiser (`T-MOD-407`; half-up rounding loses endpoint fidelity).
 - **IMPL-070-R031** A morph with `Ratio == 0` MUST render exactly the `start` shape and `Ratio == 65535`
   exactly the `end` shape, bit-for-bit with the static geometry path for the same edge set — the
   tessellator MUST be invoked with the same inputs so no ratio-dependent wobble appears at the
   endpoints (`T-MOD-401`).
-- **IMPL-070-R032** Baking is allowed only for a *finite set of ratios* the renderer uses for whole-clip
-  ratio animation (`ratioBake: number[]`, default empty; decision `GFX-D14`). Arbitrary ratios require
-  runtime interpolation or a shader-side morph (GFX-R052), and the emitter MUST record which one it
-  chose (`SF0262`, info).
+- **IMPL-070-R032** Baking is allowed only for a *finite set of ratios* the renderer/build integration
+  uses for whole-clip ratio animation (`ratioBake: number[]`, default empty). Arbitrary ratios require
+  runtime interpolation or a shader-side morph; the strategy is this document's decision (there is no
+  GFX-D14 morph decision: GFX-D14 is gradient-ramp dithering), and the emitter MUST record whether it
+  chose runtime interpolation or the configured set (`SF0262`, info). Record the finite-set decision
+  even when the vertex budget drops the mesh; in that case `SF0263` (error) accompanies `SF0262`.
 - **IMPL-070-R033** `DefineMorphShape2`'s `UsesNonScalingStrokes`/`UsesScalingStrokes` and the
   edge-bounds pairs MUST be captured; the flags feed the same stroke pipeline as `DefineShape4`
   (doc 060 §3) and MUST NOT be re-derived from the edge list.
 - **IMPL-070-R034** Morph restrictions from the chapter are **checked and reported**, not assumed:
-  equal edge counts (`SF0261`), same fill *type* per style index (`SF0260`), same bitmap id when
-  bitmap-filled (`SF0268`, warning), same style-change records (`SF0265`). A morph that violates them
-  still decodes — the endpoints remain usable even when the blend is nonsense.
+  equal edge counts (`SF0261`), same fill *type* and bitmap id per style index (`SF0268`, warning), and
+  same style-change records (`SF0265`). `SF0260` is reserved here for an unknown lossless
+  `BitmapFormat`, not a morph fill mismatch. A morph that violates the restrictions still decodes —
+  the endpoints remain usable even when the blend is nonsense.
 
 ## 7. Diagnostics
 
@@ -385,7 +392,7 @@ export interface MorphShape {
 | `SF0259` | info | `DefineBitsLossless2` with format 4 (undocumented, observed) — decoded anyway |
 | `SF0260` | error | unknown `BitmapFormat` (pixel size unknown; tag quarantined) |
 | `SF0261` | warning | morph edge counts differ; degenerate pairs synthesised |
-| `SF0262` | info | morph ratio bake set selected (decision `GFX-D14`) |
+| `SF0262` | info | morph interpolation strategy selected; any finite baked-ratio set is recorded |
 | `SF0263` | error | morph IR would exceed the vertex budget (reported, mesh dropped) |
 | `SF0264` | warning | morph `Offset` inconsistent with the parsed `EndEdges` position (hint ignored) |
 | `SF0265` | warning | morph style-change/`MoveTo` records differ between the two edge streams |
@@ -446,7 +453,7 @@ so a 300-morph movie produces a readable report rather than 300 identical lines.
 | WP-070-10 | Morph tag decode: headers, bounds, both edge streams, `Offset` check | WP-060-09 | 5 | `morph-def.ts`, `morph-edges.ts`, T-MOD-401/404 | P3 |
 | WP-070-11 | Morph styles: `MORPHFILLSTYLE`, `MORPHGRADIENT`, `MORPHLINESTYLE2` | WP-070-10, WP-060-04 | 4 | `morph-styles.ts`, T-MOD-405/406 | P3 |
 | WP-070-12 | Morph IR: pairing, straight↔curved rounding, ratio-bake decision | WP-070-11 | 3 | `morph-ir.ts`, T-MOD-402/403/407/408 | P3 |
-| WP-070-13 | Image corpus harness (decode parity vs a reference decoder) | WP-070-07 | 4 | CI corpus, parity report | P3 |
+| WP-070-13 | Image decode conformance fixtures (frozen payloads + reference pixels) | WP-070-01…05 | 4 | CI fixture suite with literal/reference parity assertions (`T-AST-001…004`, `T-MOD-301…305/309…313`) | P3 |
 | WP-070-14 | Morph corpus + endpoint/blend goldens | WP-070-12, WP-140-03 | 3 | morph goldens, T-MOD-401 | P3 |
 | WP-070-15 | `assets dump` CLI integration, local PNG previews, sorted manifest + repeat-run golden | WP-060-11, WP-070-05/13/14, WP-080-14, WP-090-11 | 6 | `forge-decompile assets dump`, CLI golden, stable hashes | P3 |
 | | **Total** | | **53** | | |
@@ -489,3 +496,4 @@ validate but never depend on (R022), and morph style arrays pair by index (R024)
 | 1.0 | initial | Scoped from Ch.8/Ch.9; pixel-affecting layouts marked pending |
 | 1.1 | 2026-10-04 | Ch.8/Ch.9-grounded rewrite: exact tag bodies for all seven bitmap tags; JPEG SOI/EOI rule with the pre-SWF 8 erroneous `FFD9FFD8` prefix; single-`JPEGTables` splice rule; PNG/GIF exact magic and SWF 8 gate; `AlphaDataOffset` = byte count, alpha unsupported with PNG/GIF; `DeblockParam` 8.8 0–100 %; lossless formats 3/4/5 with palette = size + 1, per-row 32-bit padding by pixel size, `PIX15`/`PIX24` bit fields and XRGB/ARGB order; **`ALPHABITMAPDATA` premultiplied** → canonical straight-alpha with un-premultiply; two-stream morph edge model with the `Offset` hint rule; morph style interleaving incl. `MORPHGRADIENT` (`UI8` count) and `MORPHLINESTYLE2` (one shared flag word, per-state miter); morph restrictions, straight↔curved pairing and rational-twip rounding; diagnostics `SF0250`–`SF0269`; tests `T-MOD-309`–`313` and `T-MOD-404`–`408`; WPs 01–14 = 47 d |
 | 1.2 | 2026-10-09 | P3 C3 corrections: `E-028` — `MORPHGRADIENT` is **one** Ch.7-style `GRADIENT` header byte (`SpreadMode`/`InterpolationMode`/`NumGradients` nibble), not a `UI8` count and not count-then-flags (`IMPL-070-R025` rewritten, §6.2 layout corrected); `E-029` — the erroneous `FFD9FFD8` pair is not restricted to a prefix, not version-gated, and must be removed from the `JPEGTables` payload and the merged stream too (`IMPL-070-R004`); `IMPL-070-R005` tables `EOI` removal made conditional |
+| 1.3 | 2026-10-10 | P3 C7 closeout: correct false GFX morph citations and `SF0260`/`SF0268` mapping; document P4 morph placement caller; define unequal-edge padding at the shorter endpoint's last anchor; rename the `SF0262` symbolic constant to `MORPH_STRATEGY_RECORDED` and emit the strategy diagnostic even when `SF0263` drops an over-budget bake; correct WP-070-13's phase dependency and fixture evidence |

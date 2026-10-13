@@ -236,7 +236,7 @@ off-by-one (indices are 0…255, i.e. 256 slots, with the count itself in a `UI8
 `ACTIONRECORDHEADER.Length`'s comment ("the number of bytes in the `ACTIONRECORDHEADER`, not counting
 the `ActionCode` and `Length` fields") really means the *payload* length, since the header itself is
 exactly the two or four bytes it excludes.
-**Encoded by:** `IMPL-050-R003`, `IMPL-050-R025`, `APP-§10.3`, and tests `T-AVM1-001`/`T-AVM1-002`/`T-AVM1-015`.
+**Encoded by:** `IMPL-050-R003`, `IMPL-050-R025`, `APP-§10.3`, and tests `T-AVM1-FE-001`/`T-AVM1-FE-002`/`T-AVM1-FE-015`.
 
 ---
 

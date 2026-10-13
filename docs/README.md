@@ -7,6 +7,7 @@ Two layers, plus one blueprint:
 | **Design specs** | [`docs/specs/`](specs/) | *What must the product do, at which fidelity?* | Behaviour: RFC 2119 requirements `<DOC>-Rnnn`, decisions `<DOC>-Dnn`, fidelity levels F1–F4 |
 | **Implementation specs** | [`docs/impl/`](impl/) | *How do we build it, in what order?* | Execution: modules, algorithms, diagnostics `SF####`, tests `T-<AREA>-nnn`, work packages `WP-0nn-nn` |
 | **Tech spec** | [`TECH-SPEC.md`](TECH-SPEC.md) | *How do the parts fit?* | Structure: apps/packages, file contracts, toolchain, rules, interfaces, abilities matrix |
+| **Project checklist** | [`PROJECT-CHECKLIST.md`](PROJECT-CHECKLIST.md) | *Which phase acceptance work remains?* | Non-normative status roll-up; roadmap and owning specs remain authoritative |
 | **Upstream** | SWF File Format Specification v19 | *What do the bytes mean?* | Byte layout. Cited by chapter/section; never redistributed (see `specs/100`) |
 
 Start with [`../AGENTS.md`](../AGENTS.md) (how to work), then
@@ -73,16 +74,19 @@ orientation map, those are the catalogues.
 
 1. [`../README.md`](../README.md) — what the product is, in one screen.
 2. [`TECH-SPEC.md`](TECH-SPEC.md) §1–§3 — components, repository and file layout.
-3. [`impl/000-roadmap.md`](impl/000-roadmap.md) §2–§4 — phases, milestones, first slice.
-4. The implementation documents for the phase you are working on, then the design-spec sections
+3. [`PROJECT-CHECKLIST.md`](PROJECT-CHECKLIST.md) — current cross-phase acceptance roll-up; use the roadmap and owning specs for authority and detail.
+4. [`impl/000-roadmap.md`](impl/000-roadmap.md) §2–§4 — phases, milestones, first slice.
+5. The implementation documents for the phase you are working on, then the design-spec sections
    and format-spec chapters they cite.
-5. [`registers/errata.md`](impl/registers/errata.md) — before touching byte-level parsing: it lists
+6. [`registers/errata.md`](impl/registers/errata.md) — before touching byte-level parsing: it lists
    every place where the upstream spec's prose and our documents disagree, and what we do instead.
 
 ## 4. Keeping the map true
 
-- A new document is added to the table above, to the catalogue (`specs/README.md` or
-  `impl/README.md`), and to the folder that matches its component (`TECH-R028`).
+- A new design or implementation spec is added to the table above, its catalogue
+  (`specs/README.md` or `impl/README.md`), and the folder that matches its component (`TECH-R028`).
+  Project-level roll-ups such as [`PROJECT-CHECKLIST.md`](PROJECT-CHECKLIST.md) are listed here but
+  stay outside the numbered component-spec catalogues.
 - Document ids never change; filenames keep their `NNN-` prefix. Moving a document between folders
   is allowed, but the `docs/…md` paths and id-form references in every other document must move with
   it — `python3 tools/verify_docs.py` (checks 15–17) proves they did.

@@ -1,6 +1,6 @@
 /**
- * `Try`/`With` structured regions — `IMPL-050` §5.5 (`T-AVM1-006` Try field order and tiling,
- * `T-AVM1-016` With depth caps and skip-body, `T-AVM1-025` try/throw/finally shape).
+ * `Try`/`With` structured regions — `IMPL-050` §5.5 (`T-AVM1-FE-006` Try field order and tiling,
+ * `T-AVM1-FE-016` With depth caps and skip-body, `T-AVM1-FE-025` try/throw/finally shape).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -24,7 +24,7 @@ function regionOps(
   return { try: tryR, with: withR, diag };
 }
 
-describe('T-AVM1-006 Try field order and body tiling', () => {
+describe('T-AVM1-FE-006 Try field order and body tiling', () => {
   it('catch-by-name: the name is decoded and the three sizes are all present', () => {
     const bytes = block(tryRegion({ catchName: 'e', try: [0x0a], catch: [0x0b], finally: [] }));
     const { try: regions } = regionOps(bytes);
@@ -74,7 +74,7 @@ describe('T-AVM1-006 Try field order and body tiling', () => {
   });
 });
 
-describe('T-AVM1-016 With depth caps and skip-body', () => {
+describe('T-AVM1-FE-016 With depth caps and skip-body', () => {
   function nestedWith(depth: number): number[] {
     // Innermost body is an Add; each level wraps `With { push "o", <body> }`. The outermost With
     // is depth 1; the innermost is depth `depth`.
@@ -115,7 +115,7 @@ describe('T-AVM1-016 With depth caps and skip-body', () => {
   });
 });
 
-describe('T-AVM1-025 Try/Throw/finally structure', () => {
+describe('T-AVM1-FE-025 Try/Throw/finally structure', () => {
   it('a Try with catch and finally exposes three body groups (model shape)', () => {
     const bytes = block(
       tryRegion({ catchName: 'e', finallyPresent: true, try: [0x0a, 0x2a], catch: [0x0b], finally: [0x0c] }),

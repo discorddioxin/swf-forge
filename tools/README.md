@@ -1,6 +1,6 @@
 # tools/ — document tooling
 
-Stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
+The Python document-tooling scripts are stdlib-only, have no dependencies or network access, and are safe to run from any directory:
 
 ```bash
 python3 tools/verify_docs.py            # document consistency gate — prints "ISSUES: 0" when clean
@@ -11,6 +11,8 @@ python3 tools/adpcm_probe.py FILE.swf   # settles the ADPCM packet length from r
 python3 tools/adpcm_hunt.py             # goes and finds the files for it (network)
 pnpm test:audit                         # unit tests for every tool above
 ```
+
+The AVM1 process-restart probe is a separate Node tool: `corepack pnpm test:avm1-restart` builds the workspace, then compares synthetic direct-analysis and CLI reports across fresh processes. The fixture includes T0, T1 (`dynamic-pool`), and T2 (`unknown-opcode`) entries, recovered names, and non-empty requirements; the evidence is local and synthetic only, not open-corpus evidence. Its hashes and report summary are recorded in `audits/P5-C4-RESTART-PROBE.json`.
 
 `adpcm_hunt.py` is the one exception to "no network": it exists to search GitHub and npm for
 Flash content. Everything else is offline.

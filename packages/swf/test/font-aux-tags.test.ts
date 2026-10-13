@@ -394,7 +394,31 @@ describe('font licensing, hinting, and advanced-rendering sidecars', () => {
     expect(cutoffs.outsideCutoff - cutoffs.insideCutoff).toBeCloseTo(0.5 * 12, 6);
   });
 
-  it('T-MOD-511/IMPL-080-R020: DefineFontName captures both licensing strings verbatim', () => {
+  it('T-MOD-511/IMPL-080-R038: DefineFont4 CFF preserves fallback metadata and reports SF0270', () => {
+    const body = new ByteWriter()
+      .u16(92)
+      .u8(0x04)
+      .bytes(new TextEncoder().encode('CFF Fixture\0'))
+      .bytes(Uint8Array.from([0x01, 0x02])); // opaque CFF bytes: never parsed as a glyph table
+    const file = openSwf(swfWith(tag(Tag.DefineFont4, body.toUint8Array())));
+    const model = buildMovieModel(file);
+
+    expect(model.characters.get(92)).toMatchObject({
+      kind: 'font4',
+      font: null,
+      font4: { name: 'CFF Fixture', flags: 0x04, hasFontData: true },
+      tagName: 'DefineFont4',
+    });
+    const diagnostics = file.sink.list().filter((diagnostic) => diagnostic.code === 'SF0270');
+    expect(diagnostics).toHaveLength(1);
+    expect(diagnostics[0]).toMatchObject({
+      severity: 'error',
+      characterId: 92,
+      message: 'DefineFont4 92 "CFF Fixture" (flags 0x04) contains CFF outlines; glyph conversion is unsupported',
+    });
+  });
+
+  it('IMPL-080-R020/R039: DefineFontName captures both licensing strings verbatim', () => {
     const file = openSwf(
       swfWith(
         concat(

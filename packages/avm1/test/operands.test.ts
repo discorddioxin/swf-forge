@@ -1,6 +1,6 @@
 /**
- * Operand decoding — `IMPL-050` §5 (`T-AVM1-002` Push types, `T-AVM1-003` branch offsets,
- * `T-AVM1-018` GetURL2 flag quadrants, `T-AVM1-020` reverse-push convention).
+ * Operand decoding — `IMPL-050` §5 (`T-AVM1-FE-002` Push types, `T-AVM1-FE-003` branch offsets,
+ * `T-AVM1-FE-018` GetURL2 flag quadrants, `T-AVM1-FE-020` reverse-push convention).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -18,6 +18,8 @@ import {
   block,
   branchIf,
   collector,
+  constantPool,
+  defineFunction,
   jump,
   nul,
   pair,
@@ -57,7 +59,7 @@ function decode(
   return { decoded, diag, records };
 }
 
-describe('T-AVM1-002 Push types 0-9', () => {
+describe('T-AVM1-FE-002 Push types 0-9', () => {
   it('string (0), null (2), undefined (3), boolean (5), integer (7)', () => {
     expect(firstPushValues(block(pushString('hi')))[0]).toEqual({
       kind: 'lit',
@@ -122,7 +124,7 @@ describe('T-AVM1-002 Push types 0-9', () => {
   });
 });
 
-describe('T-AVM1-003 branch offsets relative to the record end', () => {
+describe('T-AVM1-FE-003 branch offsets relative to the record end', () => {
   it('a Jump of 0 lands on the next record', () => {
     // [Add, Jump 0, Add] → the jump targets the second Add.
     const { block: b } = analyze(block(rec(0x0a), jump(0), rec(0x0a)));
@@ -148,7 +150,7 @@ describe('T-AVM1-003 branch offsets relative to the record end', () => {
   });
 });
 
-describe('T-AVM1-018 GetURL2 flag quadrants', () => {
+describe('T-AVM1-FE-018 GetURL2 flag quadrants', () => {
   it('method × (loadTarget, loadVariables) decode from the flag byte', () => {
     const cases: { flags: number; method: 'none' | 'get' | 'post'; loadTarget: boolean; loadVariables: boolean }[] = [
       { flags: 0x00, method: 'none', loadTarget: false, loadVariables: false },
@@ -182,7 +184,7 @@ describe('T-AVM1-018 GetURL2 flag quadrants', () => {
   });
 });
 
-describe('T-AVM1-020 reverse-push calling convention', () => {
+describe('T-AVM1-FE-020 reverse-push calling convention', () => {
   it('InitObject pops count then (value, name) pairs; IR keeps source (name, value) order (R043)', () => {
     // Push rightmost-first: value2, name2, value1, name1, count=2.
     const bytes = block(pushString('v1'), pushString('n1'), pushString('v2'), pushString('n2'), pushInt(2), rec(0x43));
@@ -218,9 +220,56 @@ describe('T-AVM1-020 reverse-push calling convention', () => {
       expect(op.call.args[1]).toEqual({ kind: 'lit', value: { type: 'integer', value: 2, bits: 2 } });
     }
   });
+
+  it('NewObject pops name, count, then args in source order', () => {
+    const bytes = block(pushInt(1), pushInt(2), pushInt(2), pushString('Widget'), rec(0x40));
+    const { block: b } = analyze(bytes);
+    const op = b.ir.blocks[0]!.ops.find((o) => o.kind === 'call');
+    expect(op).toMatchObject({ kind: 'call', call: { kind: 'newObject', numArgs: 2 } });
+    if (op?.kind === 'call')
+      expect(op.call.args.map((arg) => (arg.kind === 'lit' ? arg.value : null))).toEqual([
+        { type: 'integer', value: 1, bits: 1 },
+        { type: 'integer', value: 2, bits: 2 },
+      ]);
+  });
+
+  it.each([
+    { opcode: 0x52, kind: 'callMethod' },
+    { opcode: 0x53, kind: 'newMethod' },
+  ] as const)('$kind pops name, object, count, then args in source order', ({ opcode, kind }) => {
+    const bytes = block(pushInt(1), pushInt(2), pushInt(2), pushString('receiver'), pushString('method'), rec(opcode));
+    const { block: b } = analyze(bytes);
+    const op = b.ir.blocks[0]!.ops.find((o) => o.kind === 'call');
+    expect(op).toMatchObject({
+      kind: 'call',
+      call: {
+        kind,
+        name: { kind: 'lit', value: { type: 'string', value: 'method' } },
+        object: { kind: 'lit', value: { type: 'string', value: 'receiver' } },
+        numArgs: 2,
+      },
+    });
+    if (op?.kind === 'call')
+      expect(op.call.args.map((arg) => (arg.kind === 'lit' ? arg.value : null))).toEqual([
+        { type: 'integer', value: 1, bits: 1 },
+        { type: 'integer', value: 2, bits: 2 },
+      ]);
+  });
+
+  it('InitArray pops count then items, preserving source order', () => {
+    const bytes = block(pushInt(1), pushInt(2), pushInt(2), rec(0x42));
+    const { block: b } = analyze(bytes);
+    const op = b.ir.blocks[0]!.ops.find((o) => o.kind === 'call');
+    expect(op).toMatchObject({ kind: 'call', call: { kind: 'initArray', numArgs: 2 } });
+    if (op?.kind === 'call')
+      expect(op.call.args.map((arg) => (arg.kind === 'lit' ? arg.value : null))).toEqual([
+        { type: 'integer', value: 1, bits: 1 },
+        { type: 'integer', value: 2, bits: 2 },
+      ]);
+  });
 });
 
-describe('constant pool references (T-AVM1-005, part 1)', () => {
+describe('constant pool references (T-AVM1-FE-005, part 1)', () => {
   function poolPushOps(bytes: Uint8Array): { values: import('@swf-forge/avm1').Operand[] }[] {
     const { block: b } = analyze(bytes);
     const out: { values: import('@swf-forge/avm1').Operand[] }[] = [];
@@ -244,6 +293,22 @@ describe('constant pool references (T-AVM1-005, part 1)', () => {
     const pushes = poolPushOps(bytes);
     const poolRef = pushes[pushes.length - 1]?.values[0];
     expect(poolRef).toEqual({ kind: 'lit', value: { type: 'pool', index: 0, resolved: 'gamma' } });
+  });
+
+  it('a function-only constant-pool reference receives the dynamic-pool tier', () => {
+    const bytes = block(
+      constantPool('function-entry'),
+      defineFunction({ name: 'poolReader', body: [...pushConstant8(0), 0x00] }),
+    );
+    const { block: b, diag } = analyze(bytes);
+    const definition = b.ir.blocks.flatMap((basic) => basic.ops).find((op) => op.kind === 'define');
+
+    expect(diag.has('SF0410')).toBe(true);
+    expect(definition?.kind).toBe('define');
+    if (definition?.kind !== 'define') return;
+    expect(definition.fn.ir?.poolIsDynamic).toBe(true);
+    expect(definition.fn.ir?.tier).toBe(1);
+    expect(definition.fn.ir?.tierReasons.map((reason) => reason.reason)).toEqual(['dynamic-pool']);
   });
 
   it('an out-of-range pool index is SF0411 (error, residual)', () => {

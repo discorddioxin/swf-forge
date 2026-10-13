@@ -89,12 +89,26 @@ function needsBuildAsset(character: CharacterModel): boolean {
   );
 }
 
-function unsupported(character: CharacterModel): AssetRecord {
+function unsupported(character: CharacterModel, file?: SwfFile): AssetRecord {
   const sourceTag = character.index?.code ?? character.tagCode;
+  const ref = character.index;
+  const quarantineDiagnostic =
+    ref === null
+      ? undefined
+      : file?.sink
+          .list()
+          .find(
+            (diagnostic) =>
+              diagnostic.code === Codes.SHAPE_FILL_TYPE_UNKNOWN &&
+              diagnostic.offset >= ref.offset &&
+              diagnostic.offset < ref.offset + ref.length,
+          );
   const message =
-    character.kind === 'shape' || character.kind === 'shape4'
-      ? 'static shape geometry was not decoded; no PNG was written'
-      : `${character.kind} asset decoding is not available in this build; no output was written`;
+    character.vectorShape?.quarantined === true || character.morph?.quarantined === true
+      ? 'unknown fill style quarantined the shape; no PNG was written'
+      : character.kind === 'shape' || character.kind === 'shape4'
+        ? 'static shape geometry was not decoded; no PNG was written'
+        : `${character.kind} asset decoding is not available in this build; no output was written`;
   return {
     characterId: character.id,
     kind: character.kind,
@@ -103,13 +117,24 @@ function unsupported(character: CharacterModel): AssetRecord {
     path: null,
     status: 'unsupported',
     sha256: null,
-    diagnostics: [{ code: 'ASSET_UNSUPPORTED', severity: 'error', message }],
+    diagnostics: [
+      ...(quarantineDiagnostic === undefined
+        ? []
+        : [
+            {
+              code: quarantineDiagnostic.code,
+              severity: quarantineDiagnostic.severity,
+              message: quarantineDiagnostic.message,
+            },
+          ]),
+      { code: 'ASSET_UNSUPPORTED', severity: 'error', message },
+    ],
   };
 }
 
-function recordShape(character: CharacterModel, out: string): AssetRecord {
+function recordShape(character: CharacterModel, out: string, file: SwfFile): AssetRecord {
   const shape = character.vectorShape;
-  if (shape === null) return unsupported(character);
+  if (shape === null || shape.quarantined === true) return unsupported(character, file);
   const preview = renderShapePreview(shape);
   const path = `shape-${character.id}.png`;
   writeFileSync(join(out, path), preview.png);
@@ -136,9 +161,9 @@ function recordShape(character: CharacterModel, out: string): AssetRecord {
   };
 }
 
-function recordMorph(character: CharacterModel, out: string): AssetRecord[] {
+function recordMorph(character: CharacterModel, out: string, file: SwfFile): AssetRecord[] {
   const morph: MorphShapeModel | null = character.morph;
-  if (morph === null) return [unsupported(character)];
+  if (morph === null || morph.quarantined === true) return [unsupported(character, file)];
   const sourceTag = character.index?.code === undefined ? character.tagName : tagName(character.index.code);
   const endpoints = [
     { name: 'start', shape: morph.start, edgeCount: morph.edgeCounts.start },
@@ -164,7 +189,12 @@ function recordMorph(character: CharacterModel, out: string): AssetRecord[] {
       path,
       status: 'written',
       sha256: digest(preview.png),
-      metadata: { endpoint: name, edgeCount, pairedEdgeCount: morph.pairs.length, offsetMatches: morph.offsetMatches },
+      metadata: {
+        endpoint: name,
+        edgeCount,
+        pairedEdgeCount: morph.pairs.length,
+        ...(morph.offsetMatches === null ? {} : { offsetMatches: morph.offsetMatches }),
+      },
       diagnostics,
     };
   });
@@ -403,6 +433,15 @@ function recordFont(character: CharacterModel, out: string, file: SwfFile): Asse
         path: null,
         status: 'unsupported',
         sha256: null,
+        ...(character.font4 !== null && character.font4 !== undefined
+          ? {
+              metadata: {
+                familyName: character.font4.name,
+                fontFlags: character.font4.flags,
+                hasEmbeddedCff: character.font4.hasFontData,
+              },
+            }
+          : {}),
         diagnostics: [{ code: cffDiagnostic.code, severity: cffDiagnostic.severity, message: cffDiagnostic.message }],
       };
     }
@@ -852,8 +891,8 @@ export function runAssetsDump(request: AssetsDumpRequest, io: CliIo): number {
     const jpegTables = jpegTablesForFile(model, file);
     for (const character of [...model.characters.values()].sort((a, b) => a.id - b.id)) {
       if (!needsBuildAsset(character)) continue;
-      if (character.vectorShape !== null) assets.push(recordShape(character, request.out));
-      else if (character.morph !== null) assets.push(...recordMorph(character, request.out));
+      if (character.vectorShape !== null) assets.push(recordShape(character, request.out, file));
+      else if (character.morph !== null) assets.push(...recordMorph(character, request.out, file));
       else if (character.bitmap !== null) assets.push(recordBitmap(character, request.out, jpegTables, file.version));
       else if (character.font !== null || character.kind === 'font4')
         assets.push(recordFont(character, request.out, file));

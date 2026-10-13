@@ -6,14 +6,14 @@ Web Audio, and can either **reproduce Flash semantics faithfully** or be **restr
 modern code** (a real game loop; no MovieClip or timeline system).
 
 **Status: implementation underway.** The normative specifications and roadmap remain authoritative.
-The repository currently has SWF binary/container readers, dictionary and timeline modelling, the
-`forge-decompile inspect`/`dump` CLI, shape parsing, and a platform-neutral reference renderer tested
-against the Appendix A fixture. The AVM1 compiler/runtime, asset export pipeline, transpiler and
-production browser engines are not implemented. Work follows
-[the roadmap](docs/impl/000-roadmap.md) in order: P0–P2 foundations/model gates are being hardened,
-P4 static-render work is ahead of P5 AVM1, and no P5 work is claimed complete. The upstream *SWF File
-Format Specification v19* is encoded — chapters 1–15 and Appendices A–C; the work-package index totals
-**208 packages / ≈646.5 developer-days**.
+P0–P4 gates are closed. The repository includes SWF binary/container readers, dictionary and timeline
+models, the `forge-decompile inspect`/`dump`/`render` CLI, the P3 asset pipeline, a browser static-render
+demo, and a substantial AVM1 front end. P5 is now in progress: `forge-decompile analyze <file.swf>
+--tiers [--json]` reports action-block and nested-function tiers, but the phase's coercion, fuzz,
+corpus-review and remaining conformance gates are not yet claimed complete. The AVM1 runtime and P6
+emitter/transpiler are still future work. Work follows [the roadmap](docs/impl/000-roadmap.md) in
+order. The upstream *SWF File Format Specification v19* is encoded — chapters 1–15 and Appendices A–C;
+the work-package index totals **208 packages / ≈646.5 developer-days**.
 
 ---
 

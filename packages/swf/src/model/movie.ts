@@ -49,12 +49,13 @@ import {
   applyFontInfo,
   decodeCsmTextSettings,
   decodeDefineFont2or3,
+  decodeDefineFont4,
   decodeDefineFontV1,
   decodeFontAlignZones,
   decodeFontInfo,
   decodeFontName,
 } from '../tags/fonts.js';
-import type { FontInfoEmit } from '../tags/fonts.js';
+import type { DefineFont4Model, FontInfoEmit } from '../tags/fonts.js';
 import { decodeDefineEditText, decodeDefineText, recoverStaticTextCodes } from '../tags/text.js';
 import { openTagCursor, assembleTimeline } from './timeline.js';
 import { matrixIsSingular, transformRect, unionRects, isRectDegenerate } from './buttons.js';
@@ -1242,15 +1243,15 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
     const fontInfo = infoModel;
     const fontAlignZones = fontAlignZonesById.get(definition.id) ?? null;
     const fontName = fontNameById.get(definition.id) ?? null;
+    let font4: DefineFont4Model | null = null;
     if (definition.tagCode === Tag.DefineFont4) {
       const fontCursor = openTagCursor(file, ref, mode);
-      fontCursor.u16();
-      const flags = fontCursor.u8();
-      if ((flags & 0x04) !== 0) {
+      font4 = decodeDefineFont4(fontCursor);
+      if (font4.hasFontData) {
         fontCursor.emit(
           Codes.FONT_CFF_UNSUPPORTED,
           'error',
-          `DefineFont4 ${definition.id} contains CFF outlines; glyph conversion is unsupported`,
+          `DefineFont4 ${definition.id} "${font4.name}" (flags 0x${font4.flags.toString(16).padStart(2, '0')}) contains CFF outlines; glyph conversion is unsupported`,
           fontCursor.offset,
           { characterId: definition.id },
         );
@@ -1258,7 +1259,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
         fontCursor.emit(
           Codes.FONT_DEVICE_ONLY,
           'info',
-          `DefineFont4 ${definition.id} has no embedded CFF outlines`,
+          `DefineFont4 ${definition.id} "${font4.name}" has no embedded CFF outlines`,
           fontCursor.offset,
           { characterId: definition.id },
         );
@@ -1319,6 +1320,7 @@ export function buildMovieModel(file: SwfFile, options: BuildMovieOptions = {}):
       morph,
       bitmap,
       font,
+      font4,
       fontV1,
       fontInfo,
       fontAlignZones,

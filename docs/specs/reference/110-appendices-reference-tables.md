@@ -1,6 +1,6 @@
 # APP — Reference Tables
 
-**Doc ID:** APP · **Status:** Draft 1.7 · **Normative:** the tables are; the notes are guidance.
+**Doc ID:** APP · **Status:** Draft 1.8 · **Normative:** the tables are; the notes are guidance.
 
 ---
 
@@ -482,8 +482,10 @@ DoAction:      ACTIONRECORDHEADER[] then a UI8 zero (End)
 DoInitAction:  SpriteID UI16, ACTIONRECORDHEADER[], UI8 zero
 ```
 
-**SWF version windows:** SWF 3 = control actions `0x00`–`0x09` (plus the 0x81+ control set);
-SWF 4 = stack machine `0x0A`–`0x9F` core; SWF 5 = types/math/object/stack additions and the
+**SWF version windows:** SWF 3 = control actions `0x00`–`0x09`, plus `GotoFrame` (`0x81`),
+`GetURL` (`0x83`), `WaitForFrame` (`0x8A`), `SetTarget` (`0x8B`), and `GotoLabel` (`0x8C`);
+SWF 4 = stack-machine actions `0x0A`–`0x9F` core, including `WaitForFrame2` (`0x8D`, which
+consumes the frame selector from the stack; Adobe's [version 10 SWF 3 action list](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/67) omits it, while its [SWF 4 actions list](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/73) and [continuation](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/74) include `ActionWaitForFrame2`); SWF 5 = types/math/object/stack additions and the
 `_quality`/`_xmouse`/`_ymouse` property ids; SWF 6 = `DoInitAction` (59) with `InstanceOf`,
 `Enumerate2`, `StrictEquals`, `Greater`, `StringGreater`; SWF 7 = `DefineFunction2`, `Extends`,
 `CastOp`, `ImplementsOp`, `Try`, `Throw`; SWF 9 = `DoABC` (and `DoAction` contents are ignored when
@@ -679,7 +681,8 @@ MORPHFILLSTYLE: type UI8 then per type —
   0x10/0x12/0x13    : StartGradientMatrix MATRIX, EndGradientMatrix MATRIX, MORPHGRADIENT
                       (+ StartFocalPoint/EndFocalPoint FIXED8 for 0x13)
   0x40/0x41/0x42/0x43: BitmapId UI16, StartBitmapMatrix MATRIX, EndBitmapMatrix MATRIX
-MORPHGRADIENT : NumGradients UI8 (1..8), one flags byte (as GRADIENT), MORPHGRADRECORD[]
+MORPHGRADIENT : SpreadMode UB[2], InterpolationMode UB[2], NumGradients UB[4] (1..8),
+                MORPHGRADRECORD[]        // ONE byte total, identical to Ch.7 GRADIENT (E-028)
 MORPHGRADRECORD: StartRatio UI8, StartColor RGBA, EndRatio UI8, EndColor RGBA
 MORPHLINESTYLE  (v1): StartWidth UI16, EndWidth UI16, StartColor RGBA, EndColor RGBA
 MORPHLINESTYLE2 (v2): StartWidth UI16, EndWidth UI16, ONE LINESTYLE2 flag word
@@ -1090,7 +1093,7 @@ plus a local digest, never reproduced (`SEC-§4`).
 | 030 | `SWF-D07` | Carry `Metadata`/XMP into the emitted project? | Yes, as `movie.metadata` in the manifest |
 | 030 | `SWF-D08` | Path sanitisation for emitted asset names | Only content hashes and sanitised linkage ids |
 | 030 | `SWF-D09` | Tags inside a sprite outside Ch.13's list | Decode normally + `SF0129` (info) once per kind; definition tags are ignored for the dictionary (`SF0128`) |
-| 040 | `AVM1-D01` | String constant encoding for SWF 4–5 content | Latin-1/code-page per `DefineFontInfo` |
+| 040 | `AVM1-D01` | Legacy string decoding for SWF 4–5 content | Explicit caller policy; Windows-1252 default, Shift-JIS selectable; no in-file selector |
 | 040 | `AVM1-D02` | `Add` vs `Add2` distinct implementations | Both implemented |
 | 040 | `AVM1-D03` | Include the interpreter when any function is residual | Yes |
 | 040 | `AVM1-D04` | Scene semantics | Collapse scenes into label map; `nextScene`/`prevScene` computed |
@@ -1195,7 +1198,7 @@ plus a local digest, never reproduced (`SEC-§4`).
 | 130 | `CLN-D10` | Where transforms live | `@swf-forge/clean` (library); the app is CLI + bundle |
 | 130 | `CLN-D11` | Policy file | `forge.clean.json`: rule on/off, tolerances, refusal policy |
 
-**APP-R005** There are 132 tracked decisions at Draft 1.7. Every one MUST be either measured and
+**APP-R005** There are 132 tracked decisions at Draft 1.8. Every one MUST be either measured and
 settled (with the test that settled it recorded in the entry) or explicitly accepted as an open
 risk in the release notes. A decision is never *deleted*; it is marked `[SETTLED: <test id>]` or
 `[WITHDRAWN: <replacement>]`.
@@ -1235,3 +1238,4 @@ Terms defined in ARCH-§7 are not repeated here.
 | 1.5 | 2026-10-04 | §10.10 (Ch.12 buttons: records, `BUTTONCONDACTION` incl. the ninth-bit inference, the nine-transition table, `DefineButtonCxform`/`DefineButtonSound`), §10.11 (Ch.13 sprites: tag set, definitions-before-use, stream mixing, `SetTarget` grammar), §10.12 (Ch.14 video: both tags, the codec/packet table, Screen Video v2 packet rules and the full Appendix C palette), §10.13 (Ch.15 `FileAttributes` root-only rule and the Ch.15 bit names, `DefineBinaryData`, `EnableTelemetry`) added; decision index +`GFX-D16`, `SWF-D09`, `AST-D11`, `SEC-D09`, `RT-D12` (111 total) |
 | 1.6 | 2026-10-04 | Appendix pass: §2's table verified against Appendix B (65/65 exact) and six invented tag names removed (`E-026`), with the unassigned-code rule stated; §10.12's palette verified entry-for-entry against Appendix C (128/128, `T-TST-006`); the missing `REPO-D06` row added to §12 (`APP-R005` now 112) |
 | 1.7 | 2026-10-04 | Tech-spec pass: the consolidated decision index gains the new areas' registers — `INS-D01`–`D09` (`specs/120`) and `CLN-D01`–`D11` (`specs/130`); `APP-R005` count 112 → 132 |
+| 1.8 | 2026-10-09 | §10.7 `MORPHGRADIENT` corrected (`E-028`): the structure opens with a **single** Ch.7-style `GRADIENT` header byte, not a `UI8` count followed by a flags byte — the printed form consumed one byte too many and shifted every subsequent morph fill style |

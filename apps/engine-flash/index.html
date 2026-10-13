@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>swf-forge — static render (P4)</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      body {
+        margin: 0;
+        background: #101216;
+        color: #e7e9ee;
+        font:
+          13px/1.5 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      main {
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+        gap: 12px;
+        padding: 24px;
+      }
+      canvas {
+        background: #fff;
+        image-rendering: pixelated;
+        box-shadow:
+          0 0 0 1px #2a2f3a,
+          0 12px 40px #0008;
+        max-width: 100%;
+      }
+      #status {
+        opacity: 0.75;
+      }
+      #help {
+        opacity: 0.5;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <canvas id="stage" width="550" height="400"></canvas>
+      <div id="status">loading scene…</div>
+      <div id="help">space: play/pause · ←/→: step frame · home: first frame</div>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

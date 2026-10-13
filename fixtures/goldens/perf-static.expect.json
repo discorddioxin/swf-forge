@@ -1,0 +1,37 @@
+{
+  "scene": "perf-static",
+  "schemaVersion": 1,
+  "description": "TST-R017 expectation file for the static-render budget gate. This binds the P4 perf-static scene (800 disjoint opaque sprites, 4 atlases, no scripting) to its counter bounds so a regression in batching, tessellation or allocations fails the gate, not just the CI wall-clock. Wall-clock numbers are reported by the harness on real devices (TST-R016); the values here are deterministic counters measured on the headless stub GL.",
+  "baselines": {
+    "baseline-desktop": {
+      "tessellationMsCold1000": { "maxMs": 250, "note": "GFX §16 T-GFX-051: one-off cold tessellation of a 1000-shape scene." },
+      "tessellationMsPerFrameSlice": { "maxMs": 8, "note": "GFX §16." },
+      "drawCalls": { "max": 420, "note": "TST §7.2: 2 draws per batch (stencil + cover), ≤ 210 opaque-by-material batches." },
+      "batches": { "max": 210, "note": "Segment planner must group disjoint same-material opaque runs." },
+      "bufferUploadBytes": { "informational": true, "note": "Static: first frame uploads once; steady state must be 0." },
+      "steadyStateAllocationsPer600Frames": { "max": 0, "note": "T-GFX-021: zero per-frame allocations after warm-up." },
+      "steadyStateBufferGrowthsPer600Frames": { "max": 0, "note": "T-GFX-021." },
+      "heapGrowthBytesPerMinute": { "max": 65536, "note": "TST §7.2, all scenes." },
+      "contextLossRecovered": { "mustBe": true, "note": "T-GFX-060: after webglcontextlost → restored, the renderer rebuilds programs and repaints." }
+    },
+    "baseline-mobile": {
+      "drawCalls": { "max": 420, "note": "Static opaque runs are batchable regardless of device." },
+      "heapGrowthBytesPerMinute": { "max": 65536, "note": "TST §7.2." }
+    },
+    "headless-ci": {
+      "drawCalls": { "max": 420 },
+      "batches": { "max": 210 },
+      "steadyStateAllocationsPer600Frames": { "max": 0 },
+      "steadyStateBufferGrowthsPer600Frames": { "max": 0 },
+      "tessellationMsCold1000": { "maxMs": 500, "note": "Looser CI cap to absorb runner jitter; the real budget is asserted on baseline-desktop per TST-R016." },
+      "determinism": { "twiceRedrawEqual": true, "note": "T-GFX-020: the same frame must issue the identical GL command sequence twice." }
+    }
+  },
+  "gates": ["T-GFX-020", "T-GFX-021", "T-GFX-050", "T-GFX-051", "T-GFX-060"],
+  "source": "packages/gfx/src/test-support/perf-static.ts",
+  "verifiedBy": [
+    "packages/gfx/test/static-render.test.ts (T-GFX-020/021/050/051/060)",
+    "packages/gfx/test/render.test.ts (T-GFX-001..005)",
+    "apps/decompiler/test/render-goldens.test.ts (20 no-script golden frames)"
+  ]
+}

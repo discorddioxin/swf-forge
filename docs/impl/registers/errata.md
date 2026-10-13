@@ -236,7 +236,7 @@ off-by-one (indices are 0…255, i.e. 256 slots, with the count itself in a `UI8
 `ACTIONRECORDHEADER.Length`'s comment ("the number of bytes in the `ACTIONRECORDHEADER`, not counting
 the `ActionCode` and `Length` fields") really means the *payload* length, since the header itself is
 exactly the two or four bytes it excludes.
-**Encoded by:** `IMPL-050-R003`, `IMPL-050-R025`, `APP-§10.3`, and tests `T-AVM1-001`/`T-AVM1-002`/`T-AVM1-015`.
+**Encoded by:** `IMPL-050-R003`, `IMPL-050-R025`, `APP-§10.3`, and tests `T-AVM1-FE-001`/`T-AVM1-FE-002`/`T-AVM1-FE-015`.
 
 ---
 
@@ -603,6 +603,247 @@ length, `info` `SF0104`, `APP-R001`) and no name may be invented for them. `TST-
 the equality machine-checked. Tag *bodies* remain the chapters' business; Appendix B governs tag
 *values* only.
 
+---
+
+## E-027 — `IMPL-060-R034`'s quantisation grid is one grid written twice
+
+**Found in:** our own `docs/impl/decompiler/060-shapes-and-gradients.md` §6.2 / `IMPL-060-R034`,
+while implementing the quantise stage (P3 checkpoint C2).
+
+**What it says:** coordinates are snapped to "1/20 px at smoothing 0, 0.05 px above", which reads as
+two grids selected by a smoothing level.
+
+**What is wrong:** 1/20 px **is** 0.05 px. The sentence states the same spacing in two notations, so
+there is no smoothing-dependent switch to implement and no second grid to choose. A reader
+implementing the rule literally would invent a `smoothing` parameter that can only ever take one
+effective value.
+
+A second, smaller defect sits beside it: the same section says the IR holds "floats in px", while
+`IMPL-060-R037` — and the decoder — keep **integer twips** end to end. Quantising freshly decoded
+geometry is therefore a no-op by construction. The stage is not redundant; it earns its place on
+geometry that has been through arithmetic (morph ratio interpolation, curve subdivision, matrix
+application), which is where two engines actually drift apart.
+
+**Resolution:** one grid, expressed in the unit the IR is stored in. `quantiseShape` takes a single
+`gridTwips` option defaulting to `1` (= 1/20 px = 0.05 px) and no smoothing flag. `quantiseScalar`
+rounds **half away from zero** rather than using `Math.round`, which rounds half toward +∞ and would
+make the grid asymmetric about the origin, so a shape would not survive being mirrored; `-0` is
+normalised to `0` so the canonical serialisation stays byte-stable. The "floats in px" phrasing is
+superseded by `IMPL-060-R037`: the IR is integer twips.
+
+**Encoded by:** `T-MOD-107` (`packages/swf/test/shape-vector-ir.test.ts`) — grid spacing, mirror
+symmetry, `-0` folding, idempotence, and the explicit assertion that decoded geometry is already
+quantised. The quantiser lives at `packages/swf/src/shapes/quantise.ts`.
+
+## E-028 — `MORPHGRADIENT`'s header: our own documents gave two wrong answers
+
+**Found in:** `IMPL-070-R025` and `specs/110` §10.7 (both ours, not upstream), implementing P3 C3.
+**What they say:** `IMPL-070-R025` — *"`MORPHGRADIENT` uses a **`UI8` count** (1…8) — not the nibble
+form of Ch.7's `GRADIENT`"*. `specs/110` §10.7 — *"`NumGradients UI8` (1..8), one flags byte (as
+GRADIENT), `MORPHGRADRECORD[]`"*. `IMPL-070-R028` added a third variant, describing the flags as
+existing *"per state"* and requiring an `SF0192`-class report when the two states' modes differ.
+
+**What is wrong:** all three. `MORPHGRADIENT` opens with **one** byte with Ch.7's exact `GRADIENT`
+layout — `SpreadMode UB[2]`, `InterpolationMode UB[2]`, `NumGradients UB[4]` — and nothing else.
+
+- The `UI8`-count reading loses the spread and interpolation modes entirely and reads the count from
+  the wrong bits (a count of 2 with `pad`/`reflect` encodes as `0x92`, which the `UI8` reading sees
+  as 146 records).
+- The count-then-flags reading consumes **one byte too many**. That is the more dangerous error: the
+  gradient itself still decodes, having swallowed the first `MORPHGRADRECORD`'s `StartRatio` as a
+  flags byte, and every subsequent fill style in the array is shifted. The failure surfaces as
+  garbage colours in an unrelated style, far from its cause.
+- "Per state" modes cannot differ, because there is only one header byte for the pair; the
+  `SF0192`-class comparison it mandates has no inputs.
+
+Cross-checked against Ruffle's `read_gradient_flags()` (`swf/src/read.rs`), which both the static and
+the morph paths call, and against `IMPL-060` §4.3 (`IMPL-060-R013`…`R022`) for the static form. The
+chapter's own `MORPHGRADIENT` table is the source of the confusion: it prints `NumGradients` as a
+standalone field without the enclosing bit layout that Ch.7 shows for `GRADIENT`.
+
+**Resolution:** one byte, read with the same code path as the static `GRADIENT` header. The spread
+and interpolation modes belong to the style and are **copied** to both endpoints, never interpolated.
+A reserved mode (value 3) and an empty ramp are reported exactly as the static path reports them.
+`IMPL-070-R025` rewritten, `IMPL-070-R028` withdrawn and restated, `IMPL-070` §6.2 and `specs/110`
+§10.7 layouts corrected (`IMPL-070` 1.2, `specs/110` 1.8).
+
+**Encoded by:** `T-MOD-405` (`packages/swf/test/morph.test.ts`) — the fixture writes `0x92`
+(`spread = 2`, `interpolation = 1`, `count = 2`) and the test asserts both modes on **both**
+endpoints, so a two-byte read cannot pass by consuming a record byte. `morphGradient` lives at
+`packages/swf/src/tags/morph.ts`.
+
+---
+
+## E-029 — the erroneous `FFD9FFD8` pair is not a prefix, and not pre-SWF 8
+
+**Found in:** Ch.8 via SWF19 errata p.138, restated in `IMPL-070-R004`, implementing P3 C3.
+**What it says:** *"Before version 8 of the SWF file format, SWF files could contain an erroneous
+header of 0xFF, 0xD9, 0xFF, 0xD8 before the JPEG SOI marker."*
+**What is wrong:** two things, both of which make a literal implementation fail on real content.
+
+1. **"before the SOI"** — the sequence appears at *any* point before the frame header, not only at
+   the front. It is exactly what `JPEGTables`' trailing `EOI` plus `DefineBits`' leading `SOI` look
+   like once a producer has glued them together, and Flash's decoder skips the pair wherever it
+   lands. A standard decoder stops at the interior `EOI` and returns a blank or truncated image.
+2. **"before version 8"** — the sequence is not version-gated in observed content; SWF 9 files carry
+   it. A version check around the skip reintroduces the bug for later files.
+
+The chapter is also silent on which payload carries the pair. Our own implementation stripped it from
+the `DefineBits` image only, so a pair on the `JPEGTables` side survived the splice and landed
+immediately after the `SOI` we synthesise — the worst position, since every decoder stops there.
+
+A third, smaller divergence: the errata's wording is ambiguous about whether the real `SOI` *follows*
+the pair (`FFD9 FFD8 | FFD8 …`, the literal reading) or whether the pair's own `FFD8` **is** the
+`SOI`. Both byte patterns exist. Ruffle strips all four bytes; our earlier code stripped two. Each is
+correct for one reading and wrong for the other.
+
+**Resolution:** every `FFD9 FFD8` pair ahead of the `SOF`/`SOS` marker is spliced out of the image,
+the `JPEGTables` payload, and the merged stream — with no version check. Bytes at or after the scan
+header are entropy-coded and are left untouched. After the splice, an `SOI` is restored only if one
+is not already present, which accepts both readings without guessing. `SF0258` (info) is reported
+once per asset with the number of pairs removed. `IMPL-070-R004` and `IMPL-070-R005` corrected
+(`IMPL-070` 1.2); `IMPL-070-R005`'s `EOI` removal is now conditional, since chopping two bytes
+unconditionally truncated the last table of a producer that omitted its `EOI`.
+
+**Encoded by:** `T-MOD-301` (`packages/assets/test/bitmap-layout.test.ts`) — merged-stream byte
+compares covering a pair on the image, on the tables, in the interior, both `SOI` readings, the
+missing-`EOI` tables block, and the negative case that entropy-coded bytes after `SOS` are preserved.
+`removeErroneousMarkers` lives at `packages/assets/src/images/decode.ts`.
+
+## E-030 — "native endian" is not a decodable instruction, and 8-bit PCM is unsigned
+
+**Found in:** Ch.11 `DefineSound` / `SoundData`, restated in `IMPL-090-R006`, implementing P3 C5.
+**What it says:** sound format 0 is *"uncompressed, native-endian"*, and the chapter never states
+the sample representation for `SoundSize = 0` (8-bit).
+**What is wrong:** one omission and one instruction that cannot be followed.
+
+1. **"native-endian"** names the endianness of the *authoring* machine, which is not recoverable
+   from the file. A decoder must pick an order. `REPO-R013` forbids picking the *host's*, because
+   that makes output host-dependent — but it does not say which fixed order to pick, and the choice
+   is not arbitrary: pick wrong and every 16-bit format-0 sound decodes to byte-swapped noise.
+   `ruffle` resolves it by assuming little-endian unconditionally, with the comment *"Cross fingers
+   that it's little endian"* (`core/src/backend/audio/decoders.rs`), routing
+   `UncompressedUnknownEndian` into the same little-endian `PcmDecoder` as format 3. Format 3 exists
+   precisely because format 0 was unusable, and Flash wrote little-endian from SWF 4 onward.
+2. **8-bit sample representation is omitted.** It is **unsigned** (0…255, `0x80` = silence), as in
+   RIFF/WAV and as `ruffle`'s `PcmDecoder` reads it. Nothing in Ch.11 says so, and the symmetric
+   assumption — that 8-bit is two's complement like 16-bit — is wrong in the worst way: it maps
+   silence to full-scale negative and inverts the waveform.
+
+**Resolution:** format 0 and format 3 are decoded identically — 16-bit little-endian, 8-bit
+unsigned expanded as `(byte - 128) * 256`. `SF0302` (info) is reported once per format-0 asset to
+record that the endianness was assumed rather than read. We expand 8-bit by 256 rather than
+`ruffle`'s `(byte - 127) * 128`, which spans half scale; 256 is the standard full-scale expansion
+and these samples go straight into a WAV preview. `IMPL-090-R006` corrected (`IMPL-090` 1.2), and
+`SF0302`'s registry wording — which claimed 8-bit had an endianness — reworded.
+
+**Encoded by:** `T-AUD-103` (`packages/audio/test/media-codecs.test.ts`), which previously pinned
+both defects.
+
+---
+
+## E-031 — `ruffle` emits 4095 samples per ADPCM packet; shipped content says 4096
+
+**Found in:** `ruffle`'s `core/src/backend/audio/decoders/adpcm.rs` versus Ch.11's `ADPCMPACKET`,
+implementing P3 C5. Not an upstream defect — upstream is right; this records a *player* divergence
+that our decoder must not copy.
+**What Ch.11 says:** `ADPCMMONOPACKET` is `InitialSample SI16`, `InitialIndex UB[6]`, then
+`AdpcmCodeData UB[4095 × bits]`. Read as written, a packet yields 4096 output samples: the header
+sample plus 4095 decoded from codes.
+**What `ruffle` does:** treats `InitialSample` as a predictor seed only. Its `sample_num` cycles
+`(sample_num + 1) % 4095`, and the call that returns the header sample also consumes a code, so
+the header value is overwritten before any output — 4095 samples per packet.
+
+**Why it is not resolvable by inspection:** both readings consume *identical bits*, so neither
+desynchronises, and the difference is one sample in 4096 (≈0.09 ms) with identical predictor state
+afterwards. No hex dump of a packet and no listening test separates them.
+
+**How it was settled:** by payload arithmetic over real files. The readings need different packet
+counts for the same declared `SoundSampleCount` and so predict different payload lengths:
+
+| | packets | coded frames | payload bytes |
+| --- | --- | --- | --- |
+| 4096/packet (ours) | `ceil(N/4096)` | `N − packets` | `ceil((2 + packets·22·ch + codes·bits·ch)/8)` |
+| 4095/packet (`ruffle`) | `ceil(N/4095)` | `N` | same formula, more codes |
+
+4096/packet always predicts **fewer** bytes, so a payload sized for it is *too short* for the other
+reading — which is decidable with no reference decoder. `tools/adpcm_hunt.py` harvested 71
+ADPCM-bearing SWFs from 11 unrelated repositories of shipped Flash content; of 623 distinct
+`DefineSound` measurements spanning code widths 2–5, mono and stereo, and declared counts from
+1,931 to 4,587,840 samples, **412 match the 4096 prediction exactly and 0 match 4095**. 4095 was
+outright impossible — the payload physically shorter than the data it needs — in 556 of them.
+
+**Resolution:** `InitialSample` is an output sample; a packet emits 4096. `IMPL-090-R012` states
+this as measured rather than inferred, and `IMPL-090-R034` records the corollary the same corpus
+established: encoders do not pad the trailing partial packet. Our decoder was already correct, so
+nothing changed in `packages/audio` beyond citing the evidence. Content decoded by `ruffle` is one
+sample per 4096 shorter than it should be; if a future oracle harness diffs against `ruffle`, this
+is an expected divergence, not a regression.
+
+**Caveat for anyone re-running the measurement:** `SoundStreamBlock` payloads cannot settle this.
+`SoundStreamHead.StreamSoundSampleCount` is an *average* (see `IMPL-090` §5 on one-under block
+sizes), so a block's predicted length carries a ±1-sample uncertainty the same size as the effect.
+A first pass that counted stream blocks appeared to prove 4095 from one looping sound; the block
+declared 229 samples and held 147 bytes, which 4095/packet predicts at N=229 — but 4096/packet
+predicts the same 147 at N=230, which the average permits. Only `DefineSound`, whose count is exact
+for that sound, is admissible evidence.
+
+**Encoded by:** `T-AUD-102` (`packages/audio/test/adpcm.test.ts`), which pins ten real
+`(N, channels, bits, payload)` measurements from the corpus and asserts each payload is *minimal* —
+one byte shorter no longer decodes — which is what excludes 4095. Full evidence and the reproduction
+in `audits/P3-ADPCM-PACKET-LENGTH.md`.
+
+---
+
+## E-032 — `IMPL-090-R013` gave one diagnostic code two severities, and it fired on a quarter of real content
+
+**Found in:** our own `IMPL-090-R013`, while characterising the short-payload residual left open by
+`E-031`. An internal inconsistency, not an upstream defect.
+**What it said:** a payload ending inside its final packet should "report `SF0328` (warning)", while
+a payload that cannot be split into whole packets is "`SF0328` (error)" — the same code at two
+severities.
+**What is wrong:** three things, compounding.
+
+1. **A code has one severity.** `SF0328` is registered `error`, and `audit_dev` check 2 enforces
+   that every call site's severity equals the registry's. The warning arm was unimplementable, so
+   the implementation emitted `error` for both.
+2. **The common arm is the benign one.** Measured over the `E-031` corpus: **165 of 643 ADPCM event
+   sounds (26%) end 1–6 frames short** of their declared `SoundSampleCount`. The largest observed
+   gap is under 0.28 ms at 22.05 kHz. Every one was being reported as a hard error — a quarter of
+   shipped, playable Flash content declared malformed, which makes the error signal worthless.
+3. **The registry already disagreed with R013.** `SF0328`'s own wording is "code size outside 2–5
+   bits, or a packet truncated *before the last one*" — which excludes a short final packet. R013's
+   warning arm contradicted the code it was citing.
+
+**Characterisation:** the shortfall is not random. It essentially never happens when
+`SoundSampleCount` is a multiple of 4 (1 of 165 short sounds, against 284 of 478 complete ones);
+`emitted = 4·floor(N/4)` reproduces 92 of 165 exactly, but does not explain every case. The residual
+is concentrated in 22 kHz mono (43%) and absent from stereo, suggesting a default-settings
+authoring path rather than a format rule. This is a correlation, not a proven encoder algorithm.
+
+**Resolution:** the decoder distinguishes the cases by packet position. `DecodedSwfAdpcm.shortFinalPacket`
+is true only when code reading stops inside the **last packet required by `sampleCount`**, after
+that packet's header was complete. Callers report this as an `ASSET_SOUND_TRUNCATED` warning and do
+not emit `SF0328`. A truncated code stream in an earlier required packet, or a missing/incomplete
+packet header, still emits `SF0328` (error). `IMPL-090-R013` now states that boundary explicitly;
+the stream-block call site in `packages/swf/src/model/timeline.ts` is fixed too, where the error was
+doubly wrong because `SoundStreamHead` declares an *average* sample count (`E-031`).
+
+The initial decoder replay on the 71-file corpus measured the false-error rate falling from **165
+of 643 (25.7%) to 0**. A subsequent C5 exit recheck narrowed the predicate from "fewer than one
+packet of frames missing" to an explicit comparison with the final required packet's start. The
+corpus files are not present in this checkout for a post-refinement replay; the observed residuals
+are only 1–3 bytes short and had complete final headers, so the strict predicate is expected to
+retain those 165 benign cases. This remaining corpus replay limitation is recorded in
+`audits/P3-ADPCM-PACKET-LENGTH.md`.
+
+**Encoded by:** `T-AUD-102` (`packages/audio/test/adpcm.test.ts` and
+`apps/decompiler/test/assets-dump.test.ts`), which pins a short final packet, a missing second
+packet header, a truncated earlier packet with fewer than 4096 frames left, an empty payload and a
+complete sound against the expected classifications.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -618,3 +859,9 @@ the equality machine-checked. Tag *bodies* remain the chapters' business; Append
 | 1.8 | 2026-10-04 | `E-023`: `IMPL-130` test ids re-banded to `T-RT-1xx` (collision with the design spec's `T-RT-00x` block; the undefined `T-RT-020` is now the defined `T-RT-120`) |
 | 1.9 | 2026-10-04 | `E-024`: dangling citations repaired (`GFX-D21` -> `GFX-D16`, `RT-R062` -> `RT-R057`…`R059`, `REPO-D09` -> `REPO-D06`), each missing decision/rule written into its owning design spec |
 | 2.0 | 2026-10-04 | Appendix pass: `E-025` (Appendix A's printed tables: `VertLineFlag` type/condition, the swapped hor/vert delta labels, `MoveDelta*` called unsigned, the "first byte ignored" frame-rate prose, the "fill bits" label for padding) and `E-026` (six invented tag names removed from `specs/110` §2 — Appendix B is the index authority) |
+| 2.1 | 2026-10-09 | `E-027`: `IMPL-060-R034`'s quantisation grid ("1/20 px at smoothing 0, 0.05 px above") is one grid stated twice — a single `gridTwips` option replaces the non-existent smoothing switch; the IR is integer twips per `IMPL-060-R037`, not "floats in px" |
+| 2.3 | 2026-10-09 | `E-030`: sound format 0's "native endian" is undecodable — formats 0 and 3 both read little-endian (`ruffle` does the same) — and Ch.11 never states that 8-bit `SoundData` is unsigned, which it is; `IMPL-090-R006` corrected and `SF0302` reworded |
+| 2.4 | 2026-10-09 | `E-031`: `ruffle` emits 4095 samples per ADPCM packet where Ch.11's `ADPCMPACKET` and shipped content both say 4096 (`InitialSample` is output, not just a predictor seed) — settled by payload arithmetic over 623 real `DefineSound` measurements from 71 files in 11 repositories, 412 exact matches to 0; `IMPL-090-R012` restated as measured and `IMPL-090-R034` added (no trailing-packet padding) |
+| 2.5 | 2026-10-09 | `E-032`: `IMPL-090-R013` assigned `SF0328` two severities, which a single registered code cannot carry, so the implementation emitted `error` for both arms — reporting 165 of 643 real ADPCM sounds (26%) as malformed over a 1–6 frame, sub-0.28 ms shortfall. The decoder distinguishes a partial final packet from a truncated earlier packet; `SF0328` remains for missing headers and incomplete earlier packets. Initial corpus replay measured false errors 25.7% -> 0%; a stricter final-packet-position check was added afterward and its non-final case is regression-pinned, but the ephemeral corpus was unavailable for another replay |
+| 2.6 | 2026-10-09 | C5 exit-readiness refinement to `E-032`: only a shortfall inside the packet at `floor((N-1)/4096)*4096` is benign; a first-packet code truncation with <4096 samples left remains `SF0328` (T-AUD-102 unit and asset-dump regressions). Corrected residual count to 165 raw tags / 163 distinct measurements, 1–6 frames. Replayed corpus is not present to rerun the newer predicate |
+| 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |

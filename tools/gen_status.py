@@ -83,7 +83,7 @@ def main():
             oi = re.findall(r"^\|\s*(\d+)\s*\|", sec, re.M)
             resolved = re.findall(r"^\|\s*(\d+)\s*\|[^|]*\|\s*[^|]*\b(resolved|closed|withdrawn)\b", sec, re.M | re.I)
             open_items += len(oi) - len(resolved)
-        tests = sorted(set(re.findall(r"^\| `(T-[A-Za-z0-9]+-\d+)`", text, re.M)))
+        tests = sorted(set(re.findall(r"^\| `(T-AVM1-FE-\d+|T-[A-Za-z0-9]+-\d+)`", text, re.M)))
         codes = sorted(set(re.findall(r"^\| `(SF\d{4})`", text, re.M)))
         rel = os.path.relpath(path, os.path.dirname(out_path))
         rows.append((num, rel, title, len(days), sum(days), open_items, len(tests), len(codes),
@@ -133,7 +133,7 @@ def main():
     o.append("| --- | --- |")
     for num, rel, title, n, d, op, t, c, st in rows:
         text = read(os.path.join(os.path.dirname(out_path), rel))
-        tests = sorted(set(re.findall(r"^\| `(T-[A-Za-z0-9]+-\d+)`", text, re.M)))
+        tests = sorted(set(re.findall(r"^\| `(T-AVM1-FE-\d+|T-[A-Za-z0-9]+-\d+)`", text, re.M)))
         if not tests:
             continue
         o.append(f"| {num} | " + ", ".join(f"`{x}`" for x in tests) + " |")
@@ -143,6 +143,7 @@ def main():
     o.append("`040` the `T-MOD-0xx` block, `060` the `T-MOD-1xx` block, `070` the `3xx`/`4xx`, `080` the `5xx`,")
     o.append("`100` the `8xx` and `110` the `9xx`; design-spec gate ids `T-TST-001`–`006` are mirrored by the")
     o.append("harness's `T-TST-101`–`104` (`E-023`).\n")
+    o.append("`050` owns front-end identifiers `T-AVM1-FE-*`; the language spec's runtime-semantic `T-AVM1-*` ids remain distinct.")
     o.append("## 4. Chapter coverage\n")
     o.append("| Format-spec chapter | Grounded in | Remaining work |")
     o.append("| --- | --- | --- |")

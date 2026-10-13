@@ -37,7 +37,7 @@ export interface ScanResult {
   readonly records: readonly ActionRecord[];
   /** `true` when an `End` (0x00) record was present. */
   readonly terminated: boolean;
-  /** Where scanning stopped, block-relative (the block end unless a fatal stop cut it short). */
+  /** Where scanning stopped, block-relative; after End this is the first byte of the ignored suffix. */
   readonly stoppedAt: number;
   /** `true` when a `SF0400`/`SF0401` desynchronised the stream — the block is untrusted (R004). */
   readonly desync: boolean;
@@ -53,8 +53,9 @@ function hexDump(bytes: Uint8Array, from: number, count: number): string {
 }
 
 /**
- * Walks a block's byte range, framing every record. Never throws: every malformed shape is
- * reported through `emit` and the scan stops with `desync` or a tolerated diagnostic.
+ * Walks a byte range, framing records through the first End or enclosing boundary (unless the
+ * length-delimited region-body option disables End stopping). Never throws: malformed shapes are
+ * reported through `emit`, and desynchronised scans stop safely.
  */
 export interface ScanOptions {
   /**
@@ -62,14 +63,21 @@ export interface ScanOptions {
    * length-delimited and contain no `End` at all (R008), so they scan with `requireEnd: false`.
    */
   readonly requireEnd?: boolean;
+  /**
+   * `true` (default): include the first End record, then stop. Bounded region bodies scan with
+   * `stopAtEnd: false` because End is forbidden there and the region size is the delimiter (R008).
+   */
+  readonly stopAtEnd?: boolean;
 }
 
 export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions = {}): ScanResult {
   const requireEnd = options.requireEnd ?? true;
+  const stopAtEnd = options.stopAtEnd ?? true;
   const records: ActionRecord[] = [];
   let terminated = false;
   let desync = false;
   let pos = 0;
+  let stoppedAt = bytes.length;
   const length = bytes.length;
 
   while (pos < length) {
@@ -153,6 +161,10 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
           truncated: false,
           observed: false,
         });
+        if (stopAtEnd) {
+          stoppedAt = pos;
+          break;
+        }
         continue;
       }
       const spec = opcode(code);
@@ -210,7 +222,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
       length,
     );
   }
-  return { records, terminated, stoppedAt: length, desync };
+  return { records, terminated, stoppedAt, desync };
 }
 
 export { isDefinedCode };

@@ -1,7 +1,7 @@
 /**
  * Movie-level integration — `IMPL-050` §3.3/§3.4 and §8
- * (`T-AVM1-011` requirement extraction, `T-AVM1-012` name/class recovery determinism,
- * `T-AVM1-027` `DoInitAction` scheduling, `T-AVM1-028` `DoAction` at the `ShowFrame` boundary).
+ * (`T-AVM1-FE-011` requirement extraction, `T-AVM1-FE-012` name/class recovery determinism,
+ * `T-AVM1-FE-027` `DoInitAction` scheduling, `T-AVM1-FE-028` `DoAction` at the `ShowFrame` boundary).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -98,7 +98,7 @@ describe('button action block integration (IMPL-100)', () => {
   });
 });
 
-describe('T-AVM1-011 requirement extraction matches a hand-written expectation', () => {
+describe('T-AVM1-FE-011 requirement extraction matches a hand-written expectation', () => {
   it('groups appear in fixed order with the first requiring op named in `via`', () => {
     const bytes = block(
       pushInt(1),
@@ -133,7 +133,7 @@ describe('T-AVM1-011 requirement extraction matches a hand-written expectation',
   });
 });
 
-describe('T-AVM1-012 name and class recovery: deterministic across input order', () => {
+describe('T-AVM1-FE-012 name and class recovery: deterministic across input order', () => {
   const CANDIDATES: Candidate[] = [
     { id: 'fn00', declared: 'init', offset: 100, index: 0 },
     { id: 'fn01', declared: 'init', offset: 200, index: 1 },
@@ -215,7 +215,7 @@ describe('T-AVM1-012 name and class recovery: deterministic across input order',
   });
 });
 
-describe('T-AVM1-027 DoInitAction scheduling (once-only, per-sprite, frame-associated)', () => {
+describe('T-AVM1-FE-027 DoInitAction scheduling (once-only, per-sprite, frame-associated)', () => {
   const swf = buildSwf({
     version: 7,
     frameCount: 2,
@@ -252,7 +252,7 @@ describe('T-AVM1-027 DoInitAction scheduling (once-only, per-sprite, frame-assoc
   });
 });
 
-describe('T-AVM1-028 DoAction at the ShowFrame boundary, in tag order per frame', () => {
+describe('T-AVM1-FE-028 DoAction at the ShowFrame boundary, in tag order per frame', () => {
   const swf = buildSwf({
     version: 7,
     frameCount: 2,

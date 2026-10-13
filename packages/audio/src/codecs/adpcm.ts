@@ -22,9 +22,34 @@ export interface DecodedSwfAdpcm {
   readonly decodedSampleCount: number;
   /** True when the declared frame count requires more complete bits than the payload contains. */
   readonly truncated: boolean;
+  /**
+   * True only when decoding ran out of codes inside the **last packet required by
+   * `sampleCount`**, after that packet's header was complete. A shortfall in an earlier packet is
+   * malformed even when fewer than 4096 declared frames remain overall.
+   *
+   * This is not hypothetical: 165 of 643 ADPCM sounds (26%) in the real-world corpus behind
+   * `audits/P3-ADPCM-PACKET-LENGTH.md` end 1-6 frames short of their declared `SoundSampleCount`.
+   * The largest measured gap is under 0.28 ms at 22.05 kHz. Callers must not report those benign
+   * final-packet authoring artefacts as errors (`IMPL-090-R013`); `SF0328` is for a stream that
+   * cannot be split into the declared complete packets plus a partial final packet.
+   */
+  readonly shortFinalPacket: boolean;
 }
 
 const MAX_SAMPLE_COUNT = 10_000_000;
+/**
+ * Output samples per packet: the header's `InitialSample` **plus** 4095 coded frames.
+ *
+ * `ruffle` emits 4095 instead, treating `InitialSample` as a predictor seed that the first code
+ * overwrites before anything is output (`core/src/backend/audio/decoders/adpcm.rs`, where
+ * `sample_num` cycles modulo 4095). Both readings consume identical bits, so neither
+ * desynchronises and no single packet distinguishes them — but they need different packet counts
+ * for a given `SoundSampleCount`, and therefore predict different payload lengths.
+ *
+ * Settled against real content, not reasoning: 412 of 412 decisive `DefineSound` payloads across
+ * 71 ADPCM SWFs from 11 unrelated repositories match 4096 exactly and none match 4095. See
+ * `audits/P3-ADPCM-PACKET-LENGTH.md` and errata `E-031`; pinned by `T-AUD-102`.
+ */
 const PACKET_FRAMES = 4096;
 const PACKET_CODES = PACKET_FRAMES - 1;
 
@@ -70,6 +95,29 @@ function clampIndex(value: number): number {
   return Math.max(0, Math.min(88, value));
 }
 
+/**
+ * IMA's delta reconstruction: a base term plus one right-shifted term per set magnitude bit, each
+ * truncated **independently**.
+ *
+ *     delta = step >> (bits - 1)
+ *     for bit k in 0 .. bits - 2:  if magnitude & (1 << k):  delta += step >> (bits - 2 - k)
+ *
+ * This approximates `(magnitude + 0.5) * step / 2^(bits - 2)`, but it is not equal to it, and the
+ * difference is not negligible: across the 89 steps and all code widths, the closed form
+ * `floor(((2*magnitude + 1) * step) / 2^(bits - 1))` disagrees on **884 of 2670** (step, magnitude)
+ * pairs by up to 3 LSB — and because the result feeds a recursive predictor, the error accumulates
+ * rather than averaging out. Every IMA implementation, including `ruffle`'s
+ * `SAMPLE_DELTA_CALCULATOR`, uses the shift form; so must we, or "bit-exact" is meaningless
+ * (`F-P3-20`).
+ */
+function imaDelta(step: number, magnitude: number, bits: AdpcmBitDepth): number {
+  let delta = step >> (bits - 1);
+  for (let bit = 0; bit <= bits - 2; bit += 1) {
+    if (magnitude & (1 << bit)) delta += step >> (bits - 2 - bit);
+  }
+  return delta;
+}
+
 function decodeCode(
   prediction: number,
   index: number,
@@ -79,8 +127,8 @@ function decodeCode(
   const signMask = 1 << (bits - 1);
   const magnitude = code & (signMask - 1);
   const step = SWF_ADPCM_STEP_TABLE[index] ?? 7;
-  // SWF Ch.11's DELTA_FN: the code is sign-magnitude and the division truncates toward zero.
-  const delta = Math.floor(((2 * magnitude + 1) * step) / 2 ** (bits - 1));
+  // The code is sign-magnitude, not two's complement: the top bit is the sign only.
+  const delta = imaDelta(step, magnitude, bits);
   const nextPrediction = clamp16(prediction + (code & signMask ? -delta : delta));
   const indexDelta = SWF_ADPCM_INDEX_TABLES[bits][magnitude] ?? -1;
   return { prediction: nextPrediction, index: clampIndex(index + indexDelta) };
@@ -112,17 +160,30 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
   const reader = new BitReader(bytes);
   const codeSize = reader.read(2);
   if (codeSize === null) {
-    return { bitsPerCode: null, channels: output, sampleCount, decodedSampleCount: 0, truncated: sampleCount > 0 };
+    return {
+      bitsPerCode: null,
+      channels: output,
+      sampleCount,
+      decodedSampleCount: 0,
+      truncated: sampleCount > 0,
+      shortFinalPacket: false,
+    };
   }
   const bits = (codeSize + 2) as AdpcmBitDepth;
   const truncatedByLength = reader.remaining + 2 < requiredBits(sampleCount, channelCount, bits);
   let decodedSampleCount = 0;
   let truncated = truncatedByLength;
+  // The start sample of a packet where code reading stopped. Comparing it with the last required
+  // packet distinguishes a benign short tail from a truncated earlier packet. A lost packet header
+  // is always structural: the partial-final exception requires a complete final header.
+  let incompletePacketStart: number | null = null;
+  let headerLoss = false;
 
   while (decodedSampleCount < sampleCount) {
     const headerBits = 22 * channelCount;
     if (reader.remaining < headerBits) {
       truncated = true;
+      headerLoss = true;
       break;
     }
     const predictions: number[] = [];
@@ -140,6 +201,7 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
     }
     if (!validHeader) {
       truncated = true;
+      headerLoss = true;
       break;
     }
 
@@ -164,6 +226,7 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
       if (!complete) {
         reader.position = frameStart;
         truncated = true;
+        incompletePacketStart = decodedSampleCount;
         break;
       }
       for (let channel = 0; channel < channelCount; channel += 1) {
@@ -179,11 +242,14 @@ export function decodeSwfAdpcm(bytes: Uint8Array, options: DecodeSwfAdpcmOptions
     if (framesDecoded < framesInPacket) break;
   }
 
+  const finalPacketStart = sampleCount === 0 ? -1 : Math.floor((sampleCount - 1) / PACKET_FRAMES) * PACKET_FRAMES;
   return {
     bitsPerCode: bits,
     channels: output,
     sampleCount,
     decodedSampleCount,
     truncated,
+    shortFinalPacket:
+      truncated && !headerLoss && incompletePacketStart !== null && incompletePacketStart === finalPacketStart,
   };
 }

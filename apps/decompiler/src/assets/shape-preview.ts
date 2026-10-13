@@ -17,6 +17,8 @@ import {
 } from '@swf-forge/gfx';
 import type { FillStyle, Mat2D, VectorShape } from '@swf-forge/swf';
 
+import { prepareStaticShape } from '../geometry/prepare.js';
+
 export interface PreviewBitmap {
   readonly width: number;
   readonly height: number;
@@ -213,9 +215,10 @@ function maskFill(
 
 /** Rasterizes one static shape in its local bounds at a deterministic, capped preview resolution. */
 export function renderShapePreview(
-  shape: VectorShape,
+  sourceShape: VectorShape,
   bitmaps: ReadonlyMap<number, PreviewBitmap> = new Map(),
 ): ShapePreview {
+  const shape = prepareStaticShape(sourceShape).shape;
   const bounds = shape.bounds;
   const widthTwips = Math.max(1, bounds.xMax - bounds.xMin);
   const heightTwips = Math.max(1, bounds.yMax - bounds.yMin);
@@ -260,7 +263,7 @@ export function renderShapePreview(
       startCap: style.caps?.start === 1 ? 'butt' : style.caps?.start === 2 ? 'square' : 'round',
       endCap: style.caps?.end === 1 ? 'butt' : style.caps?.end === 2 ? 'square' : 'round',
       join: style.join === 1 ? 'bevel' : style.join === 2 ? 'miter' : 'round',
-      miterLimit: (style.miterLimit ?? 768) / 256,
+      miterLimit: style.miterLimit ?? 3,
       closed: stroke.closed && !(style.noClose ?? false),
     });
     const group = strokeGroups.get(stroke.styleId) ?? [];

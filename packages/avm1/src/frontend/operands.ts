@@ -37,11 +37,14 @@ export function newResidualFlags(): ResidualFlags {
   };
 }
 
+export type LegacyStringEncoding = 'windows-1252' | 'latin1' | 'shift-jis';
+
 export interface OperandContext {
   readonly version: number;
   /** The enclosing `DefineFunction2`'s register file, `null` outside one (R020: the 4-register rule). */
   readonly registerCount: number | null;
-  readonly legacyEncoding: 'windows-1252' | 'latin1' | 'shift-jis';
+  /** Caller-selected SWF ≤5 string decoding policy; the file has no encoding selector. */
+  readonly legacyEncoding: LegacyStringEncoding;
   readonly emit: (code: string, severity: Severity, message: string, offset: number, context?: string) => void;
   readonly string: (bytes: Uint8Array, from: number, to: number) => { value: string; end: number } | null;
   /** Decodes a `DefineFunction*` body into its own IR (supplied by the pipeline; keeps this module acyclic). */
@@ -593,7 +596,7 @@ export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: Opera
 export function makeStringReader(
   bytes: Uint8Array,
   version: number,
-  legacyEncoding: 'windows-1252' | 'latin1' | 'shift-jis',
+  legacyEncoding: LegacyStringEncoding,
 ): (from: number, to: number) => { value: string; end: number } | null {
   return (from: number, to: number) => {
     let end = from;

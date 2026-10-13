@@ -62,42 +62,79 @@ class OwnershipAndTraceabilityTests(unittest.TestCase):
     def tearDown(self):
         audit_dev.findings.clear()
 
-    def test_every_deferred_code_has_a_real_roadmap_owner(self):
+    def test_every_deferred_code_has_a_real_later_phase_owner(self):
         packages = audit_dev.work_package_docs()
+        phases = audit_dev.work_package_phases()
         self.assertTrue(packages)
         for code, wp in audit_dev.DEFERRED_DIAGNOSTIC_WPS.items():
             with self.subTest(code=code):
                 self.assertIn(wp, packages)
+                self.assertTrue(phases.get(wp), f"{wp} must declare its phase owner")
+                self.assertTrue(phases[wp] <= audit_dev.DEFERRED_FORWARD_PHASES)
+
+    def test_p3_rule_module_map_covers_required_source_modules(self):
+        self.assertEqual(audit_dev.doc_module_map_issues(), [])
+
+    def test_p3_rule_module_map_detects_missing_documents_and_stale_globs(self):
+        with patch.object(audit_dev, "DOC_MODULES", {"060": ["packages/missing/*.ts"]}):
+            issues = audit_dev.doc_module_map_issues()
+        keys = {key for key, _subject, _message in issues}
+        self.assertIn("rules.module-map-missing", keys)
+        self.assertIn("rules.module-map-empty", keys)
+        self.assertIn("rules.module-map-required", keys)
+
+    def test_namespaced_regression_ids_are_declared_by_the_p3_audit(self):
+        audits_dir = Path(audit_dev.ROOT) / "audits"
+        tests_dir = Path(audit_dev.ROOT) / "packages/swf/test"
+        with tempfile.TemporaryDirectory(dir=audits_dir) as audit_tmp:
+            with tempfile.TemporaryDirectory(dir=tests_dir) as test_tmp:
+                audit_path = Path(audit_tmp) / "P3-AUDIT.md"
+                test_path = Path(test_tmp) / "p3-regression.test.ts"
+                audit_path.write_text(
+                    "| `T-P3-REG-901` | checkpoint regression | ✅ |\n", encoding="utf-8"
+                )
+                test_path.write_text("it('T-P3-REG-901', () => {});\n", encoding="utf-8")
+                with patch.object(audit_dev, "P3_AUDIT_PATH", str(audit_path)), \
+                        patch.object(audit_dev, "impl_docs", return_value=[]), \
+                        patch.object(audit_dev, "spec_docs", return_value=[]), \
+                        patch.object(audit_dev, "code_files", return_value=[str(test_path)]), \
+                        patch.object(audit_dev, "historical_test_ids", return_value=set()), \
+                        patch.object(audit_dev, "test_work_package_owners", return_value={}):
+                    declared, cited, coverage = audit_dev.check_tests()
+        self.assertEqual(declared, {"T-P3-REG-901"})
+        self.assertEqual(cited, {"T-P3-REG-901"})
+        self.assertEqual(coverage[0]["status"], "test-cited")
+        self.assertEqual(coverage[0]["owner"], ["P3-C7"])
 
     def test_pending_p3_diagnostics_are_owned_by_their_decoder_or_runtime_work_package(self):
+        # Checkpoints retire these as they land: C1 took SF0277/SF0278 (zone and CSM targets) and
+        # SF0283/SF0284 (FontInfo2 wide codes, indirect names); C3 took SF0262/SF0263 (morph ratio
+        # bake and vertex budget, `shapes/morph-ir.ts`); C4 took SF0281 (glyph mandatory-fill
+        # quarantine, `tags/fonts.ts`) and SF0272/SF0273, which already emitted at runtime but did
+        # so through a forwarded variable the coverage scanner could not see.
+        # What remains is genuinely later work.
         expected = {
-            "SF0262": "WP-070-12",
-            "SF0263": "WP-070-12",
-            "SF0272": "WP-080-07",
-            "SF0273": "WP-080-07",
-            "SF0277": "WP-080-09",
-            "SF0278": "WP-080-09",
-            "SF0279": "WP-080-12",
-            "SF0281": "WP-080-01",
-            "SF0283": "WP-080-03",
-            "SF0284": "WP-080-03",
+            "SF0279": "WP-080-12",   # HTML subset parser — P9 runtime
+            "SF0329": "WP-090-12",   # transcode ledger — P6
         }
-        self.assertEqual({code: audit_dev.DEFERRED_DIAGNOSTIC_WPS.get(code) for code in expected}, expected)
+        self.assertEqual(dict(audit_dev.DEFERRED_DIAGNOSTIC_WPS), expected)
 
     def test_deferred_mapping_becomes_stale_when_the_code_is_emitted(self):
-        # SF0111 remains deferred for the renderer; the synthetic scenario pretends it now has a
-        # production emission site, which must flag the mapping as stale.
+        # Pick a code that is genuinely still deferred and pretend it has gained a production
+        # emission site; the checker must flag the now-stale mapping. Reading the code out of the
+        # live map (instead of hard-coding one) keeps this test correct as checkpoints land.
+        code = next(iter(sorted(audit_dev.DEFERRED_DIAGNOSTIC_WPS)))
         coverage = audit_dev.check_emission_ownership(
-            {"SF0111": {"severity": "warning", "meaning": "test"}},
-            {"PLACEMENT_BOUNDS_DEGENERATE": "SF0111"},
+            {code: {"severity": "warning", "meaning": "test"}},
+            {"SYNTHETIC_DEFERRED_CODE": code},
             {},
-            {"SF0111"},
+            {code},
             set(),
-            {"SF0111": ["packages/swf/src/model/timeline.ts:1"]},
+            {code: ["packages/swf/src/model/timeline.ts:1"]},
             {},
         )
         self.assertEqual(coverage[0]["status"], "emitted")
-        self.assertIn("ownership.stale:SF0111", {item["key"] for item in audit_dev.findings})
+        self.assertIn(f"ownership.stale:{code}", {item["key"] for item in audit_dev.findings})
 
     def test_test_ids_in_work_package_rows_are_attributed_to_that_wp(self):
         owners = audit_dev.test_work_package_owners()

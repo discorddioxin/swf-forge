@@ -148,6 +148,8 @@ for each tick:
 
 ## 6. AVM1 runtime rules
 
+**Phase/semantics boundary.** The AVM1 requirements and meanings in `docs/specs/language/040-avm1-to-typescript.md` remain normative. Their executable runtime acceptance belongs to P7/IMPL-130: `T-AVM1-008/009/012/025` cover runtime language behavior and `T-AVM1-027` covers residual-interpreter budgeting. `T-RT-121` is an additional runtime verification of enumeration semantics. P5/IMPL-050 may establish decoded IR and schedule metadata, but those citations do not prove runtime coercion, frame execution, exception unwinding, or scheduling. No gate is passed by assigning it to this phase.
+
 - **IMPL-130-R019** AVM1 objects MUST be `Avm1Object` instances (a slot table + prototype link), never
   plain JS objects; there is no operation exposed at the AVM1 level that can observe or create a bare JS
   object (AVM1-R003's no-leak rule).
@@ -171,6 +173,11 @@ for each tick:
 - **IMPL-130-R025** The interpreter MUST validate its entry descriptors once, at load, and MUST refuse
   to run a blob that fails validation (`SF0600`-style runtime error, counted in the divergence report) —
   the blob comes from our own build, so a failure means memory corruption or a tampered file.
+- **IMPL-130-R033** Runtime `for…in` enumeration MUST follow AVM1-R045/R046 using the AVM1 slot
+  table and prototype links: own enumerable slots in insertion order, then each prototype's enumerable
+  slots in insertion order, skipping shadowed names and snapshotting keys at enumeration start.
+  JavaScript `for…in` order MUST NOT define game-visible behavior. `T-RT-121` is the runtime-level
+  conformance test; language gate `T-AVM1-012` remains its semantic source.
 
 ## 7. Input, audio, and DOM shell
 
@@ -218,23 +225,24 @@ for each tick:
 | `T-RT-117` | frame-rate fidelity: 24 fps title runs at 24 fps ± drift bound; tab-hide clamped | F2 |
 | `T-RT-118` | draw-call budget gate on the reference title's worst frame | F2 |
 | `T-RT-120` | AVM1 object model: slot/prototype/display-property lookup order pinned by fixtures (R021) | F2 |
+| `T-RT-121` | `for…in`: own/prototype insertion order, non-enumerable filtering, shadowing and start-time snapshot (R033; semantic gate T-AVM1-012) | F2 |
 
 ## 9. Work packages
 
 | WP | Title | Depends | Est | Deliverable |
 | --- | --- | --- | --- | --- |
-| WP-130-01 | Object model (slots, prototypes, properties) | model | 6 | `object/avm1-object.ts`, T-RT-120 |
-| WP-130-02 | Coercions + operators | WP-130-01 | 4 | `coercion.ts` |
+| WP-130-01 | Object model (slots, prototypes, enumeration, properties) | model | 6 | `object/avm1-object.ts`, T-RT-120/121, T-AVM1-012 |
+| WP-130-02 | Coercions + operators | WP-130-01 | 4 | `coercion.ts`, T-AVM1-008/009/025 |
 | WP-130-03 | Scope chain, `with`, `SetTarget` resolution | WP-130-01 | 4 | `object/scope.ts` |
 | WP-130-04 | Display node + display list + depth ops | manifest | 6 | `display/*` |
-| WP-130-05 | Timeline playback + frame scripts + clip events | WP-130-04 | 5 | `display/timeline.ts` |
+| WP-130-05 | Timeline playback + frame scripts + clip events | WP-130-04 | 5 | `display/timeline.ts`; runtime call/resume and `DoInitAction`/`DoAction` execution forwards from FE-024/027/028 |
 | WP-130-06 | Renderer: context, batching, basic fills/strokes | GFX design | 8 | `renderer/*` |
 | WP-130-07 | Tessellation/stroking in `render-core` | WP-130-06 | 6 | `vector/*`, T-RT-111 |
 | WP-130-08 | Gradients/bitmap fills/masks/9-slice | WP-130-07 | 5 | T-RT-106 |
 | WP-130-09 | Filter graph + cache invalidation | WP-130-08 | 5 | `filters/*`, T-RT-110 |
 | WP-130-10 | Host API: MovieClip/TextField/Key/Mouse/Math | WP-130-03 | 8 | `hostapi/*` |
 | WP-130-11 | Host API: Sound/Net(policy)/system | WP-130-10 | 4 | T-RT-116 |
-| WP-130-12 | Interpreter + validator | WP-130-02 | 6 | `interp/*`, T-RT-101 |
+| WP-130-12 | Interpreter + validator | WP-130-02 | 6 | `interp/*`, T-RT-101, T-AVM1-027; runtime exception-unwind forward from FE-025 |
 | WP-130-13 | Input: pointer/keyboard/focus/text+IME | WP-130-05 | 5 | `input/*`, T-RT-107/009 |
 | WP-130-14 | Audio scheduling integration | AUD design | 3 | T-RT-114 |
 | WP-130-15 | DOM shell, boot, CSP, lifecycle | WP-130-06 | 4 | `boot.ts`, T-RT-115/017 |
@@ -254,6 +262,8 @@ The runtime+renderer is the largest single package; the estimate assumes the emi
 4. Audio gates (null-RMS, click, drift) pass; video sync within 1 frame.
 5. Draw-call, bundle, and texture budgets are met or explicitly waived in `build-info.json`.
 6. Context loss, tab-hide, and input edge cases (IME, paste, blur) all behave per the rules above.
+7. Runtime `T-AVM1-008/009/012/025` and `T-RT-121` pass against the runtime implementation, without weakening the normative language requirements.
+8. The residual interpreter passes `T-AVM1-027`; runtime frame-call/resumption, exception-unwind, and `DoInitAction`/`DoAction` execution gates are independently exercised. Front-end IR or scheduling-metadata tests alone do not satisfy these gates.
 
 **Id note.** These obligations are banded `T-RT-1xx`; the `T-RT-00x` block belongs to the *design*
 spec (`specs/web/080-runtime-shell.md` §11, whose ids `T-RT-001`–`018` cover boot, lifecycle, input and
@@ -266,3 +276,5 @@ budgets). The two suites are different tests with different owners, and the band
 | --- | --- | --- |
 | 1.0 | initial | Runtime/renderer/interpreter specification derived from RT/GFX/AVM1/AUD design specs |
 | 1.1 | 2026-10-04 | Test obligations re-banded to `T-RT-1xx` (`T-RT-101`–`120`) so they no longer collide with the design spec's `T-RT-00x` block; the object-model lookup test referenced by `R021`/`WP-130-01` is now defined as `T-RT-120`; errata `E-023` |
+| 1.2 | 2026-10-10 | Explicitly assign AVM1 `for…in` ordering and snapshot semantics (AVM1-R045/R046, T-AVM1-012) to runtime R033/WP-130-01 and add runtime verification gate T-RT-121 |
+| 1.3 | 2026-10-11 | Record P7 ownership of executable AVM1 language/interpreter gates while preserving the normative language-spec obligations; map runtime coercion, enumeration, formatting, budget, frame-call, unwind, and scheduling execution to IMPL-130 work packages. |

@@ -8,12 +8,32 @@ import { ByteWriter, buildSwf, concat, endTag, showFrames, tag, writeRect } from
 const START_BOUNDS = { xMin: 0, xMax: 200, yMin: 0, yMax: 100 };
 const END_BOUNDS = { xMin: 0, xMax: 300, yMin: 0, yMax: 150 };
 
-function edgeStream(deltaX: number): Uint8Array {
+function edgeStreamWithDeltas(deltas: readonly number[]): Uint8Array {
   const w = new ByteWriter();
   w.bits(0, 4).bits(0, 4); // no fills/lines
-  w.bits(1, 1).bits(1, 1).bits(6, 4).bits(1, 1); // straight general edge, 8-bit deltas
-  w.bits(deltaX < 0 ? 256 + deltaX : deltaX, 8).bits(0, 8);
+  for (const deltaX of deltas) {
+    w.bits(1, 1).bits(1, 1).bits(6, 4).bits(1, 1); // straight general edge, 8-bit deltas
+    w.bits(deltaX < 0 ? 256 + deltaX : deltaX, 8).bits(0, 8);
+  }
   w.bits(0, 6).align();
+  return w.toUint8Array();
+}
+
+function edgeStream(deltaX: number): Uint8Array {
+  return edgeStreamWithDeltas([deltaX]);
+}
+
+function emptyShapeStream(): Uint8Array {
+  const w = new ByteWriter();
+  w.bits(0, 4).bits(0, 4).bits(0, 6).align();
+  return w.toUint8Array();
+}
+
+function unknownStateNewStylesStream(): Uint8Array {
+  const w = new ByteWriter();
+  w.bits(0, 4).bits(0, 4); // initial fill/line arrays are empty
+  w.bits(0, 1).bits(1, 1).bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1).align(); // StateNewStyles
+  w.u8(1).u8(0x7f); // unknown FILLSTYLE in the end-edge stream
   return w.toUint8Array();
 }
 
@@ -76,6 +96,59 @@ function movie(
 }
 
 describe('morph shape model', () => {
+  it('T-P3-REG-002 quarantines unknown root and LINESTYLE2 morph fills without secondary parse errors', () => {
+    const badRootFill = Uint8Array.from([1, 0x7f, 0, 0xff]); // one unknown MORPHFILLSTYLE, then opaque tail
+    const badLineFill = new ByteWriter();
+    badLineFill.u8(0).u8(1).u16(100).u16(200); // no morph fills; one MORPHLINESTYLE2
+    badLineFill.bits(0, 2).bits(0, 2).bits(1, 1).bits(0, 1).bits(0, 1).bits(0, 1);
+    badLineFill.bits(0, 5).bits(0, 1).bits(0, 2).u8(0x7f); // HasFillFlag, unknown paired fill
+
+    const cases = [
+      {
+        id: 49,
+        tagCode: Tag.DefineMorphShape,
+        styles: badRootFill,
+        start: edgeStream(20),
+        end: edgeStream(50),
+      },
+      {
+        id: 50,
+        tagCode: Tag.DefineMorphShape2,
+        styles: badLineFill.toUint8Array(),
+        start: edgeStream(20),
+        end: edgeStream(50),
+      },
+      {
+        id: 51,
+        tagCode: Tag.DefineMorphShape,
+        styles: Uint8Array.from([0, 0]),
+        start: emptyShapeStream(),
+        end: unknownStateNewStylesStream(),
+        offsetAdjustment: 3,
+      },
+    ] as const;
+    for (const entry of cases) {
+      const file = movie(
+        entry.tagCode,
+        morphBody(entry.id, entry.tagCode, entry.start, entry.end, {
+          styles: entry.styles,
+          ...('offsetAdjustment' in entry ? { offsetAdjustment: entry.offsetAdjustment } : {}),
+        }),
+      );
+      const morph = buildMovieModel(file).characters.get(entry.id)?.morph;
+      expect(file.sink.codes().filter((code) => code !== 'SF0025')).toEqual(['SF0180']);
+      expect(file.sink.codes()).not.toContain('SF0264');
+      expect(morph).toMatchObject({
+        quarantined: true,
+        edgeCounts: { start: 0, end: 0 },
+        pairs: [],
+        start: { quarantined: true, edges: [], paths: [] },
+        end: { quarantined: true, edges: [], paths: [] },
+        offsetMatches: null,
+      });
+    }
+  });
+
   it('decodes independent start/end edge streams and pairs by index', () => {
     const file = movie(Tag.DefineMorphShape, morphBody(41, Tag.DefineMorphShape, edgeStream(20), edgeStream(50)));
     const model = buildMovieModel(file);
@@ -123,7 +196,7 @@ describe('morph shape model', () => {
     });
   });
 
-  it('T-MOD-405 reads UI8 morph-gradient count, both matrices, and interleaved endpoint stops', () => {
+  it('T-MOD-405 reads the single MORPHGRADIENT header byte, both matrices, and interleaved endpoint stops', () => {
     const styles = new ByteWriter();
     styles.u8(1).u8(0x10); // one linear morph gradient fill
     const matrix = (x: number, y: number): void => {
@@ -135,7 +208,9 @@ describe('morph shape model', () => {
     };
     matrix(10, -5);
     matrix(20, 7);
-    styles.u8(2).u8(0); // UI8 stop count and shared gradient flags
+    // ONE header byte, laid out like GRADIENT's: spread 2 (repeat), interpolation 1 (linear RGB),
+    // NumGradients 2. Reading a separate UI8 count here would shift every stop by a byte (E-028).
+    styles.u8((2 << 6) | (1 << 4) | 2);
     styles.u8(0).u8(255).u8(0).u8(0).u8(255).u8(0).u8(0).u8(255).u8(0).u8(255);
     styles.u8(255).u8(0).u8(0).u8(255).u8(255).u8(255).u8(255).u8(255).u8(0).u8(255);
     styles.u8(0); // no morph line styles
@@ -150,6 +225,8 @@ describe('morph shape model', () => {
       linear: true,
       matrix: { tx: 10, ty: -5 },
       gradient: {
+        spreadMode: 2,
+        interpolationMode: 1,
         stops: [
           { ratio: 0, color: { r: 255, g: 0, b: 0, a: 255 } },
           { ratio: 255, color: { r: 0, g: 0, b: 255, a: 255 } },
@@ -161,6 +238,8 @@ describe('morph shape model', () => {
       linear: true,
       matrix: { tx: 20, ty: 7 },
       gradient: {
+        spreadMode: 2,
+        interpolationMode: 1,
         stops: [
           { ratio: 0, color: { r: 0, g: 255, b: 0, a: 255 } },
           { ratio: 255, color: { r: 255, g: 255, b: 0, a: 255 } },
@@ -239,6 +318,17 @@ describe('morph shape model', () => {
     expect(morph).toMatchObject({ edgeCounts: { start: 1, end: 0 }, pairs: [{ index: 0 }] });
     expect(morph?.end.edges).toHaveLength(1);
     expect(morph?.end.edges[0]).toMatchObject({ fromX: 0, fromY: 0, toX: 0, toY: 0 });
+    expect(file.sink.codes()).toContain('SF0261');
+  });
+
+  it('T-P3-REG-008 pads a short morph endpoint at its last local anchor', () => {
+    const file = movie(
+      Tag.DefineMorphShape,
+      morphBody(52, Tag.DefineMorphShape, edgeStreamWithDeltas([10]), edgeStreamWithDeltas([20, 30])),
+    );
+    const morph = buildMovieModel(file).characters.get(52)?.morph;
+    expect(morph).toMatchObject({ edgeCounts: { start: 1, end: 2 } });
+    expect(morph?.start.edges[1]).toMatchObject({ fromX: 10, fromY: 0, toX: 10, toY: 0 });
     expect(file.sink.codes()).toContain('SF0261');
   });
 });

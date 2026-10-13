@@ -4,16 +4,17 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { BitmapDecodeError, decodeBitmap, encodeBitmapPng, encodeFontWoff2 } from '@swf-forge/assets';
+import { BitmapDecodeError, decodeBitmap, encodeBitmapPng, encodeFontWoff2, spliceJpegTables } from '@swf-forge/assets';
 import {
   decodeSwfAdpcm,
   decodeSwfPcm,
   encodePcm16Wav,
+  measureAudio,
   parseSwfMp3EventData,
   resamplePcm16,
   silentPcm,
 } from '@swf-forge/audio';
-import { buildMovieModel, Codes, Tag, tagName } from '@swf-forge/swf';
+import { buildMovieModel, Codes, tagName } from '@swf-forge/swf';
 import type { BitmapAssetModel, CharacterModel, DefineSoundModel, MorphShapeModel, SwfFile } from '@swf-forge/swf';
 import { openSwfNodeSync } from '@swf-forge/swf/node';
 
@@ -41,7 +42,19 @@ interface AssetRecord {
   readonly status: 'written' | 'fallback' | 'unsupported';
   readonly sha256: string | null;
   readonly metadata?: Readonly<Record<string, number | string | boolean>>;
+  /** `IMPL-090-R030`/`R031` levels and chunk table for PCM-backed WAV previews. */
+  readonly audio?: AssetAudioMeta;
   readonly diagnostics: readonly AssetDiagnostic[];
+}
+
+interface AssetAudioMeta {
+  readonly durationSamples: number;
+  readonly peak: number;
+  readonly rms: number;
+  readonly rmsDbfs: number | null;
+  readonly silent: boolean;
+  readonly belowNullGate: boolean;
+  readonly chunks: readonly { readonly startSample: number; readonly frames: number; readonly peak: number }[];
 }
 
 interface AssetManifest {
@@ -76,12 +89,26 @@ function needsBuildAsset(character: CharacterModel): boolean {
   );
 }
 
-function unsupported(character: CharacterModel): AssetRecord {
+function unsupported(character: CharacterModel, file?: SwfFile): AssetRecord {
   const sourceTag = character.index?.code ?? character.tagCode;
+  const ref = character.index;
+  const quarantineDiagnostic =
+    ref === null
+      ? undefined
+      : file?.sink
+          .list()
+          .find(
+            (diagnostic) =>
+              diagnostic.code === Codes.SHAPE_FILL_TYPE_UNKNOWN &&
+              diagnostic.offset >= ref.offset &&
+              diagnostic.offset < ref.offset + ref.length,
+          );
   const message =
-    character.kind === 'shape' || character.kind === 'shape4'
-      ? 'static shape geometry was not decoded; no PNG was written'
-      : `${character.kind} asset decoding is not available in this build; no output was written`;
+    character.vectorShape?.quarantined === true || character.morph?.quarantined === true
+      ? 'unknown fill style quarantined the shape; no PNG was written'
+      : character.kind === 'shape' || character.kind === 'shape4'
+        ? 'static shape geometry was not decoded; no PNG was written'
+        : `${character.kind} asset decoding is not available in this build; no output was written`;
   return {
     characterId: character.id,
     kind: character.kind,
@@ -90,13 +117,24 @@ function unsupported(character: CharacterModel): AssetRecord {
     path: null,
     status: 'unsupported',
     sha256: null,
-    diagnostics: [{ code: 'ASSET_UNSUPPORTED', severity: 'error', message }],
+    diagnostics: [
+      ...(quarantineDiagnostic === undefined
+        ? []
+        : [
+            {
+              code: quarantineDiagnostic.code,
+              severity: quarantineDiagnostic.severity,
+              message: quarantineDiagnostic.message,
+            },
+          ]),
+      { code: 'ASSET_UNSUPPORTED', severity: 'error', message },
+    ],
   };
 }
 
-function recordShape(character: CharacterModel, out: string): AssetRecord {
+function recordShape(character: CharacterModel, out: string, file: SwfFile): AssetRecord {
   const shape = character.vectorShape;
-  if (shape === null) return unsupported(character);
+  if (shape === null || shape.quarantined === true) return unsupported(character, file);
   const preview = renderShapePreview(shape);
   const path = `shape-${character.id}.png`;
   writeFileSync(join(out, path), preview.png);
@@ -123,9 +161,9 @@ function recordShape(character: CharacterModel, out: string): AssetRecord {
   };
 }
 
-function recordMorph(character: CharacterModel, out: string): AssetRecord[] {
+function recordMorph(character: CharacterModel, out: string, file: SwfFile): AssetRecord[] {
   const morph: MorphShapeModel | null = character.morph;
-  if (morph === null) return [unsupported(character)];
+  if (morph === null || morph.quarantined === true) return [unsupported(character, file)];
   const sourceTag = character.index?.code === undefined ? character.tagName : tagName(character.index.code);
   const endpoints = [
     { name: 'start', shape: morph.start, edgeCount: morph.edgeCounts.start },
@@ -151,26 +189,22 @@ function recordMorph(character: CharacterModel, out: string): AssetRecord[] {
       path,
       status: 'written',
       sha256: digest(preview.png),
-      metadata: { endpoint: name, edgeCount, pairedEdgeCount: morph.pairs.length, offsetMatches: morph.offsetMatches },
+      metadata: {
+        endpoint: name,
+        edgeCount,
+        pairedEdgeCount: morph.pairs.length,
+        ...(morph.offsetMatches === null ? {} : { offsetMatches: morph.offsetMatches }),
+      },
       diagnostics,
     };
   });
 }
 
-function jpegTablesForFile(file: SwfFile): Uint8Array | null {
-  const tables = file.tagIndex.tags.filter((ref) => ref.code === Tag.JPEGTables);
-  if (tables.length > 1) {
-    const first = tables[0];
-    file.sink.emit({
-      code: Codes.IMAGE_MULTIPLE_JPEG_TABLES,
-      severity: 'warning',
-      message: `${tables.length} JPEGTables tags found; the first table at offset ${first?.offset ?? 0} wins`,
-      offset: first?.headerOffset ?? 0,
-      context: 'bitmap asset export',
-    });
-  }
-  const first = tables[0];
-  return first ? file.body.subarray(first.offset, first.offset + first.length) : null;
+function jpegTablesForFile(model: ReturnType<typeof buildMovieModel>, file: SwfFile): Uint8Array | null {
+  // JPEG-tables multiplicity SF0257 is reported by `collectControl`; the chosen payload is surfaced
+  // directly on the control model to avoid a second tag-index scan here.
+  void file;
+  return model.control.jpegTables;
 }
 
 function recordBitmap(
@@ -183,17 +217,38 @@ function recordBitmap(
   if (model === null) return unsupported(character);
   try {
     const decoded = decodeBitmap(model, { jpegTables, swfVersion });
-    const png = encodeBitmapPng(decoded.bitmap);
-    const path = `bitmap-${character.id}.png`;
-    writeFileSync(join(out, path), png);
+    const contentType = decoded.bitmap.contentType;
+    let outputBytes: Uint8Array;
+    let outputType: string;
+    let extension: string;
+    if (contentType === 'png' || contentType === 'gif') {
+      // Embedded PNG/GIF are valid source assets in their own right. Keep the original container
+      // bytes (including animation and ancillary chunks) after the decoder has validated them.
+      outputBytes = model.payload;
+      outputType = contentType === 'png' ? 'image/png' : 'image/gif';
+      extension = contentType;
+    } else if (contentType === 'jpeg' && model.alpha === null) {
+      // JPEG2 carries a complete stream; DefineBits carries only its image half. Normalize either
+      // into a standalone JPEG and preserve those compressed bytes rather than re-encoding pixels.
+      outputBytes = spliceJpegTables(model.payload, model.source === 'defineBits' ? jpegTables : null);
+      outputType = 'image/jpeg';
+      extension = 'jpg';
+    } else {
+      // Lossless sources and JPEGs with a separate alpha plane need a canonical RGBA preview.
+      outputBytes = encodeBitmapPng(decoded.bitmap);
+      outputType = 'image/png';
+      extension = 'png';
+    }
+    const path = `bitmap-${character.id}.${extension}`;
+    writeFileSync(join(out, path), outputBytes);
     return {
       characterId: character.id,
       kind: character.kind,
       sourceTag: sourceTag(character),
-      outputType: 'image/png',
+      outputType,
       path,
       status: 'written',
-      sha256: digest(png),
+      sha256: digest(outputBytes),
       metadata: {
         width: decoded.bitmap.width,
         height: decoded.bitmap.height,
@@ -364,8 +419,34 @@ function sourceTag(character: CharacterModel): string {
   return character.index?.code === undefined ? character.tagName : tagName(character.index.code);
 }
 
-function recordFont(character: CharacterModel, out: string): AssetRecord {
-  if (character.font === null) return unsupported(character);
+function recordFont(character: CharacterModel, out: string, file: SwfFile): AssetRecord {
+  if (character.font === null) {
+    const cffDiagnostic = file.diagnostics.find(
+      (diagnostic) => diagnostic.code === Codes.FONT_CFF_UNSUPPORTED && diagnostic.characterId === character.id,
+    );
+    if (cffDiagnostic) {
+      return {
+        characterId: character.id,
+        kind: character.kind,
+        sourceTag: sourceTag(character),
+        outputType: null,
+        path: null,
+        status: 'unsupported',
+        sha256: null,
+        ...(character.font4 !== null && character.font4 !== undefined
+          ? {
+              metadata: {
+                familyName: character.font4.name,
+                fontFlags: character.font4.flags,
+                hasEmbeddedCff: character.font4.hasFontData,
+              },
+            }
+          : {}),
+        diagnostics: [{ code: cffDiagnostic.code, severity: cffDiagnostic.severity, message: cffDiagnostic.message }],
+      };
+    }
+    return unsupported(character);
+  }
   try {
     const converted = encodeFontWoff2(character.font);
     const atlas = buildFontAtlas(character.font);
@@ -456,9 +537,13 @@ function writeSoundWav(
     readonly metadata?: Readonly<Record<string, number | string | boolean>>;
   } = {},
 ): AssetRecord {
-  const wav = encodePcm16Wav({ channels, sampleRate: options.sampleRate ?? soundSampleRate(sound) });
+  const sampleRate = options.sampleRate ?? soundSampleRate(sound);
+  const wav = encodePcm16Wav({ channels, sampleRate });
   const path = `sound-${character.id}.wav`;
   writeFileSync(join(out, path), wav);
+  // `IMPL-090-R031`: every asset carries peak/RMS and a chunk table. These are flat scalars plus a
+  // compact chunk list so the manifest stays diffable and byte-stable run to run.
+  const measured = measureAudio({ channels, sampleRate });
   return {
     characterId: character.id,
     kind: character.kind,
@@ -468,6 +553,19 @@ function writeSoundWav(
     status: options.status ?? 'written',
     sha256: digest(wav),
     ...(options.metadata !== undefined ? { metadata: options.metadata } : {}),
+    audio: {
+      durationSamples: measured.durationSamples,
+      peak: measured.levels.peak,
+      rms: measured.levels.rms,
+      rmsDbfs: measured.levels.rmsDbfs,
+      silent: measured.levels.silent,
+      belowNullGate: measured.levels.belowNullGate,
+      chunks: measured.chunks.map((chunk) => ({
+        startSample: chunk.startSample,
+        frames: chunk.frames,
+        peak: chunk.peak,
+      })),
+    },
     diagnostics: options.diagnostics ?? [],
   };
 }
@@ -629,11 +727,17 @@ function recordSound(character: CharacterModel, out: string): AssetRecord {
           severity: 'warning',
           message: `decoded ${decoded.decodedSampleCount} of ${decoded.sampleCount} declared ADPCM frame(s); remainder padded with silence`,
         });
-        diagnostics.push({
-          code: Codes.SOUND_ADPCM_MALFORMED,
-          severity: 'error',
-          message: 'ADPCM packet data ends before the declared sample count',
-        });
+        // Only a stream that cannot be split into whole packets is malformed (`IMPL-090-R013`,
+        // and the registry's own wording: "a packet truncated before the last one"). A final
+        // packet a few frames short is an authoring artefact present in 26% of real ADPCM sounds
+        // — reporting it as an error would condemn a quarter of shipped Flash content.
+        if (!decoded.shortFinalPacket) {
+          diagnostics.push({
+            code: Codes.SOUND_ADPCM_MALFORMED,
+            severity: 'error',
+            message: 'ADPCM packet data ends before the declared sample count',
+          });
+        }
       }
       const zeroPayload = zeroPayloadDiagnostic(sound.data, decoded.channels, 'ADPCM');
       if (zeroPayload) diagnostics.push(zeroPayload);
@@ -703,6 +807,9 @@ function recordSound(character: CharacterModel, out: string): AssetRecord {
         sha256: digest(parsed.frameBytes),
         metadata: {
           codec: 'mp3-pass-through',
+          // C5 deliberately does not decode/re-encode MP3. PCM-domain metrics and PCM chunk peaks
+          // are therefore unavailable; record that explicitly rather than inventing zeros.
+          measurement: 'unavailable-pass-through',
           sampleRate: parsed.frames[0]?.sampleRate ?? sound.sampleRate,
           sampleCount: sound.sampleCount,
           seekSamples: parsed.seekSamples,
@@ -781,13 +888,14 @@ export function runAssetsDump(request: AssetsDumpRequest, io: CliIo): number {
   const assets: AssetRecord[] = [];
   try {
     mkdirSync(request.out, { recursive: true });
-    const jpegTables = jpegTablesForFile(file);
+    const jpegTables = jpegTablesForFile(model, file);
     for (const character of [...model.characters.values()].sort((a, b) => a.id - b.id)) {
       if (!needsBuildAsset(character)) continue;
-      if (character.vectorShape !== null) assets.push(recordShape(character, request.out));
-      else if (character.morph !== null) assets.push(...recordMorph(character, request.out));
+      if (character.vectorShape !== null) assets.push(recordShape(character, request.out, file));
+      else if (character.morph !== null) assets.push(...recordMorph(character, request.out, file));
       else if (character.bitmap !== null) assets.push(recordBitmap(character, request.out, jpegTables, file.version));
-      else if (character.font !== null) assets.push(recordFont(character, request.out));
+      else if (character.font !== null || character.kind === 'font4')
+        assets.push(recordFont(character, request.out, file));
       else if (character.sound !== null) assets.push(recordSound(character, request.out));
       else assets.push(unsupported(character));
     }

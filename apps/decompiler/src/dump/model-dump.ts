@@ -328,11 +328,18 @@ export interface DumpCharacter {
     readonly unitsPerEm: number;
     readonly italic: boolean;
     readonly bold: boolean;
+    readonly shiftJIS: boolean;
+    readonly ansi: boolean;
+    readonly smallText: boolean;
+    readonly wideCodes: boolean;
     readonly glyphCount: number;
     readonly ascent: number | null;
     readonly descent: number | null;
     readonly leading: number | null;
     readonly codeTableSha256: string;
+    readonly fontInfoPresent: boolean;
+    readonly fontName: { readonly name: string; readonly copyright: string } | null;
+    readonly fontAlignZones: { readonly csmTableHint: number; readonly zoneCount: number } | null;
   } | null;
   /** Static glyph runs retain authored advances; each glyph has a compact index/advance pair. */
   readonly text: {
@@ -579,7 +586,14 @@ function bitmapSummary(bitmap: BitmapAssetModel | null): DumpCharacter['bitmap']
   };
 }
 
-function fontSummary(font: DefineFontModel | null): DumpCharacter['font'] {
+function fontSummary(
+  font: DefineFontModel | null,
+  extras: {
+    readonly fontInfo: unknown;
+    readonly fontName: { readonly name: string; readonly copyright: string } | null;
+    readonly fontAlignZones: { readonly csmTableHint: number; readonly zoneCount: number } | null;
+  },
+): DumpCharacter['font'] {
   if (font === null) return null;
   const codeTable = JSON.stringify(
     font.glyphs.map((glyph) => ({
@@ -595,11 +609,18 @@ function fontSummary(font: DefineFontModel | null): DumpCharacter['font'] {
     unitsPerEm: font.unitsPerEm,
     italic: font.italic,
     bold: font.bold,
+    shiftJIS: font.shiftJIS,
+    ansi: font.ansi,
+    smallText: font.smallText,
+    wideCodes: font.wideCodes,
     glyphCount: font.glyphs.length,
     ascent: font.ascent,
     descent: font.descent,
     leading: font.leading,
     codeTableSha256: createHash('sha256').update(codeTable, 'utf8').digest('hex'),
+    fontInfoPresent: extras.fontInfo !== null,
+    fontName: extras.fontName,
+    fontAlignZones: extras.fontAlignZones,
   };
 }
 
@@ -938,7 +959,20 @@ export function buildModelDump(file: SwfFile, model: MovieModel, sha256: string)
       bounds: character.bounds === null ? null : rect(character.bounds),
       vectorShape: vectorShapeSummary(character.vectorShape),
       bitmap: bitmapSummary(character.bitmap),
-      font: fontSummary(character.font),
+      font: fontSummary(character.font, {
+        fontInfo: character.fontInfo,
+        fontName:
+          character.fontName === null
+            ? null
+            : { name: character.fontName.fontName, copyright: character.fontName.copyright },
+        fontAlignZones:
+          character.fontAlignZones === null
+            ? null
+            : {
+                csmTableHint: character.fontAlignZones.csmTableHint,
+                zoneCount: character.fontAlignZones.zones.length,
+              },
+      }),
       text: staticTextSummary(character.text),
       editText: editTextSummary(character.editText),
       sound: soundSummary(character.sound),

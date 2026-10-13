@@ -25,7 +25,7 @@ framing, and the traps.
    of the frames to the browser decoder, and correct latency/seek handling.
 6. Nellymoser/Speex: detect, report, emit a correct-duration silent partial (or the optional
    build-time transcode hook, decision `AUD-D06`).
-7. Audio asset emission: canonical 48 kHz, 10 s chunks (AST-§5), peak/RMS and loop metadata.
+7. Audio asset emission: canonical 48 kHz PCM-derived WAV previews with 10 s chunk metadata, peak/RMS and loop metadata; MP3 previews are byte-identical pass-through with parsed frame/seek metadata (no PCM metrics without decoding).
 8. The runtime's scheduling data (doc 130/RT-§6): voice priority, envelope, loop points, stream
    offsets.
 
@@ -37,21 +37,19 @@ claim from this document.
 ## 2. Module layout
 
 ```
-packages/swf/src/sounds/
-  define-sound.ts        DefineSound (14): format/rate/size/type/sampleCount + payload view
-  sound-info.ts          SOUNDINFO + SOUNDENVELOPE
-  start-sound.ts         StartSound (15), StartSound2 (89)
-  stream-head.ts         SoundStreamHead (18), SoundStreamHead2 (45)
-  stream-blocks.ts       SoundStreamBlock (19) ordering, frame association, MP3STREAMSOUNDDATA
-  codec-detect.ts        format dispatch + reserved-format reporting
+packages/swf/src/tags/sounds.ts
+  DefineSound, SOUNDINFO, StartSound/2, stream heads/blocks, payload ranges and diagnostics
+packages/swf/src/model/{movie,timeline}.ts
+  sound character assembly, sound scheduling models, per-frame stream-block association
 packages/audio/src/codecs/
-  adpcm.ts               SWF IMA ADPCM: packets, predictors, 2–5-bit codes
-  mp3-frames.ts          frame parser: sync, header fields, sample counts, frame size
-  mp3-pass.ts            pass-through scheduling (no re-encode)
-  nellymoser.ts          detect + report (+ optional transcode hook)
-  speex.ts               detect + report
-  resample.ts            48 kHz canonical conversion (deterministic)
-  pcm.ts                 PCM emission + metadata (peak, RMS, loop points)
+  adpcm.ts               SWF ADPCM: packet framing, predictors, 2–5-bit codes
+  pcm.ts                 PCM formats 0/3 → signed 16-bit planes
+  mp3.ts                 MPEG frame parse + event-payload seek/header parse
+  resample.ts            deterministic 48 kHz conversion
+  wav.ts                 canonical PCM16 WAV writer
+  measure.ts             peak/RMS/null gate/chunk and loop metadata
+apps/decompiler/src/assets/dump.ts
+  codec dispatch, MP3 pass-through, WAV asset/manifest emission and silent fallbacks
 ```
 
 **IMPL-090-R001** `packages/audio` MUST be usable in the asset worker (build) and the browser
@@ -70,7 +68,7 @@ asset pass (or the runtime, for streaming) decodes.
 
 | Format | Codec | Min SWF | Notes |
 | --- | --- | --- | --- |
-| 0 | Uncompressed, **native endian** | 1 | 8-bit identical to format 3; 16-bit is host-endian (we always decode big-endian, `SF0302`) |
+| 0 | Uncompressed, **native endian** | 1 | decoded identically to format 3 (little-endian); endianness is assumed, not read (`SF0302`, `E-030`) |
 | 1 | ADPCM | 1 | 2–5-bit codes; block/packet framed (below) |
 | 2 | MP3 | 4 | whole MPEG frames; `5.5 kHz` is not allowed |
 | 3 | Uncompressed, **little-endian** | 4 | preferred; player byte-swaps as needed |
@@ -101,10 +99,12 @@ DefineSound (14, SWF 1):
   sample pairs"). Duration = `SoundSampleCount / effectiveRate`; a payload that decodes to fewer
   samples than declared is padded with silence and reported (`SF0304`); more is truncated with
   `SF0324`. The three checks together are what catches a wrong rate.
-- **IMPL-090-R006** Uncompressed 0 and 3 decode to identical PCM for 8-bit data; for 16-bit data,
-  format 3 is little-endian and format 0 is native-endian. We always decode format 0 as
-  **big-endian** regardless of build host (determinism, REPO-R013) and report `SF0302` (info); this
-  is a documented deviation from the chapter's "native" wording, pinned by `T-AUD-103`.
+- **IMPL-090-R006** Uncompressed 0 and 3 decode **identically**: 16-bit samples little-endian,
+  8-bit samples **unsigned** (`0x80` = silence) expanded as `(byte - 128) * 256`. The chapter calls
+  format 0 "native-endian", which names the authoring host and is not recoverable from the file;
+  `REPO-R013` forbids using the *build* host's order, so one order must be fixed, and little-endian
+  is both what Flash wrote and what `ruffle` assumes. `SF0302` (info) records that the endianness
+  was assumed. See errata `E-030`; pinned by `T-AUD-103`.
 - **IMPL-090-R007** MP3 event payloads are `MP3SOUNDDATA`: `SeekSamples SI16` followed by zero or
   more `MP3FRAME`s. There is **no sample-count field** in the event payload — the count comes from
   `DefineSound.SoundSampleCount`. `SeekSamples` for an event sound is limited to the **encoder
@@ -146,7 +146,11 @@ ADPCMSTEREOPACKET:    InitialSampleLeft SI16, InitialIndexLeft UB[6],
 ```
 
 - **IMPL-090-R012** A packet is **one header sample + 4095 codes** (4096 samples total) per channel
-  — v1.0's "64 samples per block" was wrong (errata `E-018`). Codes are **sign-magnitude**, not
+  — v1.0's "64 samples per block" was wrong (errata `E-018`). `InitialSample` **is emitted**; it is
+  not merely a predictor seed. This is measured, not inferred: 412 of 412 decisive `DefineSound`
+  payloads across 71 ADPCM SWFs from 11 unrelated repositories match the byte length that 4096
+  samples per packet predicts, and none match 4095 (`audits/P3-ADPCM-PACKET-LENGTH.md`). `ruffle`
+  emits 4095 and is wrong by one sample per packet — errata `E-031`. Codes are **sign-magnitude**, not
   two's complement: the top bit is the sign, the low `bits−1` bits index the chapter's tables
   (which give only the lower half; the upper half is its duplicate precisely because the sign is
   carried separately). The predictor and step index **restart from the packet header** for every
@@ -155,11 +159,28 @@ ADPCMSTEREOPACKET:    InitialSampleLeft SI16, InitialIndexLeft UB[6],
 - **IMPL-090-R013** The payload is a **continuous bit stream with no byte alignment**: 2 bits of
   `AdpcmCodeSize` at the top of the first byte, then packets back to back, a packet being
   `22·channels + 4095·channels·bits` bits (the header sample starts at bit 2 and is not byte
-  aligned; the next packet starts immediately after the last code). A payload that ends inside a
-  packet is the *last* packet: its header is complete, so decode the codes present, pad to the
-  declared sample count with silence, and report `SF0328` (warning) exactly once per sound. A
-  payload that cannot be split into whole packets plus at most one header-complete partial packet is
-  `SF0328` (error) — the bit stream is not decodable without inventing samples.
+  aligned; the next packet starts immediately after the last code). If decoding runs out of codes
+  **inside the last packet required by `SoundSampleCount`**, and that packet's header is complete,
+  decode the codes present and pad the declared remainder with silence. This is **not** a malformed
+  stream and must not be reported as one — it is an ordinary authoring artefact, present in **165
+  of 643 (26%) real ADPCM sounds** (`audits/P3-ADPCM-PACKET-LENGTH.md` §8), with 1–6 frames missing
+  (at most 0.28 ms at 22.05 kHz). The decoder reports it as `shortFinalPacket` and the asset layer
+  records an `ASSET_SOUND_TRUNCATED` warning; `SF0328` is **not** emitted. A code shortfall in an
+  earlier packet is malformed even if fewer than 4096 samples remain in the sound: a later packet
+  is required but the stream cannot reach its header. A missing/incomplete packet header is also
+  malformed. Both cases emit `SF0328` (error), matching the registry's wording ("a packet truncated
+  before the last one"). Errata `E-032`.
+- **IMPL-090-R034** Encoders **stop coding at `SoundSampleCount`**; the trailing partial packet is
+  not padded out to a full 4095 codes. Measured over the same corpus as `IMPL-090-R012`: no payload
+  matched a padded-final-packet length, while 412 matched the unpadded one. So the payload length a
+  sound *should* have is exactly `ceil((2 + ceil(N/4096)·22·channels + (N − ceil(N/4096))·bits·channels) / 8)`,
+  and a longer payload means trailing data to ignore, not more audio. Do not decode past the
+  declared count. A fresh reparse found **165 of 643 `DefineSound` tags** below this length; after
+  signature de-duplication, **163 of 623 distinct measurements** remain: 138 are one byte short, 23
+  are two bytes short, and 2 are three bytes short. Their payloads support 1–6 fewer frames than
+  declared. They are classified as a short final packet only when the incomplete codes are in the
+  last packet required by the declared count; an earlier-packet shortfall remains malformed. See
+  §11 item 1 and errata `E-032`.
 - **IMPL-090-R014** The decoder is integer-only and reproduces the chapter's tables
   (`APP-§9`: `stepIndex` 0–88, `INDEX_TABLE` per bit depth, the standard IMA step table), so
   `T-AUD-101` can be bit-exact against reference vectors. 8-bit ADPCM does not exist: output is
@@ -283,11 +304,16 @@ export interface AudioAsset {
 }
 ```
 
-- **IMPL-090-R030** Emission is canonical 48 kHz / 10 s chunks (AST-R031) with deterministic
-  resampling (fixed coefficients, integer-friendly, host-independent; `T-AUD-110`).
-- **IMPL-090-R031** Every asset carries `peak`/`rms` and a per-chunk peak table, used by the
-  null-RMS gate (`≤ −60 dBFS`) and to catch an all-zero payload that was not marked silent
-  (`SF0327`).
+- **IMPL-090-R030** PCM-derived WAV emission is canonical 48 kHz with deterministic resampling
+  (fixed coefficients, integer-friendly, host-independent; `T-AUD-110`) and a 10 s chunk table
+  (`T-AUD-111`). MP3 preview assets remain byte-identical at their authored frame rates and are not
+  decoded or split in C5; runtime/build streaming chunk-file emission is outside this preview gate.
+- **IMPL-090-R031** Every PCM-backed WAV asset carries measured `peak`/`rms` and a per-chunk peak
+  table, used by the null-RMS gate (`≤ −60 dBFS`) and to catch an all-zero payload that was not
+  marked silent (`SF0327`). Byte-identical MP3 pass-through cannot provide PCM-domain levels without
+  a decoder, which C5 deliberately does not add; its manifest records
+  `measurement: "unavailable-pass-through"` plus parsed frame count, sample count and seek instead
+  of fabricating zero metrics.
 - **IMPL-090-R032** Trim (encoder latency / decoded-from padding) is *scheduling* metadata, never a
   re-encode: `trim.lead` is removed before loop points are computed so loops do not click.
 - **IMPL-090-R033** Loop points are expressed relative to the trimmed start; the runtime
@@ -305,7 +331,7 @@ that spec's runtime conditions (peak guard, stream underrun, sync re-anchor, dev
 | --- | --- | --- |
 | `SF0300` | warning | MP3 with non-canonical rate/size fields (frame headers win) |
 | `SF0301` | error | reserved/unknown sound format (silent stub emitted) |
-| `SF0302` | info | 8-bit PCM treated as little-endian; format 0 decoded big-endian for determinism |
+| `SF0302` | info | uncompressed format 0: byte order is not recorded in the file, little-endian assumed (`E-030`) |
 | `SF0303` | warning | Speex sound: no decoder in this build (silent partial asset) |
 | `SF0304` | warning | payload shorter than `SoundSampleCount` (padded with silence) |
 | `SF0305` | info | MP3 parameter change mid-stream |
@@ -331,8 +357,8 @@ sets can never be confused in a test report.
 | ID | Test | Level | Phase owner |
 | --- | --- | --- | --- |
 | `T-AUD-101` | ADPCM decode vs reference vectors on 200 packets (bit-exact) | F1 | P3 decode/build |
-| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet | F1 | P3 decode/build |
-| `T-AUD-103` | uncompressed 0 vs 3 produce identical PCM (8-bit) and byte-swapped PCM (16-bit) | F1 | P3 decode/build |
+| `T-AUD-102` | ADPCM framing: 2–5-bit codes, mono/stereo packets, 4095-code boundary, short final packet, and real-world payload lengths pinning 4096 samples per packet against `ruffle`'s 4095 (`IMPL-090-R012`/`R034`) | F1 | P3 decode/build |
+| `T-AUD-103` | formats 0/3 produce identical 8-bit PCM; both read 16-bit PCM little-endian, with `SF0302` recording format 0's assumed order | F1 | P3 decode/build |
 | `T-AUD-104` | MP3 frame parser: sync, version/layer/rate/bitrate/padding, size formula incl. the 414-byte example | F1 | P3 decode/build |
 | `T-AUD-105` | MP3 pass-through: bytes unchanged (hash equality), latency trim applied at scheduling | F1 | P3 decode/build |
 | `T-AUD-106` | stream block → frame offset table with exact sample offsets (silent frames, empty blocks) | F1 | P3 decode/build |
@@ -368,7 +394,7 @@ sets can never be confused in a test report.
 
 | # | Item | Impact |
 | --- | --- | --- |
-| 1 | ADPCM packets in real files: is the final packet padded to the full bit count, and do any encoders emit exactly 4095 codes without the trailing byte-align | medium (`T-AUD-102`) |
+| 1 | Why 163 of 623 distinct ADPCM payload measurements (165 of 643 raw tags) sit 1–3 bytes below the predicted payload length. The shortfall is 1–6 frames; it is strongly associated with `SoundSampleCount mod 4` (1 of 165 short vs 284 of 478 complete sounds have `N mod 4 = 0`). `emitted = 4·floor(N/4)` matches 92 of 165 exactly, so this is a correlation, not a complete causal model. The decoder treats it as benign only when the shortfall is inside the last required packet; truncation in an earlier packet remains `SF0328` (`IMPL-090-R013`, `E-032`). Low (`T-AUD-102`) |
 | 2 | `SoundStreamHead`'s `LatencySeek` when absent: does its absence shorten the tag, and do any tools write a zero there | medium (`SF0330`) |
 | 3 | Whether any AS1/AS2 title uses `StartSound2`/sound classes (it is AVM2-era) — current policy is report-and-ignore | low (`SF0309`) |
 | 4 | Playback vs stream rate mismatches in the wild: how often `PlaybackSoundRate` should be honoured for ADPCM streams | low (`SF0326`) |
@@ -382,15 +408,31 @@ shapes) are **settled** — see §4–§6 and APP-§10.9. The ADPCM "64 samples 
 
 ## 12. Done criteria
 
-1. ADPCM is bit-exact against reference vectors; MP3 is passed through byte-identically with
-   correct latency handling.
-2. Stream playback from an arbitrary frame is sample-accurate (drift ≤ 12 ms over a 10-minute
-   fixture, TST-§6), including silent and empty blocks.
-3. Every emitted asset has peak/RMS metadata and chunk boundaries on exact 10 s multiples.
-4. Fallback paths (Nellymoser, Speex, reserved) produce correct-duration silent assets with a
-   manifest flag and a report line — never a silent drop.
-5. Loudness floors: the reference title's UI sounds measure within ±0.6 dB of the Flash oracle
-   (AUD-R070).
+### P3 / C5 (this checkpoint)
+
+1. ADPCM is bit-exact against an independently structured reference; mono/stereo, all four code
+   widths, packet reset, exact declared sample count, and the malformed-vs-short-final boundary are
+   pinned by `T-AUD-101`/`T-AUD-102`.
+2. MP3 event previews preserve authored frame bytes exactly and record the parsed frame count,
+   duration/sample count, and `SeekSamples`; no MP3 decode or re-encode is implied by pass-through
+   (`T-AUD-104`/`T-AUD-105`).
+3. PCM-backed WAV previews are canonical 48 kHz, with exact sample-count/riff fields, peak/RMS and
+   a 10-second sample-boundary table. The MP3 manifest explicitly marks PCM measurements as
+   unavailable rather than reporting fabricated zero levels.
+4. Stream models retain exact per-block sample offsets and split at a second head, including codec
+   changes, silent frames, and empty blocks (`T-AUD-106`–`T-AUD-108`/`T-AUD-113`).
+5. Nellymoser, Speex, and reserved formats produce correctly-duration silent WAV fallbacks with
+   manifest status and diagnostics (`T-AUD-115`).
+
+### Later-phase behaviour, not a C5 exit gate
+
+- Playback from arbitrary frames and the ≤12 ms / 10-minute drift gate require the P8 mixer and
+  end-to-end runtime fixture; C5 guarantees the sample-accurate offset model only.
+- Separate chunk-file streaming and byte-offset chunk delivery are governed by `AUD-R023`; C5's
+  preview contract is the exact PCM chunk table, not runtime streaming output.
+- Loudness normalization remains off by default. The old sentence citing `AUD-R070` as a Flash
+  loudness oracle was erroneous: `AUD-R070` is the browser autoplay-unlock requirement, and no
+  ±0.6 dB Flash-oracle gate belongs to C5.
 
 ## 13. Changelog
 
@@ -398,3 +440,7 @@ shapes) are **settled** — see §4–§6 and APP-§10.9. The ADPCM "64 samples 
 | --- | --- | --- |
 | 1.0 | initial | Scoped from Ch.11; ADPCM/MP3 stream-block details marked pending with a reference-vector mitigation |
 | 1.1 | 2026-10-04 | Ch.11-grounded: coding-format table with SWF versions and the exact sample rates; `DefineSound` field semantics (`SoundSampleCount` = sample pairs; rate/size/type ignored per codec); **ADPCM packets of one header sample + 4095 codes** (corrects v1.0's "64 samples per block"), bit-packed and unaligned, with a short-final-packet policy, per-packet predictor reset; MP3 `MP3SOUNDDATA` (SeekSamples + frames, no count field) with the honest note that `SoundSampleCount` supplies duration, full frame-header parsing and the integer size formula; Nellymoser/Speex field-ignoring rules; `SOUNDINFO` MSB-first flag byte, `InPoint`/`OutPoint`/`LoopCount` semantics, envelope `Pos44` as a 44-kHz sample position and levels 0…32768; `SoundStreamHead`/`Head2` bit layout with `LatencySeek` only for MP3, advisory playback fields, one block per frame, `MP3STREAMSOUNDDATA` `SampleCount` semantics, the chapter's five-step frame-subdivision algorithm with both worked examples; diagnostics `SF0330`–`SF0332`, `SF0328` reworded; tests `T-AUD-101`–`115`; WPs re-shaped to 12 = 36 d |
+| 1.2 | 2026-10-09 | `E-030` applied: `IMPL-090-R006` rewritten — formats 0 and 3 decode identically (16-bit little-endian, 8-bit unsigned), `SF0302` reworded as an assumption record; the ADPCM delta is IMA's shift accumulation, not the closed form (`F-P3-20`), and the step table's entries 69-71 corrected (`F-P3-19`) |
+| 1.3 | 2026-10-09 | ADPCM packet length settled against shipped content (`E-031`): `IMPL-090-R012` restates 4096 samples per packet as measured — 412 of 412 decisive real-world payloads, 0 for `ruffle`'s 4095 — and new `IMPL-090-R034` records that encoders do not pad the trailing partial packet; open item 1 closed and replaced by the preliminary 158-payload residual (later recounted); `T-AUD-102` extended with ten real `(N, payload)` measurements |
+| 1.4 | 2026-10-09 | `E-032`: `IMPL-090-R013` distinguishes a benign short final packet from a malformed incomplete earlier packet; the 26% false-error was traced to one diagnostic code carrying inconsistent warning/error severities. Open item 1 characterised (a group-of-four authoring quirk is a correlation, not a proven causal model); final-packet position is now checked explicitly |
+| 1.5 | 2026-10-09 | C5 exit-readiness correction: recount is 165 of 643 raw tags / 163 of 623 distinct measurements, short by 1–3 bytes and 1–6 frames; `shortFinalPacket` now requires the incomplete codes to be in the actual last required packet (not merely <4096 frames missing); WAV metrics/chunks are distinguished from byte-identical MP3 pass-through, which explicitly marks PCM measurement unavailable |

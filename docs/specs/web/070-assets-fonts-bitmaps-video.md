@@ -1,6 +1,6 @@
 # AST — Assets: Bitmaps, Fonts, Video, Manifest, and Archive
 
-**Doc ID:** AST · **Status:** Draft 1.4 · **Normative:** yes
+**Doc ID:** AST · **Status:** Draft 1.5 · **Normative:** yes
 **Depends on:** SWF, CMP, GFX, AUD
 
 ---
@@ -473,6 +473,9 @@ frames, N = `--first-playable-frames`, default 30).
 | T-AST-022 | Screen Video v2 (`CodecID = 6`): decodes with a per-packet palette and the Appendix C fallback (`AST-D11`) | F2 |
 | T-AST-023 | WOFF2 build is deterministic; normalized metrics and stable name table are preserved, with no timestamps/vendor strings | F1 |
 | T-AST-024 | Morph asset export writes deterministic local-bounds start/end previews, paired-edge metadata, and byte-identical repeat bundles | F1 |
+| T-AST-025 | Multi-kind `forge-decompile assets dump` golden: sorted manifest, source metadata, per-asset hashes, and one preview for each supported media kind | F1 |
+| T-AST-026 | Repeated multi-kind asset dumps have byte-identical output trees (SHA-256 tree hash) | F1 |
+| T-AST-027 | Unsupported bitmap/font branches and Nellymoser/Speex/reserved silent fallbacks retain documented diagnostics in the manifest | F1 |
 
 ## 10. Decision register
 
@@ -499,3 +502,4 @@ frames, N = `--first-playable-frames`, default 30).
 | 1.2 | 2026-10-04 | Diagnostic citations re-pointed to the owning implementation docs: video SSIM `SF0220` -> `SF0249` (`IMPL-110`), byte budget `SF0230` -> `SF0501` and atlas pages `SF0231` -> `SF0502` (`IMPL-120`; the codes previously named are taken by `IMPL-080` font conditions); errata `E-016` |
 | 1.3 | 2026-10-04 | Ch.14 ripple: decision `AST-D11` (Screen Video v2 accepted although the tag's `CodecID` table omits it; per-packet palette with the Appendix C fallback) and test `T-AST-022` added for `IMPL-110` §4.3 |
 | 1.4 | 2026-10-05 | Added `T-AST-024` for deterministic morph endpoint preview bundles from the `forge-decompile assets dump` integration fixture |
+| 1.5 | 2026-10-10 | Added `T-AST-025`–`027` for the multi-kind asset manifest golden, repeat-run tree determinism, and unsupported/fallback branches |

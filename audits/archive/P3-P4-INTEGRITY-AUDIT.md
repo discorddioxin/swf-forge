@@ -13,7 +13,7 @@ spec sections was cross-referenced against code (`packages/swf/src/tags/`, `pack
 `apps/decompiler/src/**`), tests (`packages/*/test/**`, `apps/*/test/**`), the diagnostic registry
 (`codes.ts` — parsed programmatically), and then executed: `vitest run` (repo-wide) →
 **170/175 pass (22 files)**. The 5 failures are 4 pre-existing P5 AVM1 region tests
-(`T-AVM1-016` ×2, `T-AVM1-025` ×2 — known, tracked under P5) and 1 in-flight P2 dump golden
+(`T-AVM1-FE-016` ×2, `T-AVM1-FE-025` ×2 — known, tracked under P5) and 1 in-flight P2 dump golden
 (`T-MOD-037`, broken by the current session's `model-dump.ts` control-fields edit, not a P3/P4 issue).
 
 ---

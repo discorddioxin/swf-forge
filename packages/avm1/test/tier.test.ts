@@ -1,15 +1,29 @@
 /**
- * Tier assignment and residual extraction — `IMPL-050` §7 (`T-AVM1-007` stack mismatch,
- * `T-AVM1-008` one fixture per tier reason, `T-AVM1-009` out-of-bounds branch).
+ * Tier assignment and residual extraction — `IMPL-050` §7 (`T-AVM1-FE-007` stack mismatch,
+ * `T-AVM1-FE-008` one fixture per tier reason, `T-AVM1-FE-009` out-of-bounds branch).
  */
 
 import { describe, expect, it } from 'vitest';
 
-import { analyze, block } from './harness.js';
+import {
+  analyze,
+  block,
+  branchIf,
+  constantPool,
+  defineFunction2,
+  jump,
+  pushBoolean,
+  pushConstant8,
+  pushInt,
+  pushRegister,
+  pushString,
+  rec,
+  withRegion,
+} from './harness.js';
 
-describe('T-AVM1-007 stack mismatch -> residual with reason, no crash', () => {
+describe('T-AVM1-FE-007 stack mismatch -> residual with reason, no crash', () => {
   it('an Add over one pushed value is SF0406, tier 2, residual slice present', () => {
-    const bytes = block([0x96, 5, 0, 7, 1, 0, 0, 0], [0x0a]); // Push 1; Add (needs two)
+    const bytes = block(pushInt(1), rec(0x0a)); // Push 1; Add (needs two)
     const { block: b, diag } = analyze(bytes);
     expect(diag.has('SF0406')).toBe(true);
     expect(b.decision.tier).toBe(2);
@@ -20,68 +34,147 @@ describe('T-AVM1-007 stack mismatch -> residual with reason, no crash', () => {
   });
 });
 
-describe('T-AVM1-008 tier assignment: one fixture per reason', () => {
-  const cases: { readonly reason: string; readonly tier: 0 | 1 | 2; readonly bytes: number[] }[] = [
-    { reason: 'clean: Push; End', tier: 0, bytes: [0x96, 5, 0, 7, 1, 0, 0, 0, 0x00] },
-    { reason: 'unknown-opcode:0x01 (undefined sub-0x80)', tier: 2, bytes: [0x01, 0x00] },
-    { reason: 'record-truncated (length field cut off)', tier: 2, bytes: [0x96, 5] },
-    { reason: 'push-malformed (bad type byte)', tier: 2, bytes: [0x96, 2, 0, 0xff, 0x00] },
-    { reason: 'stack-mismatch', tier: 2, bytes: [0x96, 5, 0, 7, 1, 0, 0, 0, 0x0a, 0x00] },
-    { reason: 'branch-out-of-bounds (obfuscated jump past the end)', tier: 2, bytes: [0x99, 2, 0, 5, 0x00] },
+describe('T-AVM1-FE-008 tier assignment: one fixture per reason', () => {
+  const cases: {
+    readonly label: string;
+    readonly tier: 0 | 1 | 2;
+    readonly expectedReasons: readonly string[];
+    readonly bytes: Uint8Array;
+    readonly inFunction?: boolean;
+  }[] = [
+    { label: 'clean block', tier: 0, expectedReasons: [], bytes: block(pushInt(1)) },
     {
-      reason: 'dynamic-with (With over a non-literal value)',
+      label: 'unknown opcode 0x01',
+      tier: 2,
+      expectedReasons: ['unknown-opcode:0x01'],
+      bytes: block([0x01]),
+    },
+    {
+      label: 'record truncated in the payload',
+      tier: 2,
+      expectedReasons: ['record-truncated'],
+      bytes: Uint8Array.from([0x96, 5]),
+    },
+    {
+      label: 'record overrun',
+      tier: 2,
+      expectedReasons: ['record-overrun'],
+      bytes: Uint8Array.from([0x99, 5, 0, 0x01, 0x02, 0x00]),
+    },
+    {
+      label: 'malformed Push type byte',
+      tier: 2,
+      expectedReasons: ['push-malformed'],
+      bytes: block([0x96, 2, 0, 0xff]),
+    },
+    {
+      label: 'malformed Try body tiling',
+      tier: 2,
+      expectedReasons: ['try-malformed'],
+      // Try header declares three empty bodies, but one trailing payload byte prevents exact tiling.
+      bytes: block(rec(0x8f, [0, 0, 0, 0, 0, 0, 0, 0])),
+    },
+    {
+      label: 'out-of-range constant-pool index',
+      tier: 2,
+      expectedReasons: ['pool-index-out-of-range'],
+      bytes: block(constantPool('only'), pushConstant8(5)),
+    },
+    {
+      label: 'stack mismatch',
+      tier: 2,
+      expectedReasons: ['stack-mismatch'],
+      bytes: block(pushInt(1), rec(0x0a)),
+    },
+    {
+      label: 'branch leaves the block',
+      tier: 2,
+      expectedReasons: ['branch-out-of-bounds'],
+      bytes: block(jump(5)),
+    },
+    {
+      label: 'dynamic With object',
       tier: 1,
-      // Push "s"; Enumerate; With { Push 1, Pop } — the With object is an unverified stack
-      // value (Enumerate's result), not a literal.
-      bytes: [
-        0x96,
-        3,
-        0,
-        0,
-        0x73,
-        0, // Push "s"
-        0x46, // Enumerate
-        0x94,
-        11,
-        0,
-        9,
-        0, // With, size 9
-        0x96,
-        5,
-        0,
-        7,
-        1,
-        0,
-        0,
-        0, // Push 1
-        0x17, // Pop
-        0x00, // End
-      ],
+      expectedReasons: ['dynamic-with'],
+      // Enumerate makes its result dynamic; With encloses one Push and one Pop (9 bytes).
+      bytes: block(pushString('s'), rec(0x46), withRegion(9, [...pushInt(1), ...rec(0x17)])),
+    },
+    {
+      label: 'function constant-pool reference',
+      tier: 1,
+      expectedReasons: ['dynamic-pool'],
+      bytes: block(pushConstant8(0)),
+      inFunction: true,
+    },
+    {
+      label: 'dynamic CallFunction target',
+      tier: 1,
+      expectedReasons: ['call-dynamic-target'],
+      bytes: block(pushInt(0), pushString('target'), rec(0x1c), rec(0x3d)),
+    },
+    {
+      label: 'stack-based SetTarget2',
+      tier: 1,
+      expectedReasons: ['target-in-branch'],
+      bytes: block(pushString('target'), rec(0x1c), rec(0x20)),
+    },
+    {
+      label: 'runtime CallFunction argument count',
+      tier: 1,
+      expectedReasons: ['dynamic-args'],
+      bytes: block(pushString('count'), rec(0x1c), pushString('f'), rec(0x3d)),
+    },
+    {
+      label: 'runtime ActionCall frame target',
+      tier: 1,
+      expectedReasons: ['frame-call-target-unresolved'],
+      bytes: block(pushString('frame'), rec(0x1c), rec(0x9e)),
+    },
+    {
+      label: 'unknown stack depth at a control-flow join',
+      tier: 1,
+      expectedReasons: ['dynamic-stack'],
+      bytes: block(pushBoolean(true), branchIf(12), pushString('s'), rec(0x46), jump(8), pushInt(1), rec(0x17)),
     },
   ];
 
-  for (const { reason, tier, bytes } of cases) {
-    it(`${reason}`, () => {
-      const { block: b } = analyze(Uint8Array.from(bytes));
+  for (const { label, tier, expectedReasons, bytes, inFunction } of cases) {
+    it(`${label}`, () => {
+      const { block: b } = analyze(bytes, inFunction === undefined ? {} : { inFunction });
       expect(b.decision.tier).toBe(tier);
-      if (tier === 0) {
-        expect(b.reasons).toEqual([]);
-      } else {
-        expect(b.reasons.length).toBeGreaterThan(0);
-      }
+      expect(b.reasons).toEqual(expectedReasons);
     });
   }
 
-  it('the reason strings are machine-stable (exact head match)', () => {
-    const { block: b } = analyze(Uint8Array.from([0x01, 0x00]));
-    expect(b.reasons.some((r) => r.startsWith('unknown-opcode:0x01'))).toBe(true);
+  it('a nested DefineFunction2 reports its own out-of-range register reason', () => {
+    const bytes = block(defineFunction2({ name: 'registerUser', registerCount: 1, body: [...pushRegister(1), 0x00] }));
+    const { block: b, diag } = analyze(bytes);
+    const definition = b.ir.blocks.flatMap((basic) => basic.ops).find((op) => op.kind === 'define');
+
+    expect(diag.has('SF0416')).toBe(true);
+    expect(definition?.kind).toBe('define');
+    if (definition?.kind !== 'define') return;
+    expect(definition.fn.ir?.tier).toBe(2);
+    expect(definition.fn.ir?.tierReasons.map((reason) => reason.reason)).toEqual(['register-out-of-range']);
+  });
+
+  it('ActionCall is preserved as front-end timeline IR (this does not test runtime execution)', () => {
+    const { block: b } = analyze(block(pushString('frame'), rec(0x1c), rec(0x9e)));
+    const call = b.ir.blocks
+      .flatMap((basic) => basic.ops)
+      .find((op) => op.kind === 'timeline' && op.timeline.op === 'call');
+
+    expect(call?.kind).toBe('timeline');
+    if (call?.kind === 'timeline' && call.timeline.op === 'call') {
+      expect(call.timeline.frame.kind).toBe('temp');
+    }
   });
 });
 
-describe('T-AVM1-009 out-of-bounds branch', () => {
+describe('T-AVM1-FE-009 out-of-bounds branch', () => {
   it('a Jump past the block end is SF0405, reported, and makes the block residual', () => {
-    const bytes = [0x99, 2, 0, 5, 0x00]; // Jump +5 lands at offset 8; the block ends at 5.
-    const { block: b, diag } = analyze(Uint8Array.from(bytes));
+    const bytes = block(jump(5)); // Jump +5 lands past the block end.
+    const { block: b, diag } = analyze(bytes);
     expect(diag.has('SF0405')).toBe(true);
     expect(b.decision.tier).toBe(2);
     expect(b.reasons).toContain('branch-out-of-bounds');

@@ -1,6 +1,6 @@
 /**
- * `DefineFunction`/`DefineFunction2` — `IMPL-050` §5.3 (`T-AVM1-013` mask table, `T-AVM1-014`
- * register allocation, `T-AVM1-015` REGISTERPARAM register 0).
+ * `DefineFunction`/`DefineFunction2` — `IMPL-050` §5.3 (`T-AVM1-FE-013` mask table, `T-AVM1-FE-014`
+ * register allocation, `T-AVM1-FE-015` REGISTERPARAM register 0).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -18,7 +18,7 @@ function definedFn(bytes: Uint8Array): FunctionDef | null {
   return null;
 }
 
-describe('T-AVM1-013 DF2 flag mask table', () => {
+describe('T-AVM1-FE-013 DF2 flag mask table', () => {
   const flags = [
     { mask: DF2_MASKS.preloadThis, check: (fn: FunctionDef) => fn.preloads.this === true },
     { mask: DF2_MASKS.preloadArguments, check: (fn: FunctionDef) => fn.preloads.arguments === true },
@@ -61,7 +61,7 @@ describe('T-AVM1-013 DF2 flag mask table', () => {
   });
 });
 
-describe('T-AVM1-014 register allocation order', () => {
+describe('T-AVM1-FE-014 register allocation order', () => {
   it('params into their registers, then preloads from 1, then locals (the chapter example)', () => {
     // Two params in registers 3 and 4; this (0x01) + _root (0x40) preloaded; 6 registers total.
     const fn = definedFn(
@@ -88,7 +88,7 @@ describe('T-AVM1-014 register allocation order', () => {
   });
 });
 
-describe('T-AVM1-015 REGISTERPARAM register 0', () => {
+describe('T-AVM1-FE-015 REGISTERPARAM register 0', () => {
   it('register 0 = named activation variable (no register slot); non-zero = copied to that register', () => {
     const fn = definedFn(
       block(

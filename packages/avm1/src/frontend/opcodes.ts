@@ -4,9 +4,9 @@
  * `IMPL-050-R002`: this table is the single data structure that drives decoding, tiering and the
  * `inspect --actions` disassembler; there is no second, hand-written copy of opcode knowledge.
  *
- * Payload schemas pin the byte layout (APP-§10.3); `pops`/`pushes` are the chapter's stack effects
- * with `'var'` for the `n`-argument actions (§6.3's reverse-push convention is applied by the
- * decoder, not by the table). Version windows use the section grouping of `IMPL-050` §4; the two
+ * Payload schemas pin the byte layout (APP-§10.3); `pops`/`pushes` classify fixed vs operand-dependent
+ * effects, and `stackEffect` retains the exact formula for variable/conditional actions. §6.3's
+ * reverse-push convention is applied by the decoder, not by the table. Version windows use the section grouping of `IMPL-050` §4; the two
  * observed-but-undocumented opcodes (`0x89`, `0x2D`) are marked `observed` and decode inert
  * (`IMPL-050-R016`).
  */
@@ -42,9 +42,11 @@ export interface OpcodeSpec {
   /** First SWF version in which the action is defined (the §4 section grouping). */
   readonly minVersion: number;
   readonly payload: PayloadSchema;
-  /** Chapter stack effect, pop → push; `'var'` marks an `n`-argument action. */
+  /** Compact stack-effect classification; exact operand-dependent formula is in `stackEffect`. */
   readonly pops: number | 'var';
   readonly pushes: number | 'var';
+  /** Exact §4 stack formula for dynamic/conditional actions, e.g. `n+2→1` or `3→0 (7→0 constrained)`. */
+  readonly stackEffect?: string;
   /** Set when the result type changes between SWF 4 and SWF 5+ (R042). */
   readonly versionSensitive?: VersionSensitive;
   /** Present in the wild but absent from Ch.5 (R016): decode, report, keep semantics inert. */
@@ -62,7 +64,7 @@ function spec(
   payload: PayloadSchema,
   pops: number | 'var',
   pushes: number | 'var',
-  extra: Partial<Pick<OpcodeSpec, 'versionSensitive' | 'observed' | 'note'>> = {},
+  extra: Partial<Pick<OpcodeSpec, 'versionSensitive' | 'observed' | 'note' | 'stackEffect'>> = {},
 ): OpcodeSpec {
   return { code, name, minVersion, payload, pops, pushes, ...extra };
 }
@@ -87,7 +89,6 @@ const T: readonly OpcodeSpec[] = [
     note: 'block-splitting; empty target restores the current file',
   }),
   spec(0x8c, 'GotoLabel', 3, { kind: 'gotoLabel' }, 0, 0, { note: 'uses FrameLabel names (doc 040)' }),
-  spec(0x8d, 'WaitForFrame2', 3, { kind: 'waitForFrame2' }, 1, 0, { note: 'frame from the stack' }),
 
   // ---- §4.2 SWF 4 (stack machine) -----------------------------------------------------------------
   spec(0x0a, 'Add', 4, NONE, 2, 1, {
@@ -108,7 +109,7 @@ const T: readonly OpcodeSpec[] = [
   spec(0x11, 'Or', 4, NONE, 2, 1, { versionSensitive: 'boolean', note: 'non-zero test' }),
   spec(0x12, 'Not', 4, NONE, 1, 1, { versionSensitive: 'boolean', note: 'SWF 4 numeric, SWF 5+ Boolean' }),
   spec(0x13, 'StringEquals', 4, NONE, 2, 1, { versionSensitive: 'boolean', note: 'case-sensitive' }),
-  spec(0x14, 'StringLength', 4, NONE, 1, 1, { note: 'bytes, not characters (see MBStringLength)' }),
+  spec(0x14, 'StringLength', 4, NONE, 1, 1, { note: 'length units are unspecified for non-ASCII strings (R048)' }),
   spec(0x15, 'StringExtract', 4, NONE, 3, 1, { note: 'pops count, index, string; non-integer index/count → ""' }),
   spec(0x17, 'Pop', 4, NONE, 1, 0),
   spec(0x18, 'ToInteger', 4, NONE, 1, 1, { note: 'truncates the fraction (toward zero)' }),
@@ -123,6 +124,7 @@ const T: readonly OpcodeSpec[] = [
   spec(0x26, 'Trace', 4, NONE, 1, 0, { note: 'no player-visible effect; routes to the shell trace sink' }),
   spec(0x27, 'StartDrag', 4, NONE, 3, 0, {
     note: 'pops target, lockcenter, constrain, then y2,x2,y1,x1 when constrained',
+    stackEffect: '3→0 (7→0 constrained)',
   }),
   spec(0x28, 'EndDrag', 4, NONE, 0, 0),
   spec(0x29, 'StringLess', 4, NONE, 2, 1, { versionSensitive: 'boolean', note: 'byte-by-byte, B < A' }),
@@ -139,16 +141,23 @@ const T: readonly OpcodeSpec[] = [
   spec(0x3c, 'DefineLocal', 4, NONE, 2, 0, { note: 'pops value, then name' }),
   spec(0x3d, 'CallFunction', 4, NONE, 'var', 1, {
     note: 'pops name, numArgs, then args (reverse-push convention, §6.3)',
+    stackEffect: 'n+2→1',
   }),
   spec(0x3e, 'Return', 4, NONE, 1, 0, { note: 'discarded when not in a function' }),
   spec(0x3f, 'Modulo', 4, NONE, 2, 1, { note: 'pops x then y; y == 0 → NaN' }),
-  spec(0x40, 'NewObject', 4, NONE, 'var', 1, { note: 'pops name, numArgs, args; pushes the new object' }),
+  spec(0x40, 'NewObject', 4, NONE, 'var', 1, {
+    note: 'pops name, numArgs, args; pushes the new object',
+    stackEffect: 'n+2→1',
+  }),
   spec(0x41, 'DefineLocal2', 4, NONE, 1, 0, { note: 'declares without a value (undefined)' }),
-  spec(0x42, 'InitArray', 4, NONE, 'var', 1, { note: 'pops count then elements' }),
-  spec(0x43, 'InitObject', 4, NONE, 'var', 1, { note: 'pops count then (value, name) pairs' }),
+  spec(0x42, 'InitArray', 4, NONE, 'var', 1, { note: 'pops count then elements', stackEffect: 'n+1→1' }),
+  spec(0x43, 'InitObject', 4, NONE, 'var', 1, { note: 'pops count then (value, name) pairs', stackEffect: '2n+1→1' }),
   spec(0x44, 'TypeOf', 4, NONE, 1, 1, { note: 'number/boolean/string/object/movieclip/null/undefined/function' }),
   spec(0x45, 'TargetPath', 4, NONE, 1, 1, { note: 'dot notation; undefined for non-MovieClip' }),
-  spec(0x46, 'Enumerate', 4, NONE, 1, 'var', { note: 'pushes null then each slot name; order undefined (§6.4)' }),
+  spec(0x46, 'Enumerate', 4, NONE, 1, 'var', {
+    note: 'pushes null then each slot name; order undefined (§6.4)',
+    stackEffect: '1→k+1',
+  }),
   spec(0x47, 'Add2', 4, NONE, 2, 1, { note: 'ECMA-262 §11.6.1; concat is arg2 then arg1' }),
   spec(0x48, 'Less2', 4, NONE, 2, 1, { note: 'ECMA-262 §11.8.5; compares arg2 < arg1' }),
   spec(0x49, 'Equals2', 4, NONE, 2, 1, { note: 'ECMA-262 §11.9.3 (==)' }),
@@ -164,10 +173,14 @@ const T: readonly OpcodeSpec[] = [
   spec(0x51, 'Decrement', 4, NONE, 1, 1),
   spec(0x52, 'CallMethod', 4, NONE, 'var', 1, {
     note: 'pops name, object, numArgs, args; blank name ⇒ invoke the object',
+    stackEffect: 'n+3→1',
   }),
-  spec(0x53, 'NewMethod', 4, NONE, 'var', 1, { note: 'constructor form of CallMethod; pushes the new object' }),
+  spec(0x53, 'NewMethod', 4, NONE, 'var', 1, {
+    note: 'constructor form of CallMethod; pushes the new object',
+    stackEffect: 'n+3→1',
+  }),
   spec(0x54, 'InstanceOf', 4, NONE, 2, 1, { note: 'pops constr, then obj; interfaces from SWF 7' }),
-  spec(0x55, 'Enumerate2', 4, NONE, 1, 'var', { note: 'as Enumerate with an object operand' }),
+  spec(0x55, 'Enumerate2', 4, NONE, 1, 'var', { note: 'as Enumerate with an object operand', stackEffect: '1→k+1' }),
   spec(0x60, 'BitAnd', 4, NONE, 2, 1, { note: 'operands → UI32, result S32' }),
   spec(0x61, 'BitOr', 4, NONE, 2, 1),
   spec(0x62, 'BitXor', 4, NONE, 2, 1),
@@ -178,8 +191,12 @@ const T: readonly OpcodeSpec[] = [
   spec(0x88, 'ConstantPool', 4, { kind: 'constantPool' }, 0, 0, {
     note: 'replaces any existing pool (execution state, not scope — R022)',
   }),
+  spec(0x8d, 'WaitForFrame2', 4, { kind: 'waitForFrame2' }, 1, 0, { note: 'frame from the stack' }),
   spec(0x94, 'With', 4, { kind: 'with' }, 1, 0, { note: 'depth cap 8 (SWF 5) / 16 (SWF 6+); over cap ⇒ skip body' }),
-  spec(0x96, 'Push', 4, { kind: 'push' }, 0, 'var', { note: 'types 0–9; Length is the total type+value bytes' }),
+  spec(0x96, 'Push', 4, { kind: 'push' }, 0, 'var', {
+    note: 'types 0–9; Length is the total type+value bytes',
+    stackEffect: '0→k',
+  }),
   spec(0x99, 'Jump', 4, { kind: 'jump' }, 0, 0, { note: 'offset relative to the next record; 0 = next' }),
   spec(0x9a, 'GetURL2', 4, { kind: 'getURL2' }, 2, 0, { note: 'pops target, then URL; flags per R040' }),
   spec(0x9b, 'DefineFunction', 4, { kind: 'defineFunction' }, 0, 1, { note: 'rare after SWF 7' }),
@@ -200,7 +217,10 @@ const T: readonly OpcodeSpec[] = [
   // ---- §4.4 SWF 7 ---------------------------------------------------------------------------------
   spec(0x2a, 'Throw', 7, NONE, 1, 0, { note: 'unwinds to the nearest Try; every intervening finally runs' }),
   spec(0x2b, 'CastOp', 7, NONE, 2, 1, { note: 'pops object then constructor; pushes the object or null' }),
-  spec(0x2c, 'ImplementsOp', 7, NONE, 'var', 0, { note: 'pops constructor, count, then interfaces; no result' }),
+  spec(0x2c, 'ImplementsOp', 7, NONE, 'var', 0, {
+    note: 'pops constructor, count, then interfaces; no result',
+    stackEffect: '2+k→0',
+  }),
   spec(0x69, 'Extends', 7, NONE, 2, 0, { note: 'pops superclass, then subclass; no result' }),
   spec(0x8e, 'DefineFunction2', 7, { kind: 'defineFunction2' }, 0, 1, {
     note: 'registers + preload/suppress flags (§5.3)',
@@ -276,5 +296,5 @@ export function expectedPayloadLength(code: number): number | null {
 
 /** The SWF 3-era control set — used for the `SF0408` model detection. */
 export const SWF3_ONLY_CODES: ReadonlySet<number> = new Set([
-  0x00, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x81, 0x83, 0x8a, 0x8b, 0x8c, 0x8d,
+  0x00, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x81, 0x83, 0x8a, 0x8b, 0x8c,
 ]);

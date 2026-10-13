@@ -1,0 +1,37 @@
+{
+  "format": "swf-forge/render-manifest",
+  "formatVersion": 1,
+  "source": {
+    "bytes": 84,
+    "sha256": "sha256:a3763306b3f2030df53434a81aeb9853c01ddad024f63161e181c497756ffb98",
+    "frameCount": 1
+  },
+  "stage": {
+    "width": 200,
+    "height": 150,
+    "background": 16777215,
+    "frameRate": 3072
+  },
+  "report": {
+    "frames": 1,
+    "items": 1,
+    "shapes": 1,
+    "sprites": 0,
+    "unsupportedPaints": 0,
+    "maxNesting": 0
+  },
+  "scene": {
+    "path": "scene.json",
+    "sha256": "6a2a257927096f425d256158d9bc5f4a44d8359d56b847284cd6b9ab14f6c891"
+  },
+  "frames": [
+    {
+      "index": 0,
+      "rgba": "7b2153ca1cae0d2631b31e329a90a3a77bb86859c83831da27e9976d6e0a3f09",
+      "png": "511fcc800c1ae5a42d2934a45116394662ba66b744828c366d864151d2b77fd0",
+      "drawCalls": 1,
+      "vertices": 53,
+      "bytes": 120223
+    }
+  ]
+}

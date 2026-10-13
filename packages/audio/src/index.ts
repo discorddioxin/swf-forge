@@ -9,5 +9,14 @@ export { parseMp3Frames, parseSwfMp3EventData } from './codecs/mp3.js';
 export type { Mp3FrameHeader, Mp3FrameParseResult, SwfMp3EventData } from './codecs/mp3.js';
 export { resamplePcm16 } from './codecs/resample.js';
 export type { ResamplePcm16Options, ResampledPcm16 } from './codecs/resample.js';
+export { CANONICAL_SAMPLE_RATE, CHUNK_SECONDS, measureAudio } from './codecs/measure.js';
+export type {
+  AudioChunk,
+  AudioLevels,
+  AudioLoop,
+  AudioTrim,
+  MeasureAudioOptions,
+  MeasuredAudio,
+} from './codecs/measure.js';
 export { encodePcm16Wav, silentPcm } from './codecs/wav.js';
 export type { EncodePcm16WavOptions } from './codecs/wav.js';

@@ -77,6 +77,59 @@ function emptyFontBody(id: number): Uint8Array {
     .toUint8Array();
 }
 
+/**
+ * `sha256` of the `populatedFontBody` code table — computed by hand from
+ * `[{code:65,advance:600,bounds:{xMin:0,xMax:80,yMin:-80,yMax:0}},{code:0xe9,advance:320,bounds:{xMin:0,xMax:40,yMin:-40,yMax:0}}]`
+ * rather than copied from a failing run, so it pins the intended table and not the current one.
+ */
+const GOLDEN_CODE_TABLE_SHA256 = 'd4d137dca014c21d0ba292fc02640e7dfe50c61f6b01ac562a169512ed8a1d0a';
+
+/**
+ * A populated `DefineFont2`: two glyph outlines, a wide CodeTable, a FontLayoutTable with a
+ * negative leading, and per-glyph advances and bounds — i.e. everything `codeTableSha256` hashes.
+ */
+function populatedFontBody(id: number): Uint8Array {
+  const glyph = (size: number): Uint8Array => {
+    const w = new ByteWriter();
+    w.bits(1, 4).bits(0, 4); // NumFillBits = 1, NumLineBits = 0
+    w.bits(0, 1).bits(0, 1).bits(0, 1).bits(0, 1).bits(1, 1).bits(1, 1); // StyleChange: fill0 + moveTo
+    w.bits(1, 5).bits(0, 1).bits(0, 1).bits(1, 1); // MoveTo (0,0), FillStyle0 = 1
+    for (const [dx, dy] of [
+      [size, 0],
+      [0, size],
+      [-size, 0],
+      [0, -size],
+    ] as const) {
+      w.bits(1, 1).bits(1, 1).bits(14, 4).bits(1, 1);
+      w.bits(dx < 0 ? 65536 + dx : dx, 16).bits(dy < 0 ? 65536 + dy : dy, 16);
+    }
+    w.bits(0, 6).align();
+    return w.toUint8Array();
+  };
+  const glyphs = [glyph(80), glyph(40)];
+  const name = new TextEncoder().encode('Golden Sans');
+  const w = new ByteWriter();
+  w.u16(id);
+  w.u8(0x84).u8(0); // HasLayout | WideCodes
+  w.u8(name.length).bytes(name);
+  w.u16(glyphs.length);
+  const tableStart = (glyphs.length + 1) * 2;
+  let running = tableStart;
+  for (const bytes of glyphs) {
+    w.u16(running);
+    running += bytes.length;
+  }
+  w.u16(running); // CodeTableOffset
+  for (const bytes of glyphs) w.bytes(bytes);
+  w.u16(65).u16(0x00e9);
+  w.u16(880).u16(120).s16(-40); // ascent, descent, signed leading
+  w.s16(600).s16(320); // advances
+  writeRect(w, { xMin: 0, xMax: 80, yMin: -80, yMax: 0 });
+  writeRect(w, { xMin: 0, xMax: 40, yMin: -40, yMax: 0 });
+  w.u16(0); // no kerning pairs
+  return w.toUint8Array();
+}
+
 function emptyStaticTextBody(id: number): Uint8Array {
   const writer = new ByteWriter();
   writer.u16(id);
@@ -392,6 +445,47 @@ describe('forge-decompile dump', () => {
       editText: { variableName: 'field', initialText: null, flags: { hasText: false, html: false } },
     });
     expect(result.text).not.toContain('"shape":');
+  });
+
+  it('WP-080-13: the font summary is a stable golden and never inlines glyph outlines', () => {
+    // T-MOD-044 pins an *empty* font, so the digest it checks is the digest of `[]`. This is the
+    // corpus-harness half: a font with real glyphs, codes, advances and bounds, whose summary must
+    // be byte-identical run to run and must not carry outline geometry into the dump.
+    const source = write(
+      'font-golden.swf',
+      buildSwf({
+        version: 10,
+        body: concat(tag(Tag.DefineFont2, populatedFontBody(41)), showFrames(1), endTag()),
+        frameCount: 1,
+      }),
+    );
+    const first = loadDump(['dump', source, '--json']);
+    const second = loadDump(['dump', source, '--json']);
+    expect(first.exit).toBe(EXIT.ok);
+    expect(first.text).toBe(second.text);
+
+    const entry = (first.dump.dictionary as Record<string, unknown>[])[0];
+    expect(entry).toMatchObject({
+      id: 41,
+      font: {
+        version: 2,
+        name: 'Golden Sans',
+        unitsPerEm: 1024,
+        wideCodes: true,
+        glyphCount: 2,
+        ascent: 880,
+        descent: 120,
+        leading: -40,
+        fontInfoPresent: false,
+        fontName: null,
+        fontAlignZones: null,
+      },
+    });
+    // The digest covers code, advance and bounds for every glyph. Pinning the literal makes any
+    // silent change to the summary's content or ordering a failing test rather than a quiet diff.
+    expect((entry?.font as Record<string, unknown>).codeTableSha256).toBe(GOLDEN_CODE_TABLE_SHA256);
+    expect(first.text).not.toContain('"edges"');
+    expect(first.text).not.toContain('"controlX"');
   });
 
   it('T-MOD-043: version-4 bitmap entries expose payload digests without inlining image bytes', () => {

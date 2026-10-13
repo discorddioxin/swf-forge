@@ -18,3 +18,21 @@ export {
   writeRect,
 } from './writer.js';
 export type { SwfFixtureOptions, WriterDefect } from './writer.js';
+export {
+  FIXTURE_TWIPS,
+  backgroundColor,
+  defineShape,
+  place,
+  removeObject2,
+  staticFixtures,
+} from './static-fixtures.js';
+export type {
+  LineSpec,
+  PathSpec,
+  PlacementSpec,
+  Pt,
+  Segment,
+  ShapeSpec,
+  Solid,
+  StaticFixture,
+} from './static-fixtures.js';

@@ -1,7 +1,7 @@
 # IMPL-060 — Shapes, Paths, and Gradients
 
 **Doc ID:** IMPL-060 · **Status:** ✅ grounded in Ch.6 + Ch.7
-**Package:** `@swf-forge/shapes`, `@swf-forge/geometry`
+**Packages:** `@swf-forge/swf` (decode + VectorShape IR) and `@swf-forge/gfx` (SWF-agnostic renderer geometry); the decompiler owns their adapter.
 **Format spec:** Chapter 6 — Shapes (`FILLSTYLE`/`FILLSTYLEARRAY`, `LINESTYLE`/`LINESTYLE2`/
 `LINESTYLEARRAY`, `SHAPE`, `SHAPEWITHSTYLE`, `SHAPERECORD`, `DefineShape`/`2`/`3`/`4`).
 Chapter 7 supplies the gradient structures (`GRADIENT`, `FOCALGRADIENT`, `GRADRECORD`, spread and
@@ -39,33 +39,34 @@ and consumes this document's edge model).
 ## 2. Module layout
 
 ```
-packages/shapes/src/
-  define-shape.ts    tag headers: bounds, edge bounds, flags, version dispatch
-  style-arrays.ts    FILLSTYLEARRAY / LINESTYLEARRAY incl. extended counts and the dedupe ceiling
-  fill-style.ts      all eight FillStyleType values + bitmap matrix
-  gradient.ts        GRADIENT / FOCALGRADIENT: flags byte, control points, focal point (Ch.7)
-  line-style.ts      LINESTYLE + LINESTYLE2 bit fields, caps, joins, miter model
-  shaperecord.ts     SHAPERECORD state machine (the four record kinds)
-  edge-math.ts       delta decoding, quadrant reconstruction, on-curve/off-curve handling
-  path-build.ts      fill0/fill1 chaining, rewinds, open/closed figures
-  winding.ts         even-odd vs non-zero per style layer (DefineShape4 rule)
-  vector-ir.ts       VectorShape/VectorPath/FillPath/StrokePath types + serialisation
-  quantise.ts        1/20 px (and 0.05 px) snapping at the correct pipeline stage
-  simplify.ts        deterministic 4-step simplification
-  bounds.ts          declared vs recomputed vs edge bounds
-  corpus.ts          corpus loader used by doc 140's golden runner
-packages/geometry/src/
-  curve.ts           quadratic/cubic conversion (1/3 rule + recursive subdivision)
-  flatten.ts         adaptive flattening with a deterministic tolerance ladder
+packages/swf/src/tags/shape.ts
+  version dispatch, FILLSTYLE/LINESTYLE arrays, gradients, SHAPERECORD state machine,
+  fill0/fill1 chaining, bounds checks and the authoritative VectorShape IR
+packages/swf/src/shapes/
+  quantise.ts        one-twip integer grid
+  simplify.ts        deterministic four-step simplification
+  serialise.ts       canonical VectorShape data and digest
+  morph-ir.ts        shared by IMPL-070; not used by static-shape preparation
+packages/gfx/src/vector/
+  flatten.ts         deterministic quadratic flattening
+  geometry.ts        renderer-owned paths, fills and strokes
+  tessellate.ts      fill/stroke geometry generation
+apps/decompiler/src/geometry/prepare.ts
+  quantise -> simplify, the shared static-shape boundary used by preview + renderer adapters
+apps/decompiler/src/render/vector-ir.ts
+  VectorShape -> @swf-forge/gfx ShapeGeometry adapter
+apps/decompiler/src/assets/shape-preview.ts
+  deterministic CPU PNG preview; consumes the same prepared VectorShape
 ```
 
-**IMPL-060-R001** `@swf-forge/geometry` MUST contain **no SWF knowledge**: no twips, no style ids,
-no bit readers. It is pure geometry maths so the runtime (doc 130), the tessellator, and the compiler
-all share one implementation.
+**IMPL-060-R001** `@swf-forge/gfx` MUST contain **no SWF knowledge**: no tag readers, character ids,
+style-array indices, or dependencies on `@swf-forge/swf`. Twips are converted at the decompiler
+adapter boundary; the pure renderer geometry remains reusable.
 
-**IMPL-060-R002** `VectorShape` MUST be the only geometry type crossing into the renderer; the
-import-boundary lint rule (WP-060-11) enforces it. Renderer-side types are built from it, never
-alongside it.
+**IMPL-060-R002** `VectorShape` is the only SWF-owned geometry model crossing into the decompiler's
+renderer adapter. `apps/decompiler/src/render/vector-ir.ts` converts it once into renderer-owned
+`ShapeGeometry`; the static preview and renderer adapters share the same preparation helper, not a
+second SWF IR. Import-boundary lint keeps `packages/gfx` independent of SWF.
 
 ## 3. Tag set and versions
 
@@ -129,10 +130,11 @@ FILLSTYLEARRAY:
 | `0x42` | non-smoothed repeating `BitmapId` fill |
 | `0x43` | non-smoothed clipped `BitmapId` fill |
 
-- **IMPL-060-R009** Any other byte is `SF0180` (error) and the fill becomes a magenta debug style
-  (never a crash, never a silent skip that shifts the stream — the field widths are known because the
-  unknown type still has no defined payload, but a `BitmapId`-bearing type has more fields, so the tag
-  is quarantined rather than half-read; `[verify]` §11 #1).
+- **IMPL-060-R009** Any other byte is `SF0180` (error). Its payload length is unknowable, so the
+  decoder MUST seek to the end of the owning tag, mark the shape quarantined, and expose no renderable
+  geometry; it MUST NOT invent a magenta style or continue into a line array/record stream under the
+  wrong layout. Morph fills follow the same fail-closed tag boundary (`IMPL-070` §6). The payload
+  question in §11 #1 is whether a future oracle can justify a narrower recovery boundary.
 - **IMPL-060-R010** Solid fills MUST carry a colour whose component count comes from the tag version
   (RGB for `DefineShape`/`DefineShape2`, RGBA for `DefineShape3`/`4`) — see R003.
 - **IMPL-060-R011** `BitmapMatrix` maps **bitmap space → shape space**: a point is transformed into the
@@ -354,11 +356,19 @@ carry typesetting defects (errata `E-025`): its bytes are authoritative, its tab
 
 **IMPL-060-R034** The pipeline order is fixed and golden-visible:
 decode → edge reconstruction (absolute pen positions, integer twips) → style chaining (per-style
-oriented runs) → IR (floats in px) → quantise (1/20 px at smoothing 0, 0.05 px above) → simplify
-(4 steps, fixed order) → flatten.
+oriented runs) → IR (integer twips, per `R037`) → quantise (one grid, 1 twip = 1/20 px = 0.05 px) →
+simplify (4 steps, fixed order) → flatten.
+
+> **Corrected in `E-027`.** v1.5 wrote the grid as "1/20 px at smoothing 0, 0.05 px above" — the
+> same spacing in two notations, not two grids, so there is no smoothing switch to implement — and
+> described the IR as "floats in px", which contradicts `R037`. The implementation takes a single
+> `gridTwips` option defaulting to `1` and keeps the IR in integer twips.
 
 - **IMPL-060-R035** Quantisation applies to the **input** of simplification so the result stays
-  grid-aligned and deterministic (`T-MOD-107`; the v1.0 reference to `T-MOD-201` was a typo).
+  grid-aligned and deterministic (`T-MOD-107`; the v1.0 reference to `T-MOD-201` was a typo). Static
+  geometry uses half-away-from-zero ties to preserve reflection symmetry; morph ratio interpolation
+  uses the separate R030 ties-to-even rule at tessellation. The shared static-shape preparation helper
+  MUST NOT be used as the morph rational-twip rounding boundary.
 - **IMPL-060-R036** Simplification MUST be deterministic (no RNG, no time, no iteration-order
   dependence) and MUST run in this order: (1) drop zero-length segments, (2) merge collinear lines,
   (3) drop curves whose chord deviation is sub-pixel at the renderer tolerance, (4) drop paths that
@@ -516,16 +526,21 @@ practical guard, not a file field.
 
 ## 13. Integration with the renderer
 
-- **IMPL-060-R042** The renderer consumes `VectorShape` and MUST NOT re-read SWF bytes. Tessellation
-  keys must be derived from IR hashes (design GFX-R050), so two shapes with identical geometry share
-  a mesh.
+- **IMPL-060-R042** The renderer consumes `VectorShape` and MUST NOT re-read SWF bytes. The P3
+  adapter assigns a stable geometry identity from the SWF character id; renderer cache keys then use
+  the identity and tessellation parameters required by GFX §14.1 (`characterId`, fill rule, scale
+  bucket, quality mode, stroke parameters). Repeated instances of one character therefore share its
+  mesh. Distinct character ids are not deduplicated by content hash, and `GFX-R050` is the bitmap-fill
+  sampling rule, not a geometry-hash requirement.
 - **IMPL-060-R043** Strokes are a separate draw unit from fills; a shape with N fills and M strokes
-  produces ≤ N+M geometry groups (GFX-R030's budget is enforced by WP-130-05).
+  produces at most N+M style geometry groups. Renderer draw-call coalescing follows GFX-R053–R055;
+  GFX-R030 is the independent hairline-width rule, not a geometry-group budget.
 - **IMPL-060-R044** `nonZero` shapes MUST be tessellated with the non-zero rule in the same pass as
   even-odd ones (the rule is a per-path parameter, not a separate pipeline) — GFX-R024's wording is
   the contract.
-- **IMPL-060-R045** Non-scaling strokes change the flattening tolerance selection but never the IR;
-  the renderer picks the tolerance at draw time (`[verify]` §11 #5).
+- **IMPL-060-R045** Non-scaling strokes change how the renderer expands stroke outlines but never the
+  decoded IR; flattening tolerance is selected at draw time in device pixels (GFX-R022), while
+  `NonScalingStroke` expansion follows the stage-space rule (GFX-R031).
 
 ## 14. Changelog
 
@@ -537,3 +552,5 @@ practical guard, not a file field.
 | 1.3 | 2026-10-04 | Appendix and tech-spec pass: `T-MOD-123` pins the Appendix A shape bit walk; duplicate rule ids in the line-style/shape sections are renumbered to `R046`–`R052` (no outside citations existed) |
 | 1.4 | 2026-10-05 | Production `StateNewStyles` now byte-aligns before style arrays and rebases non-zero local fill/line indices into stable IR tables; adds straight/curved bit-width vectors, bitmap-style rebasing, production preview and inspect coverage (`T-MOD-124/125`) |
 | 1.5 | 2026-10-05 | Repeat conformance pass: add executable `T-MOD-116/118/123/126/127` fixtures, extend `T-MOD-113` to Shape2/3/4, and correct the shape-regression citations to match the test registry |
+| 1.6 | 2026-10-09 | P3 checkpoint C2: `R034`'s quantisation grid corrected to one grid (`E-027`) and the IR restated as integer twips per `R037`; the quantise/simplify/canonical-serialise stages land as `packages/swf/src/shapes/{quantise,simplify,serialise}.ts` with `SimplifyStats` making each of `R036`'s four steps separately assertable; executable `T-MOD-103/104/105/107/108/109/110/111/119/120/121` fixtures added |
+| 1.7 | 2026-10-10 | P3 C7 closeout: correct `R042`'s geometry identity/cache-key contract, `R043`'s draw-call reference, and `R045`'s flatten/stroke references to match GFX docs; state the P4 renderer boundary; revise module map to the current swf/gfx/decompiler packages |

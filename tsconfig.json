@@ -6,6 +6,7 @@
     { "path": "packages/assets" },
     { "path": "packages/avm1" },
     { "path": "packages/gfx" },
-    { "path": "apps/decompiler" }
+    { "path": "apps/decompiler" },
+    { "path": "apps/engine-flash" }
   ]
 }

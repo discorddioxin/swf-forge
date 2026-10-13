@@ -122,7 +122,7 @@ def main():
     # ------------------------------------------------ 5/6. test ids: owner + band + overlap
     band = {"010": ("T-SWF", r"0\d\d"), "020": ("T-SWF", r"0\d\d"),
             "030": ("T-MOD", r"(0\d\d|6\d\d)"), "040": ("T-MOD", r"0\d\d"),
-            "050": ("T-AVM1", r"0\d\d"), "060": ("T-MOD", r"1\d\d"), "070": ("T-MOD", r"[34]\d\d"),
+            "050": ("T-AVM1-FE", r"0\d\d"), "060": ("T-MOD", r"1\d\d"), "070": ("T-MOD", r"[34]\d\d"),
             "080": ("T-MOD", r"5\d\d"), "090": ("T-AUD", r"1\d\d"), "100": ("T-MOD", r"8\d\d"),
             "110": ("T-MOD", r"9\d\d"), "120": ("T-CMP", r"0\d\d"), "130": ("T-RT", r"1\d\d"),
             "140": ("T-TST", r"(0\d\d|1\d\d)"), "150": ("T-INS", r"1\d\d"), "160": ("T-CLN", r"1\d\d")}
@@ -130,7 +130,7 @@ def main():
     towner = collections.defaultdict(set)
     for f in impl_docs:
         name, s = num_of(f), open(f).read()
-        for t in set(re.findall(r"^\| `(T-[A-Za-z0-9]+-\d+)` \|", s, re.M)):
+        for t in set(re.findall(r"^\| `(T-AVM1-FE-\d+|T-[A-Za-z0-9]+-\d+)` \|", s, re.M)):
             towner[t].add(name)
         if name in band:
             pre, pat = band[name]
@@ -140,6 +140,18 @@ def main():
     for t, ows in towner.items():
         if len(ows) > 1 and ows != shared_tests.get(t):
             iss(f"test id {t} defined by {sorted(ows)}")
+
+    # AVM1 tests span a language spec and an implementation doc; their identifiers must remain
+    # disjoint so a front-end unit test cannot accidentally satisfy a runtime conformance gate.
+    avm1_owners = collections.defaultdict(set)
+    test_decl = re.compile(r"^\|\s*`?(T-AVM1-FE-\d+|T-AVM1-\d+)`?\s*\|", re.M)
+    for f in all_docs:
+        for tid in set(test_decl.findall(open(f).read())):
+            if tid.startswith("T-AVM1-"):
+                avm1_owners[tid].add(os.path.relpath(f, D))
+    for tid, owners in avm1_owners.items():
+        if len(owners) > 1:
+            iss(f"AVM1 test id {tid} defined by {sorted(owners)}; language and front-end suites must be disjoint")
 
     # --------------------------------------------------------- 7. spec citations resolve
     pref = {"ARCH": "000", "REPO": "010", "CMP": "020", "SWF": "030", "AVM1": "040", "GFX": "050",
@@ -196,9 +208,9 @@ def main():
     # ------------------------------ 8b. every test id mentioned anywhere is defined somewhere
     defined = set()
     for f in all_docs:
-        defined |= set(re.findall(r"^\| `?(T-[A-Za-z0-9]+-\d+)`? \|", open(f).read(), re.M))
+        defined |= set(re.findall(r"^\| `?(T-AVM1-FE-\d+|T-[A-Za-z0-9]+-\d+)`? \|", open(f).read(), re.M))
     for f in all_docs + [tech]:
-        for t in set(re.findall(r"\bT-[A-Za-z0-9]+-\d+\b", open(f).read())):
+        for t in set(re.findall(r"\b(?:T-AVM1-FE-\d+|T-[A-Za-z0-9]+-\d+)\b", open(f).read())):
             if t not in defined and t not in HISTORICAL_TEST_IDS:
                 iss(f"{os.path.basename(f)}: undefined test id {t}")
 

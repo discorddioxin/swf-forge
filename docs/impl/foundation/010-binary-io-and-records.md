@@ -129,7 +129,7 @@ export interface CursorOptions {
 export interface StringReadOptions {
   /** Movie version; decides UTF-8 (≥ 6) vs legacy encoding (≤ 5). */
   version?: number;
-  /** How to decode when version ≤ 5 and no better signal exists. Default 'windows-1252'. */
+  /** Caller-selected decoding policy for SWF ≤ 5 (the file stores no encoding selector). Default 'windows-1252'. */
   legacyEncoding?: 'windows-1252' | 'latin1' | 'shift-jis';
   /** Hard cap on decoded bytes. Default 65536. */
   maxBytes?: number;

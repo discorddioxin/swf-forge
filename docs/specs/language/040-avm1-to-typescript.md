@@ -1,6 +1,6 @@
 # AVM1 — ActionScript 1/2 Semantics and TypeScript Code Generation
 
-**Doc ID:** AVM1 · **Status:** Draft 1.3 · **Normative:** yes
+**Doc ID:** AVM1 · **Status:** Draft 1.5 · **Normative:** yes
 
 ---
 
@@ -214,10 +214,16 @@ that SEC-§3 forbids.
 `undefined`). Wrapper objects (`new Number(5)`) exist only when a game explicitly constructs them,
 and MUST be distinguishable (`typeof` returns `"object"` for them, `"number"` for primitives).
 
-**AVM1-R020** Strings MUST be JS strings (UTF-16 code units). SWF string constants are decoded from
-the file's declared encoding (`DefineFontInfo`/`DefineEditText` code page, SWF ≥ 6 ⇒ UTF-8 for
-`ActionPush` string constants as stored in the *file*). The decoder MUST follow SWF-§6.5's
-documented rules per version ([oracle-pinned] `T-AVM1-006`).
+**AVM1-R020** AVM1 strings MUST be JS strings (UTF-16 code units) after decoding. In SWF 6 and
+later, `STRING` values (including `ActionPush` string constants) are UTF-8. In SWF 5 and earlier,
+`STRING` values may be ANSI or Shift-JIS; the file has no encoding selector and Flash Player chooses
+the decoder according to its locale (Adobe, *SWF File Format Specification, Version 19*, Ch. 1,
+p. 20: [source](https://www.yumpu.com/en/document/view/16539946/swf-file-format-specification-version-19-adobe/20)).
+`DefineFontInfo`'s code-table flags and `LanguageCode` are not selectors for AVM1 `STRING` bytes;
+Adobe explicitly says `LanguageCode` does not specify text encoding. The decoder MUST accept an
+explicit legacy-encoding policy for SWF ≤ 5; the project's deterministic default is Windows-1252,
+while a Shift-JIS target locale can be selected by the caller. This default is a porting decision, not
+an encoding declared by the file. `T-AVM1-006` pins the version rule and explicit legacy choice.
 
 ### 5.2 Conversion rules (normative)
 
@@ -731,16 +737,27 @@ These are measured by TST-§7's `avm1` scene.
 | T-AVM1-002 | `DoInitAction` before frame-1 actions | F2 |
 | T-AVM1-003 | Sibling traversal order incl. depth collisions | F2 |
 | T-AVM1-004 | Statements after `gotoAndPlay` still execute | F2 |
+| T-AVM1-006 | `ActionPush` strings: SWF 6+ UTF-8; SWF ≤5 uses an explicit ANSI/Shift-JIS decoding policy because the file has no selector | F2 |
+| T-AVM1-007 | `ActionLess` vs `ActionLess2` string coercion remains distinct | F2 |
 | T-AVM1-008 | Add/Add2/StringAdd coercion matrix (60+ cases) | F2 |
 | T-AVM1-009 | `isNaN` matrix | F2 |
+| T-AVM1-010 | `Math.round(-0.5)` and numeric edge cases match the oracle | F1 |
+| T-AVM1-011 | `__resolve` miss handling; an unresolved member read returns `undefined` | F2 |
 | T-AVM1-012 | Enumeration order incl. prototype chain + shadowing | F2 |
+| T-AVM1-013 | `ASSetPropFlags` known and unknown bits, including one-time info diagnostic | F2 |
+| T-AVM1-014 | `_currentframe` updates immediately after same-block `gotoAndStop` | F2 |
 | T-AVM1-015 | `getNextHighestDepth` after mixed timeline/dynamic content | F2 |
+| T-AVM1-016 | `attachMovie` replacement, construction, and scheduling order | F2 |
+| T-AVM1-017 | Duplicate `_name` lookup chooses the lowest occupied depth | F2 |
 | T-AVM1-018 | `Color` round-trips | F2 |
+| T-AVM1-019 | Drawing API fill state persists; a new fill ends the previous fill | F2 |
+| T-AVM1-020 | `TextField.htmlText` supported subset and literal fallback | F2 |
 | T-AVM1-021 | `updateAfterEvent` no-op outside handlers | F2 |
 | T-AVM1-025 | 15-significant-digit formatting: 200 golden vectors | F2 |
 | T-AVM1-026 | Emitted fixture project compiles with zero suppressions | F1 |
 | T-AVM1-027 | Interpreter budget suspends a hostile infinite loop | F1 |
 | T-AVM1-028 | Frame-script microbenchmark within AVM1-R083 | F3 |
+| T-AVM1-030 | Scene labels and `nextScene`/`prevScene` dispatch match the scene map | F2 |
 | T-AVM1-031 | `Date` local-time and DST behaviour documented against the oracle (`AVM1-D05`) | F3 |
 | T-AVM1-032 | `Math.random` non-deterministic by default; `--seed` reproduces a sequence (`AVM1-D06`) | F2 |
 | T-AVM1-033 | `TextField.variable` write-back through scope hooks, no per-frame polling (`AVM1-D08`) | F2 |
@@ -751,7 +768,7 @@ These are measured by TST-§7's `avm1` scene.
 
 | ID | Decision | Default | Verification | Notes |
 | --- | --- | --- | --- | --- |
-| AVM1-D01 | String constant encoding for SWF 4–5 content | Latin-1/code-page per `DefineFontInfo` | T-AVM1-006 | Old games with accents mis-render otherwise |
+| AVM1-D01 | Legacy string decoding for SWF 4–5 content | Explicit caller policy; Windows-1252 default, Shift-JIS selectable | T-AVM1-006 | SWF stores no selector; this deterministic default is a porting choice, not Flash Player's locale rule |
 | AVM1-D02 | `Add` vs `Add2` distinct implementations | Both implemented | T-AVM1-008 | Compiler must not merge them |
 | AVM1-D03 | Include the interpreter when any function is residual | Yes | bundle gate | `--vm.residual=forbid` for purists |
 | AVM1-D04 | Scene semantics | Collapse scenes into label map; `nextScene`/`prevScene` computed | T-AVM1-030 | Scenes are rare in games |
@@ -772,3 +789,5 @@ These are measured by TST-§7's `avm1` scene.
 | 1.1 | 2026-10-04 | §10.1 clip-event list extended with `onInitialize` (SWF 6+) and `onConstruct` (SWF 7+); `AVM1-R014` corrected to the Ch.5 constant-pool rule (execution state, not lexical scope) |
 | 1.2 | 2026-10-04 | Diagnostic citations re-pointed to the `IMPL-050` registry: `ToPrimitive` recursion guard `SF0420` -> `SF0423`, prototype-chain cycle `SF0421` -> `SF0424` (the codes previously named belong to AVM1 decode conditions in `IMPL-050`); errata `E-016` |
 | 1.3 | 2026-10-04 | Test obligations `T-AVM1-031`–`035` — cited by `AVM1-D05`/`D06`/`D08`/`D09`/`D11` but never defined — are now enumerated in §13 |
+| 1.4 | 2026-10-10 | Added §13 declarations for the previously cited oracle-pinned obligations `T-AVM1-006/007/010/011/013/014/016/017/019/020/030`; no normative runtime semantics changed |
+| 1.5 | 2026-10-11 | Correct SWF ≤5 `STRING` decoding: ANSI/Shift-JIS is locale-selected with no in-file selector; `LanguageCode`/font code-table flags do not declare ActionPush encoding; document the explicit deterministic porting default and source links |

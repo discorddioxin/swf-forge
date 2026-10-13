@@ -351,6 +351,8 @@ shared with doc 030.
 | `T-MOD-815` | button sound transition order (0 roll-out, 1 roll-over, 2 press, 3 release) | F1 |
 | `T-MOD-816` | empty-state record and empty-condition action produce the documented info codes only | F2 |
 | `T-MOD-817` | handler grouping: one symbol per CONDACTION, key code preserved | F1 |
+| `T-MOD-841` | self-cyclic button hit-area reference raises `SF0111` and leaves `hitArea` null (P2 audit regression) | F1 |
+| `T-MOD-842` | button whose every hit-area record resolves to a non-usable rect raises `SF0111` (P2 audit regression) | F1 |
 
 ## 9. Work packages
 
@@ -360,7 +362,7 @@ shared with doc 030.
 | WP-100-02 | `DefineButton` (v1) + action array + `ActionEndFlag` | WP-100-01 | 2 | `define-button.ts`, T-MOD-805 |
 | WP-100-03 | `DefineButton2` header, `ActionOffset`, records | WP-100-01 | 3 | `define-button2.ts`, T-MOD-811 |
 | WP-100-04 | `BUTTONCONDACTION` chain + condition/key table | WP-100-03, WP-050-03 | 4 | `button-cond-action.ts`, `conditions.ts`, T-MOD-803/810/816 |
-| WP-100-05 | `ButtonModel` state resolution + hit-area computation | WP-100-03 | 3 | `button-model.ts`, T-MOD-801/809 |
+| WP-100-05 | `ButtonModel` state resolution + hit-area computation | WP-100-03 | 3 | `button-model.ts`, T-MOD-801/809/841/842 |
 | WP-100-06 | `DefineButtonSound` (four transitions, SOUNDINFO reuse) | WP-100-03, WP-090-07 | 2 | `button-sounds.ts`, T-MOD-806/815 |
 | WP-100-07 | `DefineButtonCxform` (v1 colour transform) | WP-100-02 | 1 | `button-cxform.ts`, T-MOD-812 |
 | WP-100-08 | Transition/tracking table + runtime spec emission | WP-100-04, WP-100-05 | 3 | `ButtonRuntimeSpec`, T-MOD-814/817 |

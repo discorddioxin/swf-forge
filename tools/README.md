@@ -1,13 +1,21 @@
 # tools/ — document tooling
 
-Three stdlib-only Python 3 scripts. No dependencies, no network, safe to run from any directory:
+The Python document-tooling scripts are stdlib-only, have no dependencies or network access, and are safe to run from any directory:
 
 ```bash
 python3 tools/verify_docs.py            # document consistency gate — prints "ISSUES: 0" when clean
 python3 tools/gen_status.py             # regenerates docs/impl/registers/STATUS.md
 python3 tools/audit_dev.py              # code-vs-spec integrity ledger (pnpm audit:dev)
-pnpm test:audit                         # unit tests for the collector's parsers and ownership gates
+python3 tools/tag_coverage.py           # tag-by-tag decode coverage (pnpm tag:coverage)
+python3 tools/adpcm_probe.py FILE.swf   # settles the ADPCM packet length from real files
+python3 tools/adpcm_hunt.py             # goes and finds the files for it (network)
+pnpm test:audit                         # unit tests for every tool above
 ```
+
+The AVM1 process-restart probe is a separate Node tool: `corepack pnpm test:avm1-restart` builds the workspace, then compares synthetic direct-analysis and CLI reports across fresh processes. The fixture includes T0, T1 (`dynamic-pool`), and T2 (`unknown-opcode`) entries, recovered names, and non-empty requirements; the evidence is local and synthetic only, not open-corpus evidence. Its hashes and report summary are recorded in `audits/P5-C4-RESTART-PROBE.json`.
+
+`adpcm_hunt.py` is the one exception to "no network": it exists to search GitHub and npm for
+Flash content. Everything else is offline.
 
 ## `verify_docs.py`
 
@@ -80,6 +88,68 @@ deterministic and every path it prints is repository-relative (`REPO-R015`).
 production-vs-test distinction, deferred-WP mapping and test-id ownership parsing. The current checks
 and recorded outcomes are in `audits/dev/03-mechanical-checks.md`. CI runs the docs gate, collector
 unit tests and `pnpm audit:dev` after building its runtime probes.
+
+## `adpcm_probe.py`
+
+An evidence-gathering tool for one open question, recorded in `audits/P3-C5-AUDIT.md` §9 and
+`audits/P3-ADPCM-PACKET-LENGTH.md`: does an ADPCM packet emit **4096** samples (`InitialSample`
+plus 4095 coded frames — what `packages/audio` implements) or **4095** (the header sample being a
+predictor seed that is never output — what `ruffle` does)?
+
+The question is decidable without decoding any audio. The two readings need different numbers of
+packets for the same declared `SoundSampleCount`, so they predict different payload lengths:
+
+```
+reading A:  packets = ceil(N / 4096)   codes = N - packets
+reading B:  packets = ceil(N / 4095)   codes = N
+bytes       = ceil((2 + packets*22*channels + codes*codeWidth*channels) / 8)
+```
+
+`A` always predicts fewer bytes. A real payload that is long enough for `A` but **too short for
+`B`** proves `A` outright. The tool scans `DefineSound` and `SoundStreamBlock` payloads, computes
+both predictions, and reports per-asset and corpus-wide verdicts. It also prints the two
+"trailing packet padded out to full" predictions, which is the evidence for the *second* open
+question owned by `T-AUD-102`.
+
+```bash
+python3 tools/adpcm_probe.py --census ~/swfs      # does this corpus contain any ADPCM at all?
+python3 tools/adpcm_probe.py ~/swfs               # verdicts, human-readable
+python3 tools/adpcm_probe.py --json ~/swfs        # same, machine-readable
+python3 tools/adpcm_probe.py --quiet ~/swfs       # only files that yielded a verdict
+```
+
+Accepts files, globs or directories (scanned recursively), and reads uncompressed, zlib and LZMA
+SWFs. `test_adpcm_probe.py` validates it by synthesising SWFs encoded under *each* reading and
+asserting the probe names the right one — the tool is not trusted on the strength of its own
+arithmetic.
+
+## `adpcm_hunt.py`
+
+`adpcm_probe.py` answers the question the moment it is handed a suitable file; the hard part is
+*getting* one. This tool does the looking, so the question does not stall on a manual file hunt.
+
+It searches GitHub and npm for repositories and packages that vendor Flash **content** (games,
+ads, demos, archives — not player or decompiler test suites, which carry no ADPCM), streams each
+archive, keeps only the `.swf` members, scans them, and runs the probe on anything containing
+ADPCM. Archives are discarded as it goes and files are deduplicated by SHA-256, so a long hunt
+costs little disk and a widely-vendored asset cannot manufacture false confidence by being
+counted twenty times.
+
+```bash
+python3 tools/adpcm_hunt.py                       # default hunt
+python3 tools/adpcm_hunt.py --max-sources 500     # wider
+python3 tools/adpcm_hunt.py --repo owner/name     # a corpus you know of
+python3 tools/adpcm_hunt.py --stop-on-hit         # stop as soon as a verdict is reached
+```
+
+Resumable — every source visited is recorded in a state file and re-running skips it — and
+Ctrl-C still writes the report. Set `GITHUB_TOKEN`, or have `gh` logged in, and search runs at
+30 requests/minute instead of 10. The report is the JSON evidence bundle for the audit record.
+
+`test_adpcm_hunt.py` validates it offline: archives are built containing SWFs whose ADPCM content
+and correct verdict are known, and the hunter must find them, keep them, dedupe them, respect its
+size caps, survive corrupt input and report the right answer — including raising `CONFLICT` when
+given deliberately contradictory evidence.
 
 ## `gen_status.py`
 

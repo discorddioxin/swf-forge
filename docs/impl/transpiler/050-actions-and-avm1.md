@@ -88,7 +88,11 @@ else:                  payload length comes from the opcode table (0 for every A
   dump, and mark the enclosing function residual (CMP-R010/R011, design AVM1-R012).
 - **IMPL-050-R006** Zero-length records, a record whose length covers to the exact end of the block,
   and a stream with no terminating `End` (0x00) MUST all be accepted with the appropriate diagnostic
-  (`SF0420`): some authoring tools omit the terminator, and refusing them helps nobody.
+  (`SF0420`): some authoring tools omit the terminator, and refusing them helps nobody. A block-level
+  scan MUST include the first `End` record and stop immediately after it; any remaining bytes in the
+  enclosing byte slice are ignored, not decoded or tiered (`stoppedAt` is the first byte after `End`).
+  Length-delimited `With`/`Try` bodies are not block-level scans: they scan to their declared bound
+  with `stopAtEnd: false`, and R008 forbids `End` in those bodies.
 - **IMPL-050-R007** Sub-0x80 opcodes other than `0x00` (`End`) carry **no** payload. If the table has
   no entry for a sub-0x80 code, it is an unknown opcode (R005), not a length field (the SWF 3-era
   actions 0x04–0x09 and 0x81+ are the only defined ones below/around the boundary; see §4).
@@ -142,8 +146,22 @@ records that are not terminated by `End` at all.
 ## 4. The opcode table (Ch.5, complete)
 
 `S` = stack effect (pop → push) where the chapter states it; `—` means "no stack effect documented".
-Every row is `verified` against Ch.5 as of v1.1; the per-row `verified` audit flag stays for future
-codes, and the disassembler prints any unverified row with a `?`.
+
+**Version evidence (C3):** Adobe Systems, *SWF File Format Specification, Version 10* (published November 2008), Chapter 5, lists `WaitForFrame` but not `WaitForFrame2` in its SWF 3 action model (p. 67), then lists `ActionWaitForFrame2` under the SWF 4 actions' Movie control group (pp. 73–74). [Adobe spec, p. 67](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/67) · [Adobe spec, p. 73](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/73) · [Adobe spec, p. 74](https://www.yumpu.com/en/document/view/14353079/swf-file-format-spec-v10/74). This versioned primary-source listing supports SWF 4 as the minimum for `WaitForFrame2` (`0x8D`); its stack-selector semantics are corroborative, not the basis for assigning the version. The linked page images/text are a hosted copy of Adobe's specification.
+**String/DBCS evidence (FE-030):** Adobe Systems, *SWF File Format Specification, Version 19*, Ch. 1
+p. 20 says SWF 5 and earlier `STRING` values use ANSI or Shift-JIS, the file does not indicate which,
+and Flash Player selects decoding according to locale; SWF 6+ uses UTF-8, and `LanguageCode` is not a
+text-encoding selector ([p. 20](https://www.yumpu.com/en/document/view/16539946/swf-file-format-specification-version-19-adobe/20)).
+Ch. 5 p. 75 says `ActionStringLength` calculates a string's length but does not state its units
+([p. 75](https://www.yumpu.com/en/document/view/16539946/swf-file-format-specification-version-19-adobe/77)); p. 77 says
+`ActionMBStringLength` counts characters and a double-byte character counts as one on a DBCS-capable
+system ([p. 77](https://www.yumpu.com/en/document/view/16539946/swf-file-format-specification-version-19-adobe/79)).
+This grounds a SWF-5 Shift-JIS fixture and the MBStringLength fold, but not a claimed byte result for
+StringLength; FE-030 remains open for that exact runtime behavior.
+
+Every defined row is checked against `opcodes.ts` by `T-AVM1-FE-001`; the per-row `verified` audit
+flag stays for future docs, and the disassembler prints any unverified row with a `?`. `var` in the
+implementation's compact stack metadata marks an operand-dependent effect; exact formulas are shown here.
 
 ### 4.1 SWF 3 (`DoAction`/`DoInitAction`-era control actions)
 
@@ -176,7 +194,7 @@ codes, and the disassembler prints any unverified row with a `?`.
 | 0x11 | `Or` | — | 2→1 | Non-zero test |
 | 0x12 | `Not` | — | 1→1 | SWF 4 numeric, SWF 5+ Boolean |
 | 0x13 | `StringEquals` | — | 2→1 | Case-sensitive; SWF 4 pushes 1/0 |
-| 0x14 | `StringLength` | — | 1→1 | **Bytes**, not characters (see `MBStringLength`) |
+| 0x14 | `StringLength` | — | 1→1 | Ch. 5 says “length” without specifying byte vs. character units; non-ASCII is not folded (R048) |
 | 0x15 | `StringExtract` | — | 3→1 | Pops count, index, string; non-integer index/count → `""` |
 | 0x17 | `Pop` | — | 1→0 | |
 | 0x18 | `ToInteger` | — | 1→1 | Truncates the fraction (toward zero) |
@@ -236,6 +254,7 @@ codes, and the disassembler prints any unverified row with a `?`.
 | 0x65 | `BitURShift` | — | 2→1 | UI32 result |
 | 0x87 | `StoreRegister` | `RegisterNumber UI8` | 1→1 | **Reads without popping** |
 | 0x88 | `ConstantPool` | `Count UI16`, `STRING[Count]` | — | **Replaces** any existing pool |
+| 0x8D | `WaitForFrame2` | `SkipCount UI8` (length always 1) | 1→0 | Frame from the stack; skip frozen actions, not bytes |
 | 0x94 | `With` | `Size UI16` + body | 1→0 | Depth cap 8 (SWF 5) / 16 (SWF 6+); over cap ⇒ skip body |
 | 0x96 | `Push` | 1..n (Type,value) pairs | 0→k | Types 0–9; `Length` is the total type+value bytes |
 | 0x99 | `Jump` | `SI16` | — | Offset relative to the next record; 0 = next |
@@ -268,12 +287,13 @@ codes, and the disassembler prints any unverified row with a `?`.
 
 ### 4.5 Undefined ranges
 
-**IMPL-050-R016** Codes not in §4 — `0x01–0x03`, `0x0F`… gaps in the SWF 4 set, `0x16`, `0x19–0x1B`,
-`0x1E–0x1F`, `0x2D` (documented above), `0x2E–0x2F`, `0x38–0x39`, `0x56–0x5F`, `0x6A–0x80`, `0x82`,
-`0x84–0x88`, `0x90–0x93`, `0x95`, `0x97–0x98`, `0x9C`, and everything `≥ 0xA0` — are undefined for
-AVM1. They MUST be reported (`SF0402`) and make the enclosing function residual; `0x89` and `0x2D`
-are the only exceptions, because real authoring tools emit them (they are marked *observed* in the
-table and their semantics are inert).
+**IMPL-050-R016** The reserved opcode ranges are exactly `0x01–0x03`, `0x16`, `0x19–0x1B`,
+`0x1E–0x1F`, `0x2E–0x2F`, `0x38–0x39`, `0x56–0x5F`, `0x6A–0x80`, `0x82`, `0x84–0x86`,
+`0x90–0x93`, `0x95`, `0x97–0x98`, `0x9C`, and `0xA0–0xFF`. These are the complete complement of
+§4's defined rows, MUST be reported (`SF0402`), and make the enclosing function residual. The only
+observed-but-undocumented exceptions are `0x89` and `0x2D`; they are defined rows above because real
+authoring tools emit them, and their semantics remain inert. `T-AVM1-FE-001` pins this partition
+against both this list and the 256-code opcode space.
 
 ## 5. Operands and structures
 
@@ -370,7 +390,7 @@ are:
   executed". `Jump`/`If` add their signed `SI16` to that PC, so an offset of **0 targets the record
   immediately after the branch record**; offsets are `−32768…32767` bytes.
 - **IMPL-050-R030** SWF 4's `If` does not convert the condition to Boolean: it compares to 0. We
-  implement the file's declared version's rule (§6.6) and the difference is covered by `T-AVM1-022`.
+  implement the file's declared version's rule (§6.6) and the difference is covered by `T-AVM1-FE-022`.
 - **IMPL-050-R031** Branch targets MUST land on record boundaries and inside the block
   (`SF0405`, error → residual; design AVM1-R017). Out-of-bounds jumps in obfuscated files are a known
   real-world case and MUST become residual, never a crash.
@@ -440,7 +460,7 @@ order explicitly (`a` = first pop = top).
 
 **IMPL-050-R042** The tier/semantics layer MUST branch on the movie's declared version for these five
 rules; a single "AVM1 is like JS" implementation produces visibly different text in SWF 4 titles
-(T-AVM1-022).
+(T-AVM1-FE-022).
 
 ### 6.3 The reverse-push calling convention
 
@@ -472,11 +492,17 @@ the other cannot.
 - **IMPL-050-R047** Bitwise actions convert operands to 32-bit values first (`BitAnd`/`BitOr`/`BitXor`
   to UI32 with an S32 result; shifts take the low 5 bits of the count; `BitURShift` yields a UI32
   number). `~`/`>>>` semantics must not be re-derived in the emitter — the IR carries the action.
-- **IMPL-050-R048** `StringLength` counts bytes and `MBStringLength` counts characters. Under our
-  UTF-16 host model the byte count is defined on the SWF's *encoded* string (code page from
-  `DefineFont*`/`LanguageCode`, doc 080), which is why doc 080 owns the encoder and the front end only
-  records the action. `StringExtract`/`MBStringExtract` follow the same split, and a non-integer
-  index/count yields `""` in both.
+- **IMPL-050-R048** `ActionMBStringLength` is multi-byte-aware: it counts characters, with a DBCS
+  double-byte character counted as one on a system with double-byte support (Adobe SWF v19 Ch. 5,
+  p. 77). `ActionStringLength` is described as calculating string length, but Ch. 5 does not specify
+  whether its unit is encoded bytes or characters. Do not infer a movie string's encoding from
+  `DefineFontInfo`/`LanguageCode`: SWF 5 and earlier `STRING` values may be ANSI or Shift-JIS, have no
+  in-file selector, and Flash Player chooses according to locale; SWF 6+ strings are UTF-8 (Adobe SWF
+  v19 Ch. 1, p. 20). The AVM1 analyzer accepts a caller-selected `legacyEncoding` for SWF ≤ 5 and
+  defaults to Windows-1252 as a deterministic porting policy. The front end leaves non-ASCII
+  `StringLength` dynamic; FE-030 pins the Shift-JIS DBCS `MBStringLength` character fold but does not
+  claim the unresolved `StringLength` runtime result. `StringExtract`/`MBStringExtract` likewise stay
+  separate operations; non-integer index/count yields `""` in both.
 - **IMPL-050-R049** `GetMember` on a primitive creates a temporary wrapper object, so
   `"abc".length` is legal; the IR keeps the wrapper rule explicit (a `getMember` whose object could be
   a primitive MUST NOT be constant-folded to a property lookup on a raw JS primitive without the same
@@ -561,6 +587,13 @@ basic block so the interpreter can execute them without re-deriving structure.
 - **IMPL-050-R063** Recovered class detection (`Object.registerClass` + prototype chains, including
   the `ActionExtends` form, §5.3/Ch.5) MUST produce a `ClassModel` with methods and constructor and be
   recorded in the report; unrecognised patterns stay as plain objects with an info diagnostic.
+- **IMPL-050-R064** Constant folding MUST preserve AVM1-R024's distinct `ActionAdd`, `ActionAdd2`, and
+  `StringAdd` branch conditions. `ActionAdd` concatenates only when its left primitive is a string;
+  `ActionAdd2` concatenates only when either primitive is a string; `StringAdd` always concatenates.
+  Boolean, `null`, and `undefined` literals stringify only after a string operand selects the
+  `ActionAdd2` concatenation path. A number-to-string conversion requiring AVM1-R025 formatting MUST
+  remain dynamic unless that runtime conversion is independently proven. `T-AVM1-FE-031` covers the
+  static literal matrix and the conservative boundary.
 
 ## 9. Diagnostics
 
@@ -597,70 +630,76 @@ basic block so the interpreter can execute them without re-deriving structure.
 
 | ID | Test | Level |
 | --- | --- | --- |
-| `T-AVM1-001` | framing: every opcode's payload length matches the table (table-driven over all defined codes and the undefined ranges) | F1 |
-| `T-AVM1-002` | `Push` types 0–9 round-trip, including multi-pair records and type 7's bit pattern | F1 |
-| `T-AVM1-003` | branch offsets relative to the *next* record (constructed jumps, both signs) | F1 |
-| `T-AVM1-004` | `SetTarget` block splitting and **region extent**: a target region ends only at the closing `SetTarget ""`, and regions nest correctly | F1 |
-| `T-AVM1-005` | constant-pool semantics: replacement, and a pool used only from inside a function → dynamic (`SF0410`) | F1 |
-| `T-AVM1-006` | `Try` field order, all three sizes present, catch name vs register, body tiling | F1 |
-| `T-AVM1-007` | stack mismatch → residual with reason; no crash | F1 |
-| `T-AVM1-008` | tier assignment table: one fixture per reason | F2 |
-| `T-AVM1-009` | out-of-bounds branch (obfuscated case) → residual, reported | F1 |
-| `T-AVM1-010` | `DoABC` / `ActionScript3` → `SF1000`, exit code 3, offset named | F1 |
-| `T-AVM1-011` | requirement extraction matches a hand-written expectation per fixture | F2 |
-| `T-AVM1-012` | name recovery determinism: 100 shuffles of dictionary order yield identical names | F1 |
-| `T-AVM1-013` | `DefineFunction2` mask table: each of the nine flags alone sets exactly its mask | F1 |
-| `T-AVM1-014` | register allocation: the chapter's NumParams/RegisterCount example (this=1, _root=2, params 3–4, locals 5–6) | F1 |
-| `T-AVM1-015` | `REGISTERPARAM` register 0 vs non-zero: activation variable created or not | F1 |
-| `T-AVM1-016` | `With` depth caps 8 (SWF 5) and 16 (SWF 6+), and the skip-body behaviour over the cap | F1 |
-| `T-AVM1-017` | `WaitForFrame` (frame-then-skip, length 3) and `WaitForFrame2` (length 1) decode | F1 |
-| `T-AVM1-018` | `GetURL2` flag quadrants ×2 (method × target/variables) | F1 |
-| `T-AVM1-019` | `GotoFrame2` play flag + scene bias resolution | F2 |
-| `T-AVM1-020` | reverse-push convention for all six call/init actions | F1 |
-| `T-AVM1-021` | property ids 0–21 and the ≥22 policy | F1 |
-| `T-AVM1-022` | SWF 4 vs SWF 5 result types for `Equals`/`Less`/`And`/`Or`/`Not`/`Divide`/`If` | F1 |
-| `T-AVM1-023` | `Enumerate`/`Enumerate2`: `null` terminator, deterministic compiler order, marker in the report | F1 |
-| `T-AVM1-024` | `Call` executes a frame script and resumes; `GotoFrame2` does not | F2 |
-| `T-AVM1-025` | `Try`/`Throw`/`finally` unwinding through nested functions | F2 |
-| `T-AVM1-026` | `Extends`/`ImplementsOp` stack effects (no result pushed) and `CastOp` null result | F1 |
-| `T-AVM1-027` | `DoInitAction` ordering: once, sprite-scoped, before the frame's `DoAction`, before sprite creation | F2 |
-| `T-AVM1-028` | `DoAction` executes at the `ShowFrame` boundary regardless of tag position | F2 |
-| `T-AVM1-029` | observed-but-undocumented opcodes (0x89, 0x2D) decode with inert semantics + diagnostics | F1 |
-| `T-AVM1-030` | string escapes: `StringLength` bytes vs `MBStringLength` characters on a DBCS fixture | F1 |
+| `T-AVM1-FE-001` | framing: every opcode's payload length matches the table (table-driven over all defined codes and the undefined ranges) | F1 |
+| `T-AVM1-FE-002` | `Push` types 0–9 decode, including multi-pair records and preservation of type 7's bit pattern | F1 |
+| `T-AVM1-FE-003` | branch offsets relative to the *next* record (constructed jumps, both signs) | F1 |
+| `T-AVM1-FE-004` | `SetTarget` block splitting and **region extent**: a target region ends only at the closing `SetTarget ""`, and regions nest correctly | F1 |
+| `T-AVM1-FE-005` | constant-pool semantics: replacement, and a pool used only from inside a function → dynamic (`SF0410`) | F1 |
+| `T-AVM1-FE-006` | `Try` field order, all three sizes present, catch name vs register, body tiling | F1 |
+| `T-AVM1-FE-007` | stack mismatch → residual with reason; no crash | F1 |
+| `T-AVM1-FE-008` | tier assignment table: one fixture per reason | F2 |
+| `T-AVM1-FE-009` | out-of-bounds branch (obfuscated case) → residual, reported | F1 |
+| `T-AVM1-FE-010` | `DoABC` / `ActionScript3` → `SF1000`, exit code 3, offset named | F1 |
+| `T-AVM1-FE-011` | requirement extraction matches a hand-written expectation per fixture | F2 |
+| `T-AVM1-FE-012` | name recovery determinism: 100 shuffles of dictionary order yield identical names | F1 |
+| `T-AVM1-FE-013` | `DefineFunction2` mask table: each of the nine flags alone sets exactly its mask | F1 |
+| `T-AVM1-FE-014` | register allocation: the chapter's NumParams/RegisterCount example (this=1, _root=2, params 3–4, locals 5–6) | F1 |
+| `T-AVM1-FE-015` | `REGISTERPARAM` register 0 vs non-zero: activation variable created or not | F1 |
+| `T-AVM1-FE-016` | `With` depth caps 8 (SWF 5) and 16 (SWF 6+), and the skip-body behaviour over the cap | F1 |
+| `T-AVM1-FE-017` | `WaitForFrame` (frame-then-skip, length 3) and `WaitForFrame2` (length 1) decode | F1 |
+| `T-AVM1-FE-018` | `GetURL2` flag quadrants ×2 (method × target/variables) | F1 |
+| `T-AVM1-FE-019` | `GotoFrame2` play flag + scene bias resolution | F2 |
+| `T-AVM1-FE-020` | reverse-push convention for all six call/init actions | F1 |
+| `T-AVM1-FE-021` | property ids 0–21 and the ≥22 policy | F1 |
+| `T-AVM1-FE-022` | SWF 4 vs SWF 5 result types for `Equals`/`Less`/`And`/`Or`/`Not`/`Divide`/`If` | F1 |
+| `T-AVM1-FE-023` | `Enumerate`/`Enumerate2`: `null` terminator, deterministic compiler order, marker in the report | F1 |
+| `T-AVM1-FE-024` | `Call` executes a frame script and resumes; `GotoFrame2` does not | F2 |
+| `T-AVM1-FE-025` | `Try`/`Throw`/`finally` unwinding through nested functions | F2 |
+| `T-AVM1-FE-026` | `Extends`/`ImplementsOp` stack effects (no result pushed) and `CastOp` null result | F1 |
+| `T-AVM1-FE-027` | `DoInitAction` ordering: once, sprite-scoped, before the frame's `DoAction`, before sprite creation | F2 |
+| `T-AVM1-FE-028` | `DoAction` executes at the `ShowFrame` boundary regardless of tag position | F2 |
+| `T-AVM1-FE-029` | observed-but-undocumented opcodes (0x89, 0x2D) decode with inert semantics + diagnostics | F1 |
+| `T-AVM1-FE-030` | SWF-5 raw Shift-JIS DBCS fixture: decode under explicit encoding; pin `MBStringLength`'s character fold and leave `StringLength` dynamic until its byte/character result is oracle-pinned | F1 |
+| `T-AVM1-FE-031` | `Add`/`Add2`/`StringAdd` literal-fold matrix; preserve opcode-specific coercion and leave AVM1 number-to-string formatting dynamic | F1 |
+| `T-AVM1-FE-032` | Synthetic `bytes→IR→disassembly` conformance: stable, escaped text for operands and structured regions; this is not a byte round-trip | F1 |
+| `T-AVM1-FE-033` | Seeded 10⁶ action-stream mutations/truncations; zero uncaught exceptions and safe residual fallback for unknown or malformed records | F1 (dedicated gate) |
+
+**Cross-phase acceptance note.** FE-024/025/027/028 include runtime behavior in their obligation text. P5 evidence may establish front-end IR or schedule metadata only; it does not prove frame-call execution/resumption, exception unwinding, or runtime scheduling. Those observable runtime behaviors are accepted under P7/IMPL-130. The FE IDs and normative language-spec requirements are retained; no obligation is waived or claimed passed by this ownership split.
 
 ## 11. Work packages
 
 | WP | Title | Depends | Est | Deliverable |
 | --- | --- | --- | --- | --- |
-| WP-050-01 | Action record framing + bounds + `End`-flag policy | WP-020-05 | 2 | `frontend/record.ts`, T-AVM1-001 |
-| WP-050-02 | Opcode table (data) + operand schemas + stack effects | WP-050-01 | 5 | `frontend/opcodes.ts`, T-AVM1-029 |
-| WP-050-03 | Operand readers (push types, pools, registers, branches, strings) | WP-050-02 | 3 | `frontend/operands.ts`, T-AVM1-002/003 |
-| WP-050-04 | `DefineFunction`/`DefineFunction2`: registers, preloads, masks | WP-050-03 | 3 | `frontend/functions.ts`, T-AVM1-013/014/015 |
-| WP-050-05 | CFG + basic blocks + `SetTarget` splitting | WP-050-04 | 4 | `frontend/control-flow.ts`, `targets.ts`, T-AVM1-004 |
-| WP-050-06 | `Try`/`With` region structuring, caps and skip-body | WP-050-05 | 3 | T-AVM1-006/016/025 |
-| WP-050-07 | Stack simulation + partial evaluation → IR ops | WP-050-06 | 5 | `frontend/stack.ts`, `ir.ts`, T-AVM1-007 |
-| WP-050-08 | Tier assignment + reasons + residual extraction | WP-050-07 | 3 | `frontend/tier.ts`, `residual.ts`, T-AVM1-008/009 |
-| WP-050-09 | Version semantics matrix (SWF 4 vs 5 result types, `If`) | WP-050-07 | 2 | T-AVM1-022 |
-| WP-050-10 | Call/init conventions + determinism pass (`Enumerate`) | WP-050-07 | 2 | T-AVM1-020/023 |
-| WP-050-11 | Property ids + target-path operands + timeline actions | WP-050-03 | 2 | `frontend/properties.ts`, T-AVM1-019/021/024 |
-| WP-050-12 | Block scheduling contract for doc 130 (`DoAction`/`DoInitAction`) | WP-050-05 | 1 | `frontend/blocks.ts`, T-AVM1-027/028 |
+| WP-050-01 | Action record framing + bounds + `End`-flag policy | WP-020-05 | 2 | `frontend/record.ts`, T-AVM1-FE-001 |
+| WP-050-02 | Opcode table (data) + operand schemas + stack effects | WP-050-01 | 5 | `frontend/opcodes.ts`, T-AVM1-FE-029 |
+| WP-050-03 | Operand readers (push types, pools, registers, branches, strings) | WP-050-02 | 3 | `frontend/operands.ts`, T-AVM1-FE-002/003 |
+| WP-050-04 | `DefineFunction`/`DefineFunction2`: registers, preloads, masks | WP-050-03 | 3 | `frontend/functions.ts`, T-AVM1-FE-013/014/015 |
+| WP-050-05 | CFG + basic blocks + `SetTarget` splitting | WP-050-04 | 4 | `frontend/control-flow.ts`, `targets.ts`, T-AVM1-FE-004 |
+| WP-050-06 | `Try`/`With` region structuring, caps and skip-body | WP-050-05 | 3 | T-AVM1-FE-006/016/025 |
+| WP-050-07 | Stack simulation + partial evaluation → IR ops | WP-050-06 | 5 | `frontend/stack.ts`, `ir.ts`, T-AVM1-FE-007/031 |
+| WP-050-08 | Tier assignment + reasons + residual extraction | WP-050-07 | 3 | `frontend/tier.ts`, `residual.ts`, T-AVM1-FE-008/009 |
+| WP-050-09 | Version semantics matrix (SWF 4 vs 5 result types, `If`) | WP-050-07 | 2 | T-AVM1-FE-022 |
+| WP-050-10 | Call/init conventions + determinism pass (`Enumerate`) | WP-050-07 | 2 | T-AVM1-FE-020/023 |
+| WP-050-11 | Property ids + target-path operands + timeline actions | WP-050-03 | 2 | `frontend/properties.ts`, T-AVM1-FE-019/021/024 |
+| WP-050-12 | Block scheduling contract for doc 130 (`DoAction`/`DoInitAction`) | WP-050-05 | 1 | `frontend/blocks.ts`, T-AVM1-FE-027/028 |
 | WP-050-13 | Requirements extraction | WP-050-08 | 2 | `frontend/requirements.ts` |
-| WP-050-14 | Name/class recovery pass (incl. `Extends`) | WP-050-08, WP-020-07 | 4 | `frontend/names.ts`, T-AVM1-012/026 |
-| WP-050-15 | AVM2 detection (`DoABC` + flag) + hard error path | WP-020-04 | 1 | `frontend/avm2.ts`, T-AVM1-010 |
-| WP-050-16 | `inspect --actions` disassembler + goldens | WP-050-03 | 2 | user-visible disassembly |
-| WP-050-17 | Fuzz target: action streams (mutations + truncated streams) | WP-050-01 | 2 | doc 140 harness |
+| WP-050-14 | Name/class recovery pass (incl. `Extends`) | WP-050-08, WP-020-07 | 4 | `frontend/names.ts`, T-AVM1-FE-012/026 |
+| WP-050-15 | AVM2 detection (`DoABC` + flag) + hard error path | WP-020-04 | 1 | `frontend/avm2.ts`, T-AVM1-FE-010 |
+| WP-050-16 | `inspect --actions` disassembler + synthetic conformance | WP-050-03 | 2 | user-visible disassembly; no parser/assembler is implied |
+| WP-050-17 | Seeded action-stream mutation/truncation gate | WP-050-01 | 2 | T-AVM1-FE-033; 10⁶ cases with residual invariants |
 | | **Total** | | **46** | |
 
 ## 12. Open items
 
 | # | Item | Impact |
 | --- | --- | --- |
-| 1 | `GotoFrame`'s `Frame` operand: 0- vs 1-based first frame (the chapter says only "frame index"); pin with oracle fixtures | medium (`T-AVM1-021`) |
+| 1 | `GotoFrame`'s `Frame` operand: 0- vs 1-based first frame (the chapter says only "frame index"); pin with oracle fixtures | medium (`T-AVM1-FE-021`) |
 | 2 | Semantics of the two observed-but-undocumented opcodes (0x89 `StrictMode`, 0x2D `FsCommand2`) | low (inert today) |
 | 3 | Whether a zero `Length` on a ≥ 0x80 record is legal (the chapter implies data follows, so zero-length is malformed by construction) | low |
-| 4 | Exact DBCS mapping for `MBString*` when the movie's code page is not declared by any font tag | medium (doc 080 owns the code page) |
+| 4 | SWF ≤5 string encoding is locale-selected ANSI/Shift-JIS with no in-file selector; `ActionStringLength`'s exact DBCS result is not specified in Ch. 5 and needs a runtime oracle | medium (FE-030; do not infer encoding from font flags/`LanguageCode`) |
 | 5 | `ActionEnumerate` ordering *at run time* in Flash Player (the compiler is deterministic by decision, R044) | low |
 | 6 | `RandomNumber`'s behaviour for `max ≤ 0` (undocumented) | low (runtime RNG policy) |
+| 7 | **Retained P5 gate:** define the lossless inverse/disassembly grammar and byte-identity contract for every defined opcode; add a separately scoped/estimated P5 work package before implementation (WP-050-16 explicitly does not include a parser/assembler) | high — blocks P5 closeout (§13.2) |
 
 The v1.0 open items (complete operand layouts, the per-version action-model differences, the `Push`
 type table, the flag encodings, `StackSwap`'s corrected order, `StringExtract` argument order,
@@ -673,19 +712,32 @@ post-ship correction is confirmed by the chapter text: the action exchanges the 
 
 ## 13. Done criteria
 
-1. Every code in §4 is in `opcodes.ts` with operand schema, version window, and stack effect; the
-   undefined ranges are enumerated in the table as `reserved` so a new opcode cannot slip in silently.
-2. The synthetic corpus round-trips: bytes → IR → disassembly → bytes is a fixed point for every
-   defined opcode.
+1. Every code in §4 is in `opcodes.ts` with operand schema, version window, and stack-effect
+   classification; R016's exact reserved ranges are pinned against the table and all 256 byte values.
+2. **Open — retained as a P5 exit criterion; not deferred.** The synthetic corpus must round-trip
+   bytes → IR → disassembly → bytes for every defined opcode. The current AVM1 surface has a decoder,
+   `ActionIR`, and a human-readable disassembler, but no disassembly parser or action-byte serializer.
+   `T-AVM1-FE-032` therefore proves only bytes→IR→text conformance and MUST NOT be cited as byte
+   round-trip evidence. Before implementation, specify the lossless inverse format and byte-identity
+   coverage, then add a separately scoped and estimated P5 work package. Keep this criterion open; no
+   parser, serializer, or round-trip test is implemented by this scope decision.
 3. Every tier reason has a fixture; the tier report on the open corpus is reviewed by two people.
-4. Fuzzing: 10⁶ mutated action streams, zero uncaught exceptions, residual fallback always available.
+4. Fuzzing: 10⁶ seeded action-stream mutations/truncations, zero uncaught exceptions, and safe
+   residual fallback for malformed or unknown records.
 5. Requirement extraction and name recovery are deterministic across process restarts.
-6. The scheduling contract in §3 is implemented by doc 130 with `T-AVM1-027`/`T-AVM1-028` green.
+6. The P5 front end preserves the `DoAction`/`DoInitAction` schedule metadata in §3; FE-027/028 evidence is limited to that frontend boundary. Observable once/order/ShowFrame execution is a P7/IMPL-130 runtime gate, not a P5 acceptance criterion.
 
 ## 14. Changelog
 
 | Version | Date | Change |
 | --- | --- | --- |
 | 1.0 | initial | Scoped from Ch.5 structure; opcode details flagged pending with a verification mechanism |
-| 1.1 | 2026-10-04 | Ch.5-grounded: complete 101-code opcode table with versions, payloads and stack effects; `ACTIONRECORD` length rule; the five block kinds + `DoAction`/`DoInitAction` scheduling contract; `Push` type table; constant pool as execution state (correction to `AVM1-R014`); `DefineFunction2` mask table (bit-order trap) and register allocation order; `With` depth caps and skip-body; `Try` field order (no finally register); `GetURL2`/`GotoFrame2`/`WaitForFrame*` flag layouts; property ids and target prefixes; version-dependent result types; reverse-push convention; `Enumerate` determinism; observed-but-undocumented 0x89/0x2D; diagnostics `SF0411`–`SF0422`; tests `T-AVM1-013`–`T-AVM1-030`; WPs 01–17 = 46 d |
+| 1.1 | 2026-10-04 | Ch.5-grounded: complete 101-code opcode table with versions, payloads and stack effects; `ACTIONRECORD` length rule; the five block kinds + `DoAction`/`DoInitAction` scheduling contract; `Push` type table; constant pool as execution state (correction to `AVM1-R014`); `DefineFunction2` mask table (bit-order trap) and register allocation order; `With` depth caps and skip-body; `Try` field order (no finally register); `GetURL2`/`GotoFrame2`/`WaitForFrame*` flag layouts; property ids and target prefixes; version-dependent result types; reverse-push convention; `Enumerate` determinism; observed-but-undocumented 0x89/0x2D; diagnostics `SF0411`–`SF0422`; tests `T-AVM1-FE-013`–`T-AVM1-FE-030`; WPs 01–17 = 46 d |
 | 1.2 | 2026-10-04 | `SF0423`/`SF0424` added so the design spec `AVM1-R021`/`AVM1-R040` conditions have codes that are not already the block-terminator/`DoInitAction` codes (`SF0420`/`SF0421`); errata `E-016` |
+| 1.3 | 2026-10-10 | Namespace front-end obligations as `T-AVM1-FE-001`–`031`; define R064 for opcode-specific literal folding and add the coercion regression matrix T-AVM1-FE-031 |
+| 1.4 | 2026-10-10 | Reconcile §4 with all 102 source rows (including SWF-4 `WaitForFrame2`); correct its minimum-version window and pin the exact reserved complement; add FE-032/033; clarify that the current disassembler cannot satisfy the still-open bytes→IR→disassembly→bytes criterion |
+| 1.5 | 2026-10-10 | Resolve the action-stream post-End policy under R006: block-level scanning stops after the first End and ignores the suffix; pin the scanner boundary and tier behavior with focused tests |
+| 1.6 | 2026-10-11 | Cite Adobe's SWF 3 and SWF 4 action lists for the `WaitForFrame2` minimum-version classification; the local SWF-4 assignment is no longer an uncited inference |
+| 1.7 | 2026-10-11 | Ground the SWF ≤5 ANSI/Shift-JIS locale rule and DBCS `MBStringLength` behavior in Adobe SWF v19; correct the unsupported `StringLength` byte claim; add explicit analyzer encoding selection and scope FE-030 to the established behavior while leaving the runtime `StringLength` result open |
+| 1.8 | 2026-10-11 | Record the P5/P7 acceptance boundary: frontend metadata/IR stays in P5; runtime execution of frame calls, exception unwinding, and scheduling is P7/IMPL-130. Preserve FE test IDs and normative AVM1 semantics; clarify §13 exit criteria without claiming any runtime gate passed. |
+| 1.9 | 2026-10-11 | Record the byte-round-trip scope decision: retain the existing inverse criterion as a P5 exit gate, leave it open, and require a lossless contract plus a separately scoped/estimated work package before implementation. |

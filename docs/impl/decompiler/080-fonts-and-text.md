@@ -1,6 +1,6 @@
 # IMPL-080 — Fonts and Text
 
-**Doc ID:** IMPL-080 · **Status:** ✅ grounded in Ch.10 · **Package:** `@swf-forge/swf` + `@swf-forge/text`
+**Doc ID:** IMPL-080 · **Status:** ✅ grounded in Ch.10 · **Packages:** `@swf-forge/swf`, `@swf-forge/assets`, and `apps/decompiler`; P9 runtime layout package is deferred.
 **Format spec:** Chapter 10 — Fonts and Text (glyph vs device text, the EM square and the TrueType
 conversion, `DefineFont`, `DefineFontInfo`, `DefineFontInfo2`, `DefineFont2`, `DefineFont3`,
 `DefineFont4`, `DefineFontAlignZones`, `CSMTextSettings`, `DefineText`, `DefineText2`,
@@ -33,33 +33,31 @@ model, and the traps.
    and licensing strings (`DefineFontName`) recorded in the manifest.
 9. Font subsetting and the glyph atlas path (AST-§4/§8).
 
-**Non-goals:** CFF outline extraction (AST-§4's decision; `DefineFont4` degrades to a system-font
-fallback and says so), the runtime layout engine (doc 130 / `packages/text`), and AVM2 text. Phase
-ownership: P3 includes tag/model decode, deterministic WOFF2, and build-time atlas output; P4/P9 own
-renderer fidelity and dynamic text behavior; P6 owns AVM1-dependent glyph reachability/subsetting.
+**Non-goals:** CFF outline extraction (AST-§4's decision; `DefineFont4` remains an unsupported
+font4 character and emits `SF0270` for downstream system-font fallback), runtime text layout
+(IMPL-130; the P9-owned `/packages/text` package is not yet present), and AVM2 text. Phase ownership:
+P3 includes tag/model decode, deterministic WOFF2, and build-time atlas output; P4/P9 own renderer
+fidelity and dynamic text behavior; P6 owns AVM1-dependent glyph reachability/subsetting.
 
 ## 2. Module layout
 
 ```
-packages/swf/src/fonts/
-  em.ts                 the EM-square model: unitsPerEm, glyph-space → twips conversion
-  define-font.ts        DefineFont (10): offset table, glyph shapes, nGlyphs inference
-  define-font2.ts       DefineFont2 (48) / DefineFont3 (75): codes, layout, kerning, flags
-  define-font4.ts       DefineFont4 (91): CFF detection -> SF0270
-  define-font-info.ts   DefineFontInfo (13), DefineFontInfo2 (62)
-  font-name.ts          DefineFontName (88): name + copyright
-  align-zones.ts        DefineFontAlignZones (73): ZONERECORD/ZONEDATA
-  csm-settings.ts       CSMTextSettings (74): UseFlashType/GridFit/thickness/sharpness
-  font-model.ts         FontModel: glyphs, code→glyph, metrics, unitsPerEm, language
-  text-def.ts           DefineText (11), DefineText2 (33): TEXTRECORD state machine
-  text-model.ts         TextIR: runs, glyph placements, per-run state
-  edit-text.ts          DefineEditText (37) -> TextFieldModel
-packages/text/src/
-  layout.ts             AVM1 TextField layout: wrapping, alignment, scrolling (runtime)
-  measure.ts            deterministic measurement from embedded metrics
-  html.ts               the Ch.10 HTML subset (runtime parser, no DOM)
-  atlas.ts              glyph rasterisation + packing → KTX2/`.sfa`
-  subset.ts             glyph subsetting per title + budget reporting
+packages/swf/src/tags/fonts.ts
+  DefineFont/2/3/4 glyph tables, code maps, auxiliary tags, text and edit-text decoding
+packages/swf/src/model/movie.ts
+  resolves DefineFontInfo/2, DefineFontName, alignment zones and CSM settings to target models
+packages/swf/src/model/types.ts
+  FontModel, GlyphModel, TextIR, TextFieldModel and authored metric contracts
+packages/swf/src/shapes/
+  authoritative VectorShape decode, quantisation and simplification for glyph outlines
+packages/assets/src/fonts.ts
+  deterministic WOFF2 subsetting/encoding from decoded font models
+apps/decompiler/src/assets/font-atlas.ts
+  glyph atlas construction; quarantined outlines are skipped while slots/metrics/maps persist
+apps/decompiler/src/assets/dump.ts
+  WOFF2 + atlas sidecars and unsupported DefineFont4 manifest records
+apps/decompiler/src/render/
+  consumes text/vector model only where a P3 adapter exists; P4 owns browser text rendering/layout
 ```
 
 **IMPL-080-R001** Glyphs MUST become `VectorShape` IR through the same decoder as `DefineShape`
@@ -147,8 +145,10 @@ DefineFont2/3 body:
   (`DefineFont` has no explicit count — the offset table *is* the count).
 - **IMPL-080-R009** In `DefineFont`/`DefineFont2`/`DefineFont3`, the **first `STYLECHANGERECORD` of
   every glyph shape must not use the line-style fields** and must set both `StateFillStyle0` and
-  `FillStyle0 = 1`. The decoder MUST accept files that violate this (quarantine the glyph,
-  `SF0281`), but MUST emit it on the writer path (WP-140-02's synthetic SWF writer).
+  `FillStyle0 = 1`. The decoder MUST accept files that violate this (quarantine only the outline,
+  `SF0281`), but MUST emit it on the writer path (WP-140-02's synthetic SWF writer). Quarantine MUST
+  retain the glyph slot, authored advance/bounds, and code-to-glyph/cmap entry; atlas construction and
+  preview emission MUST withhold its outline without shifting later glyph indices.
 - **IMPL-080-R010** `CodeTable` entries are **sorted ascending by code point** and are positionally
   aligned with the glyph table (glyph *i* ↔ `CodeTable[i]`). An out-of-order table is a real-world
   defect: sort a *copy* for `codeToGlyph`, keep the raw order for the `inspect --fonts` dump, and
@@ -177,9 +177,10 @@ DefineFont2/3 body:
   (`SF0283`-class error if clear — the file is self-contradictory, and reading UI8 codes there
   desynchronises the tag).
 - **IMPL-080-R017** SWF 6+ conventions are enforced softly: `CodeTable` is UCS-2 little-endian,
-  `ShiftJIS`/`ANSI` must be clear, and font **names are UTF-8**; before SWF 6 both the code page and
-  the name encoding are platform-dependent, so a SWF ≤ 5 font name MUST be recorded with the
-  encoding used for the rest of the movie (doc 010's string configuration, AVM1-D01) and flagged
+  `ShiftJIS`/`ANSI` must be clear, and font **names are UTF-8**. Before SWF 6, font code-table
+  interpretation follows its `Unicode`/`ShiftJIS`/`ANSI` flags, while font-name bytes use
+  locale-specific legacy encoding. A SWF ≤ 5 font name MUST be recorded with the caller-selected
+  legacy decoding policy (AVM1-R020/D01; generic `STRING` values have no in-file selector) and flagged
   `[verify]` in the report.
 - **IMPL-080-R018** `FontNameLen` counts **bytes**, not characters, and the name is **not
   null-terminated**; a UTF-8 name with multi-byte characters is the common case in Japanese titles
@@ -309,9 +310,10 @@ DefineEditText (37):
 - **IMPL-080-R038** `DefineFont4` is SWF 10+ and exists for the Flash Text Engine (AVM2) with CFF
   data; its required tables are `'CFF '`, `'cmap'`, `'head'`, `'maxp'`, `'OS/2'`, `'post'` plus
   either `'hhea'`/`'hmtx'` or `'vhea'`/`'vmtx'`/`'VORG'`, and its `cmap` must contain a Unicode
-  subtable. For an AS1/AS2 title this font is unusable (AST-§4): report `SF0270` (error), select the
-  system fallback, keep the name/flags for the report, and never let the CFF payload reach a glyph
-  decoder.
+  subtable. For an AS1/AS2 title this font is unusable (AST-§4): P3 retains its name/raw flags in the
+  `font4` model, leaves `font` null, reports `SF0270` (error), and writes an unsupported manifest
+  record with fallback metadata; CFF bytes never reach a glyph decoder. System-font selection is a
+  downstream renderer/runtime responsibility (P4/P9), not a completed P3 action.
 - **IMPL-080-R039** `DefineFontName`'s absence is normal; its presence must never change rendering
   (it is metadata only), and both strings are emitted verbatim into the licensing report.
 
@@ -350,7 +352,7 @@ Codes `SF0270`–`SF0289` are this document's block. `IMPL-010` §7 records the 
 | `SF0278` | warning | align-zone/CSM tag targets a missing, wrong-kind, or non-`DefineFont3` character |
 | `SF0279` | warning | HTML subset tag outside the documented set (rendered as text) |
 | `SF0280` | warning | editable text with `UseOutlines = 0` (platform-dependent rendering), per field |
-| `SF0281` | warning | glyph shape violates the mandatory first fill-style rule (quarantined) |
+| `SF0281` | warning | glyph outline violates the mandatory first fill-style rule; outline quarantined, glyph slot/metrics/cmap retained |
 | `SF0282` | info | device-only font (`NumGlyphs = 0`): tables omitted or `CodeTableOffset` present |
 | `SF0283` | error | `DefineFontInfo2` with `WideCodes` clear (self-contradictory codes) |
 | `SF0284` | info | indirect font name (`_sans`/`_serif`/`_typewriter`/Japanese set) resolved to a stack |
@@ -374,7 +376,7 @@ report lines.
 | `T-MOD-508` | password/`MaxLength` enforcement in the runtime input path | F2 | P9 runtime |
 | `T-MOD-509` | atlas: coverage preserved; 1-px stem; deterministic packing | F1 | P3 build determinism; P4/P9 visual fidelity |
 | `T-MOD-510` | subsetting reachability (static runs, field strings, IR literals); UTF-8 font names | F2 | P6 for AVM1-dependent reachability; P3 decode/code maps |
-| `T-MOD-511` | `DefineFont4` → `SF0270`, fallback selected, manifest note present | F1  P3 decode/model | P3 decode/model |
+| `T-MOD-511` | `DefineFont4` CFF retains name/flags, leaves `font` null, and emits `SF0270`; app manifest is `T-AST-027` | F1  P3 decode/model | P3 decode/model |
 | `T-MOD-512` | `TextBox`/`TEXTRECORD` terminator: zero byte ends the list; `TextRecordType` always 1 | F1  P3 decode/model | P3 decode/model |
 | `T-MOD-513` | `TEXTRECORD` field order with both offsets set (XOffset read before YOffset) — `E-017` | F1  P3 decode/model | P3 decode/model |
 | `T-MOD-514` | `DefineEditText`: all 16 flags; `FontHeight` under `HasFontClass`; `VariableName` verbatim | F1  P3 decode/model | P3 decode/model |
@@ -435,3 +437,4 @@ The v1.0 open items (all the byte layouts) are **settled** — see §3–§8 and
 | --- | --- | --- |
 | 1.0 | initial | Scoped from Ch.10; record bit layouts marked pending with a declarative-table mitigation |
 | 1.1 | 2026-10-04 | Ch.10-grounded: **glyph-space model** (EM square 1024 units for v1/v2, 20480 for `DefineFont3`, `TextHeight` as the scale — corrects v1.0's "coordinates are twips" wording and fixes `IMPL-080-R005`); full `DefineFont`/`2`/`3`/`4` bodies with flag bit order, offset-table and `CodeTableOffset` bases, `nGlyphs` inference, code-table sorting, negative `FontLeading`, unused `FontBoundsTable`/kerning policy, device-only fonts; `DefineFontInfo`/`2` flags, `FontNameLen` bytes-not-chars and UTF-8/UCS-2 rules, indirect font names; the real `TEXTRECORD` (single record type, XOffset before YOffset, absolute offsets, zero-byte terminator) replacing v1.0's incorrect two-type model; `DefineEditText`'s 16-flag word, field order and the `FontHeight`/`HasFontClass` upstream gap; align zones (pixel snapping, not hit zones) and `CSMTextSettings` formulas incl. the upstream inconsistency; diagnostics re-allocated to `SF0270`–`SF0289` (errata `E-019`) with new `SF0280`–`SF0285`; tests `T-MOD-512`–`518`; WPs 01–13 = 41 d |
+| 1.2 | 2026-10-10 | P3 C7 closeout: sharpen `SF0281` quarantine contract to preserve slot/index, authored metrics/bounds, and code-to-glyph/cmap mapping while withholding only the outline; `T-P3-REG-006` locks the asset/atlas behavior |

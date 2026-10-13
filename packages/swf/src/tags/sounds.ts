@@ -104,7 +104,11 @@ export function decodeDefineSound(c: Cursor): DefineSoundModel {
   const dataOffset = c.offset;
   const data = c.bytes.subarray(dataOffset, c.limit);
   if (format === 0 && bitsPerSample === 16) {
-    c.emit(Codes.SOUND_PCM_BIG_ENDIAN, 'info', 'format 0 16-bit PCM decoded big-endian for cross-host determinism');
+    c.emit(
+      Codes.SOUND_PCM_ENDIAN_ASSUMED,
+      'info',
+      'uncompressed format 0 declares no byte order; decoded little-endian like format 3 (E-030)',
+    );
   }
   if (format === 2 && rateCode === 0) {
     c.emit(

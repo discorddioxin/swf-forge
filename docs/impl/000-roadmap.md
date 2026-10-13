@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.13 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.19 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -37,22 +37,36 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
 
 ## 2. Phase plan
 
-| Phase | Name | Format-spec chapters | Primary outcome (the demo) | Exit gate |
-| --- | --- | --- | --- | --- |
-| **P0** | Foundations | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven | T-SWF-001…004, T-SWF-009 |
-| **P1** | Container & dictionary | Ch.2 | `inspect --tags --symbols` prints dictionary, sprites, exports, ordering violations | T-SWF-002, 003, 007, 008, 010–012 |
-| **P2** | Model & timeline | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints stable, diffable model JSON; ordered placements, sprites, control tags, button records/conditions, and tag dispositions have tests | T-MOD-001–040/601–604/801–817 + `tools/tag_coverage.py` |
-| **P3** | Media decode and build assets | Ch.6–10 + Ch.11 decode/build subset | `forge-decompile assets dump <file.swf> --out <dir>` emits deterministic shape/bitmap PNG debug previews, supported-font WOFF2, PCM/ADPCM WAV previews, MP3 pass-through, and explicit diagnosed fallbacks | T-SWF-005/006 + P3-owned T-MOD/T-AST/T-AUD decode and asset-dump gates |
-| **P4** | Static render (no VM) | — | A no-script SWF renders its main timeline in the browser, frame-accurate | T-GFX-001…005, 020, 021 |
-| **P5** | AVM1 front end | Ch.5 | `swfforge analyze --tiers` reports T0/T1/T2 per function; coercion suite passes | T-AVM1-008, 009, 012, 025 |
-| **P6** | Emitter | — | `swfforge build` emits a project that compiles with zero suppressions | T-CMP-001…005, T-AVM1-026 |
-| **P7** | First playable | — | A real open-corpus game boots and plays its first 60 frames | C1 gate (TST-§9.1) |
-| **P8** | Audio runtime | Ch.11 playback/sync | Music + SFX play, Web Audio scheduling and stream sound stay in sync for 10 minutes | T-AUD-001…010, 020…027 (runtime gates only; decode/build tests are P3) |
-| **P9** | Fidelity hardening | all | Filters, blends, masks, dynamic text, hit testing, device fonts | T-GFX-010…041, T-AST-* |
-| **P10** | Video & long tail | Ch.14 | Video plays; controls/metadata/system tags resolved | T-AST-021, T-RT-* |
-| **P11** | Release engineering | App. A–C | Fuzzing, budgets, three-engine CI, docs, example titles | TST-§9.2, SEC-§9 |
-| **P12** | Inspector | — | Open a built project: file explorer, highlighting, SWF↔TS navigation, diagnostics panels, dev run view | T-INS-101…114 |
-| **P13** | Clean engine | — | The same title runs on a fixed-step loop with no MovieClip/timeline, with a rewrite log and probes | T-CLN-101…114 |
+| Phase | Name | Status | Format-spec chapters | Primary outcome (the demo) | Exit gate |
+| --- | --- | --- | --- | --- | --- |
+| **P0** | Foundations | **In progress** | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven | T-SWF-001…004, T-SWF-009 |
+| **P1** | Container & dictionary | **Completed** | Ch.2 | `inspect --tags --symbols` prints dictionary, sprites, exports, ordering violations | T-SWF-002, 003, 007, 008, 010–012 |
+| **P2** | Model & timeline | **Completed** | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints stable, diffable model JSON; ordered placements, sprites, control tags, button records/conditions, and tag dispositions have tests | T-MOD-001–040/601–604/801–817 + `tools/tag_coverage.py` |
+| **P3** | Media decode and build assets | **Completed** | Ch.6–10 + Ch.11 decode/build subset | `forge-decompile assets dump <file.swf> --out <dir>` emits deterministic shape/bitmap PNG debug previews, supported-font WOFF2, PCM/ADPCM WAV previews, MP3 pass-through, and explicit diagnosed fallbacks | T-SWF-005/006 + P3-owned T-MOD/T-AST/T-AUD decode and asset-dump gates |
+| **P4** | Static render (no VM) | **Completed** | — | A no-script SWF renders its main timeline in the browser, frame-accurate | T-GFX-001…005, 020, 021 |
+| **P5** | AVM1 front end | **In progress** | Ch.5 | Front-end acceptance: audited opcode/IR/tier contract, byte round trip, corpus review, and FE-030 disposition | IMPL-050 §13; open P5 evidence remains explicit |
+| **P6** | Emitter | **Not started** | — | `swfforge build` emits a project that compiles with zero suppressions | T-CMP-001…005, T-AVM1-026 |
+| **P7** | First playable | **Not started** | — | A real open-corpus game boots and plays its first 60 frames with AVM1 runtime gates exercised | C1 (TST-§9.1), T-AVM1-008/009/012/025/027, IMPL-130 runtime execution gates |
+| **P8** | Audio runtime | **Not started** | Ch.11 playback/sync | Music + SFX play, Web Audio scheduling and stream sound stay in sync for 10 minutes | T-AUD-001…010, 020…027 (runtime gates only; decode/build tests are P3) |
+| **P9** | Fidelity hardening | **Not started** | all | Filters, blends, masks, dynamic text, hit testing, device fonts | T-GFX-010…041, T-AST-* |
+| **P10** | Video & long tail | **Not started** | Ch.14 | Video plays; controls/metadata/system tags resolved | T-AST-021, T-RT-* |
+| **P11** | Release engineering | **In progress** | App. A–C | Fuzzing, budgets, three-engine CI, docs, example titles | TST-§9.2, SEC-§9 |
+| **P12** | Inspector | **Not started** | — | Open a built project: file explorer, highlighting, SWF↔TS navigation, diagnostics panels, dev run view | T-INS-101…114 |
+| **P13** | Clean engine | **Not started** | — | The same title runs on a fixed-step loop with no MovieClip/timeline, with a rewrite log and probes | T-CLN-101…114 |
+
+**Status basis (checked 2026-10-11).** These labels describe phase acceptance, not document readiness or a code/test count. **Completed** requires a reviewed phase exit verdict or audited green exit gates; **In progress** means work is underway but a phase-owned criterion remains open; **Not started** means phase-specific delivery/acceptance work has not begun. Code presence or a test citation alone does not close an obligation. Completed phases can retain explicitly accepted non-blocking deferrals, which remain visible in the owning spec.
+
+- **P0 — In progress:** the [P0 audit](../../audits/P0-AUDIT.md) found incomplete `T-SWF-004` vector/browser evidence; no all-fixture `T-SWF-009` or 10⁵-case `T-SWF-014`; `T-SWF-015/016` tests that do not assert their full recovery/error contracts; no `T-SWF-017` allocation counter or 5 MiB SWF-R001 copy-budget measurement; and no `WP-010-12` reader fuzzer or required diagnostic-literal lint rule. The general suite passing does not close these obligations. The ordered [P0 resolution plan](../../audits/P0-AUDIT-RESOLUTION.md) records the evidence required before this status can change.
+- **P1 — Completed:** the P1 audit and resolution report all six exit criteria green. This is phase exit readiness, not closure of every work package: standalone `swffuzz`/crasher-corpus tooling, streaming LZMA, the full-scale absolute-RSS follow-up, and the synchronous-zlib partial-yield deviation remain explicitly deferred or pinned in [the P1 resolution](../../audits/P1-AUDIT-RESOLUTION.md) §4–5.
+- **P2 — Completed:** the P2 resolution closes its two minor findings with zero open audit findings; see [P2 audit](../../audits/P2-AUDIT.md) and [resolution](../../audits/P2-AUDIT-RESOLUTION.md).
+- **P3 — Completed:** the C7 closeout records all P3 acceptance gates green and names later-phase forwards; see [P3 audit](../../audits/P3-AUDIT.md) and [resolution](../../audits/P3-AUDIT-RESOLUTION.md).
+- **P4 — Completed:** its three exit gates are green; gradient/bitmap fills, full stencil masks, filters, and WebGPU remain later-phase scope, not an open P4 exit gate. See the [P4 diagnosis](../../audits/archive/P4-DIAGNOSIS.md).
+- **P5 — In progress:** C0–C4 are complete as audit/evidence checkpoints, but P5 remains open for byte round trip, licensed/provenanced open-corpus evidence with two reviewers, and FE-030's unresolved `ActionStringLength` oracle. Route A keeps executable runtime semantics, interpreter/budget, and runtime call/unwind/scheduling acceptance in P7; those gates remain mandatory there. See [P5 resolution](../../audits/P5-AUDIT-RESOLUTION.md).
+- **P6–P10 — Not started:** phase-owned acceptance has not begun. P3 decoders/assets and the P4 no-script renderer are prerequisites, not proof of P6 emission, P7 runtime execution, P8 playback/sync, P9 fidelity, or P10 video gates.
+- **P11 — In progress:** CI currently runs spec verification, typecheck, tests, a 10⁴-mutation smoke fuzz gate, build, lint, development audit, and tag coverage. The P11 release gates remain open: 24-hour fuzz history, the security suite, bundle/texture/audio/manifest budgets, and a decision register with no un-triaged entries.
+- **P12–P13 — Not started:** the design specs exist, but inspector and clean-engine phase acceptance has not begun.
+
+**Shared verification snapshot (2026-10-11):** `corepack pnpm build`, `typecheck`, `test` (62 files / 718 tests), `lint`, `python3 tools/verify_docs.py` (`ISSUES: 0`), and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations) pass. These shared checks do not supersede the phase-specific open criteria above.
 
 Each phase's document-level detail lives in the per-area implementation specs; this document owns
 sequencing, dependencies, and the definition of done at phase granularity.
@@ -67,7 +81,7 @@ per-area documents. This table is the map between them:
 | P2 | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | 140 |
 | P3 | [060](decompiler/060-shapes-and-gradients.md), [070](decompiler/070-images-and-morphs.md), [080](decompiler/080-fonts-and-text.md), [090](decompiler/090-sounds.md) (decode/build subset only) | 140 |
 | P4 | [130](engine-flash/130-runtime-and-renderer.md) §5 (renderer half) | 060 (Vector IR), 080 (atlases) |
-| P5 | [050](transpiler/050-actions-and-avm1.md) | 130 §6 (object model) |
+| P5 | [050](transpiler/050-actions-and-avm1.md) | 130 §6 (shared object-model interface only; runtime acceptance is P7) |
 | P6 | [120](transpiler/120-compiler-and-emitter.md) | 130 §6 |
 | P7 | [130](engine-flash/130-runtime-and-renderer.md) | 120 |
 | P8 | 090 (runtime/playback subset) + [130](engine-flash/130-runtime-and-renderer.md) §7 | AUD design spec |
@@ -98,19 +112,20 @@ what can start when.
 ### 2.2 Implemented so far (code ↔ spec)
 
 This table records which slice of the plan exists as code and where its evidence lives. It is a
-progress note, not a second contract: the work-package tables in each document remain the authority for
-what is open, and a package is only "done" for the phase gate when its gate tests run green.
+progress note, not a second contract: the work-package tables in each document remain authoritative.
+Code presence or a test citation alone is not closure; an acceptance obligation is complete only when
+its full, phase-owned outcome is demonstrated by the gate evidence.
 
 | Slice | Code | Owning docs | Evidence |
 | --- | --- | --- | --- |
-| P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `io.test.ts`, `framing.test.ts` (bit-width limits, soft/strict bounds, matrix rotation, primitive records) |
-| P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `diagnostics.test.ts` (headers, lazy tag index/payload, length handling, missing `End`, duplicate ids); ordering and LZMA adapter WPs remain open |
-| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,clip-actions,control,buttons}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `placement-corpus.test.ts`, `place-filters.test.ts`, `clip-actions.test.ts`, `control.test.ts`, `buttons.test.ts`, `imports.test.ts` (ordered display ops, exhaustive PO2/PO3 flags, sprites/End, labels/anchors, scenes, imports, button records/conditions/sounds, metadata, binary assets); `tools/tag_coverage.py` and `apps/decompiler/test/dump.test.ts` cover tag disposition and deterministic dump round-trip |
+| P0 byte readers | `packages/swf/src/io/*` | [010](foundation/010-binary-io-and-records.md) | `io.test.ts`, `framing.test.ts`, `container.test.ts`, and `diagnostics.test.ts` provide partial primitive/framing/registry evidence; full vector/browser coverage, T-SWF-009/014/015/016/017, the 5 MiB SWF-R001 measurement, WP-010-12 reader fuzzing, and diagnostic-literal lint remain open. See [P0 audit](../../audits/P0-AUDIT.md) and [resolution plan](../../audits/P0-AUDIT-RESOLUTION.md). |
+| P1 container, tag stream, dictionary | `packages/swf/src/container/*` | [010](foundation/010-binary-io-and-records.md), [020](foundation/020-container-tag-stream-dictionary.md) | `framing.test.ts`, `fixture.test.ts`, `container.test.ts`, `ordering.test.ts`, `diagnostics.test.ts`, and `fuzz.test.ts` cover headers, lazy tag index/payload, length handling, missing `End`, duplicate ids, ordering, and the 10⁴ mutation smoke; **P1 exit gate is Completed** per [audit](../../audits/P1-AUDIT.md) and [resolution](../../audits/P1-AUDIT-RESOLUTION.md), with the listed non-blocking deferrals retained |
+| P2 model & timeline | `packages/swf/src/model/*`, `src/tags/{place,clip-actions,control,buttons}.ts` | [030](decompiler/030-display-list-and-sprites.md), [040](decompiler/040-control-tags-and-metadata.md), [100](decompiler/100-buttons.md) | `model.test.ts`, `placement-corpus.test.ts`, `place-filters.test.ts`, `clip-actions.test.ts`, `control.test.ts`, `buttons.test.ts`, `imports.test.ts` (ordered display ops, exhaustive PO2/PO3 flags, sprites/End, labels/anchors, scenes, imports, button records/conditions/sounds, metadata, binary assets); `tools/tag_coverage.py` and `apps/decompiler/test/dump.test.ts` cover tag disposition and deterministic dump round-trip; **P2 exit gate is Completed** per its [audit resolution](../../audits/P2-AUDIT-RESOLUTION.md) |
 | `inspect` verb | `apps/decompiler/src/commands/inspect.ts` | [060](decompiler/060-shapes-and-gradients.md) §5 reporting | `apps/decompiler/test/inspect.test.ts` (duplicate definitions, strict length handling, exit codes, `--json`) |
 | `dump` verb | `apps/decompiler/src/commands/dump.ts`, `src/dump/model-dump.ts` | [040](decompiler/040-control-tags-and-metadata.md) §3.6 | `apps/decompiler/test/dump.test.ts` and audit synthetic probes (field order, sorted maps, file-order labels, op fields, `--out` bytes) |
-| P3 media decode | `packages/swf/src/tags/shape.ts` (shape/gradient decoding only) | [060](decompiler/060-shapes-and-gradients.md) | `shape-runs.test.ts`, `shape-regressions.test.ts`; image/font/sound export pipeline and the P3 asset demo remain incomplete |
-| P4 static-render reference path | `packages/gfx/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | `packages/gfx/test/render.test.ts` + `appendix.test.ts` (Appendix A pixels, deterministic PNG); browser integration and full P4 gate remain open |
-| P5 onward | — | — | not started; do not begin P5 before the P4 gate |
+| P3 media decode & build assets | `packages/swf/src/tags/*`, `packages/audio/*`, `packages/assets/*`, `apps/decompiler/src/assets/*` | [060](decompiler/060-shapes-and-gradients.md), [070](decompiler/070-images-and-morphs.md), [080](decompiler/080-fonts-and-text.md), [090](decompiler/090-sounds.md) | **P3 exit gate green.** Production shape/image/morph/font/text/sound decode paths and deterministic `assets dump` previews are closed; see `audits/P3-AUDIT.md` and `audits/P3-AUDIT-RESOLUTION.md`. Explicit forwards are P4 renderer integration, P6 asset build/subsetting, P8 runtime sound, and P9 runtime text/layout. |
+| P4 static-render reference path | `packages/gfx/*`, `apps/decompiler/src/render/*`, `apps/engine-flash/*` | [130](engine-flash/130-runtime-and-renderer.md) §5, [`specs/web/050`](../specs/web/050-graphics-webgl.md) | P4 exit gate green: 20 golden no-script frames (`apps/decompiler/test/render-goldens.test.ts`), perf-static draw-call + allocation budgets (`T-GFX-020`/`021`/`050`/`051`) with `fixtures/goldens/perf-static.expect.json`, context-loss recovery (`T-GFX-060`), and a WebGL2 browser demo (`forge-decompile render --demo`); confirmed by the [archived P4 diagnosis](../../audits/archive/P4-DIAGNOSIS.md). P4's remaining renderer work is deferred to P9: gradients/bitmaps/real stencil masks (WP-130-08), filters (WP-130-09), WebGPU backend (WP-130-17). |
+| P5 AVM1 front end | `packages/avm1/src/frontend/*`, `apps/decompiler/src/commands/analyze.ts` | [050](transpiler/050-actions-and-avm1.md) | **C0–C4 are complete as audit/evidence checkpoints; P5 remains open.** The 102-row opcode catalog and reserved complement are audited, synthetic disassembly and the seeded 10^6 mutation/truncation gate are covered, and the synthetic restart probe is deterministic. The P5-owned byte-round-trip surface, open-corpus/two-reviewer evidence, and FE-030 `ActionStringLength` oracle remain open. Runtime semantics/interpreter/scheduling execution (including T-AVM1-008/009/012/025/027) are P7 gates, not P5 closeout criteria. The mechanical 32/33 test-citation count is not a completion percentage. See `audits/P5-CHECKPOINTS.md`, `audits/P5-AUDIT.md`, and `audits/P5-AUDIT-RESOLUTION.md`. |
 
 Current gate notes (evidence is local and synthetic; this does not claim the open-corpus exit gates):
 
@@ -119,18 +134,17 @@ Current gate notes (evidence is local and synthetic; this does not claim the ope
   decoded to four edges and zero runs. `IMPL-060` §6.1 already specifies the correct behaviour; the
   decoder was fixed and `packages/swf/test/shape-runs.test.ts` pins closed runs, `FillStyle1` runs, and
   `SF0186` on an unclosed fill run.
-- P0–P2 regression gates now include shape flags/counts, duplicate definitions, missing-character
+- P0–P2 local regression coverage includes shape flags/counts, duplicate definitions, missing-character
   placeholders, ordered timeline ops/labels, control metadata, strict FileLength diagnostics and the
   model dump. `SF1000` is emitted independently for `FileAttributes.ActionScript3` and `DoABC`; the CLI
-  still maps it to exit 3. The open corpus and fuzz harness remain outstanding (`WP-140-01` and related
-  harness work), so this is not a claim that all phase gates are complete.
-- The current P4 evidence is a platform-neutral reference renderer over the Appendix A fixture through
-  a test-local `VectorShape` → `ShapeGeometry` adapter (`packages/gfx/test/adapter.ts`). It proves the
-  pixel/PNG oracle, not browser integration, a production conversion path or the full P4 gate. Keep
-  P4 ahead of P5; the AVM1 front end has not started.
+  still maps it to exit 3. P1's 10⁴ seeded mutation smoke and P2's exit audit are green. P0 remains in
+  progress: the focused audit found missing or partial P0 acceptance for vector/browser coverage,
+  repeat-parse/property/recovery/allocation obligations, and the reader-fuzz/diagnostic-lint work; see
+  `audits/P0-AUDIT.md`. The broader open-corpus/conformance and long-duration release gates belong to
+  P5/P7/P11 and remain open; they do not reopen the completed P1/P2 gates.
+- P4 (static render) is resolved per its archived diagnosis: 20 no-script fixtures render within TST-§6.1 tolerance against committed goldens (`fixtures/goldens/static/*.json`), `perf-static` budgets for `T-GFX-020`/`021`/`050`/`051` are bound in `fixtures/goldens/perf-static.expect.json`, and `T-GFX-060` exercises context-loss/restore on the GL backend. The production VectorShape→ShapeGeometry bridge lives in `apps/decompiler/src/render/vector-ir.ts`; `packages/gfx/test/adapter.ts` is now used only by the Appendix-A gate and will be deleted once that fixture routes through the production bridge. The browser surface is `apps/engine-flash` mounted by `forge-decompile render --demo`. P5 C0–C4 are complete as audit/evidence checkpoints, but P5 remains open: no action serializer/parser exists for the required byte round trip, the open-corpus/two-reviewer criterion remains unmet, and FE-030 lacks an oracle for `ActionStringLength`. Runtime-owned language, interpreter, and scheduling execution gates are assigned to P7 and do not become P5 passes. No P6/P7 implementation is started.
 - PlaceObject3 filter/image/cache metadata is now decoded and dumped in P2's model, but the renderer
-  does not implement filters. Rendering fidelity remains gated by P4/P9 requirements; parsing this
-  metadata is not evidence that those visual effects are supported.
+  does not implement filters, gradients, bitmaps or real stencil masks — those are gated by P9 (WP-130-08/09). Non-solid paints currently degrade to mid-grey (128) so they show up as wrong pixels, not wrong draw calls.
 
 ## 3. Milestones
 
@@ -139,9 +153,9 @@ Current gate notes (evidence is local and synthetic; this does not claim the ope
 | **M0 — Reader** | `swfforge inspect` runs over the whole fixture corpus without an uncaught exception, prints a tag list, and diffs clean twice | P0–P2 | CI job `inspect-corpus` |
 | **M1 — Model complete** | Every AVM1-era tag in the corpus is either modelled or explicitly reported (`I`/`E` per APP-§2) | P2 | coverage report: 0 unknown-tag warnings on synthetic corpus |
 | **M2 — Pixels** | The static-render demo matches archival captures within TST-§6.1 tolerances for 20 fixtures | P4 | visual golden suite |
-| **M3 — Language** | AVM1 coercion/format/timeline suites pass; tier report on the open corpus | P5 | T-AVM1 suite |
+| **M3 — Language front end** | P5 front-end acceptance passes; tier report on a suitable open corpus is reviewed by two people | P5 | IMPL-050 §13 and `T-AVM1-FE-*` suite |
 | **M4 — Compile** | `swfforge build` output compiles under `strict` with zero suppressions for all synthetic fixtures; `swfforge verify` clean | P6 | `emit` CI stage |
-| **M5 — Play** | Three titles from the open corpus reach C1 (scripted play-through, no errors) | P7 | `conformance` CI job |
+| **M5 — Play** | Runtime coercion/format/enumeration/interpreter gates pass; three titles from the open corpus reach C1 (scripted play-through, no errors) | P7 | T-AVM1-008/009/012/025/027, IMPL-130 execution gates, `conformance` CI job |
 | **M6 — Sound** | Stream sync ≤ 12 ms drift over 10 minutes; no click artifacts in the transition suite | P8 | T-AUD-027, T-AUD-022 |
 | **M7 — Faithful** | Corpus reaches C2 on the declared tolerances; perf and bundle budgets met on both baselines | P9–P11 | TST-§7, TST-§9 |
 | **M8 — Inspect** | A built project opens in the inspector: provenance badges, SWF↔TS jumps resolve, diagnostics export | P12 | T-INS-101…114 |
@@ -245,10 +259,14 @@ ensures every measurement lands in the table it belongs to.
 
 | Criterion | Evidence |
 | --- | --- |
-| Opcode table complete for 0x00–0x9F; unknown opcodes make functions residual | unit + fuzz |
-| Coercion suites pass (Add/Add2/StringAdd, isNaN, ToString 15-digit) | T-AVM1-008/009/025 |
-| Tier report for the open corpus with reasons per T2 function | `swfforge analyze --tiers --json` |
-| Interpreter executes residual blocks and honours the instruction budget | T-AVM1-027 |
+| Front-end opcode inventory covers all 256 byte values: 102 defined rows, exact reserved complement, and unknown-opcode residual fallback | T-AVM1-FE-001/033 |
+| Defined-opcode bytes → IR → disassembly → bytes round trip | **Retained P5 criterion; open** — no AVM1 disassembly parser or action-byte serializer exists; IMPL-050 §13.2; FE-032 is one-way only |
+| Tier reasons are exercised and reviewed on a suitable open corpus by two people | **Open P5 criterion** — `forge-decompile analyze --tiers --json`; C4's local corpus has no AVM1 action blocks or T2 rows |
+| Seeded 10⁶ action-stream mutations/truncations have zero uncaught exceptions and safe residual fallback | Pass locally — `T-AVM1-FE-033`, `corepack pnpm test:avm1-fuzz` |
+| Requirement extraction and name recovery are deterministic across process restarts | Pass on the synthetic restart probe; open-corpus evidence remains separate |
+| FE-030's DBCS frontend case is source-bounded and the `ActionStringLength` result is resolved | **Open P5 criterion** — current fixture pins only the supported decode/`MBStringLength` behavior; no authoritative byte/character oracle |
+| `DoAction`/`DoInitAction` schedule metadata is preserved at the frontend boundary | FE-027/028 metadata tests; these do not claim runtime ordering/execution |
+| Runtime coercion/enumeration/format semantics, residual interpretation/budget, and observable call/unwind/scheduling execution | P7 / IMPL-130 gates: T-AVM1-008/009/012/025/027 plus runtime execution evidence; not P5 acceptance |
 
 ### P6 — Emitter
 
@@ -263,6 +281,9 @@ ensures every measurement lands in the table it belongs to.
 
 | Criterion | Evidence |
 | --- | --- |
+| Runtime AVM1 coercion, `isNaN`, enumeration, and number-format semantics pass without weakening the normative language requirements | T-AVM1-008/009/012/025; `T-RT-121` additionally pins enumeration |
+| Residual interpreter executes T2 blocks and honors the instruction budget | T-AVM1-027; IMPL-130 WP-130-12 |
+| Runtime executes frame calls, exception unwinding, and the `DoInitAction`/`DoAction` schedule; frontend IR/metadata citations alone are insufficient | IMPL-130 WP-130-05/12 runtime evidence; forward from FE-024/025/027/028 |
 | Three open-corpus titles reach C1 | `conformance` job |
 | No placeholder assets rendered in the first 60 frames | instrumentation assertion |
 | Denied-URL count matches the build report | runtime vs build cross-check |
@@ -451,3 +472,9 @@ art):
 | 1.11 | 2026-10-05 | P1 resolution pass: the P1 exit-criteria row for ordering-rule diagnostics cited a nonexistent `SF0120`-range; corrected to `SF0024`–`SF0026`, `SF0032` (020 §9 — `SF0120` belongs to doc 100) |
 | 1.12 | 2026-10-05 | P2 integrity resolutions (R-P2-15): the P2 demo/exit rows now cite the `forge-decompile dump` verb instead of the never-built `inspect --timeline`/`verify`; §2.2 records the `control.test.ts` evidence and that buttons (doc 100) remain open until their resolution lands |
 | 1.13 | 2026-10-05 | P2 repeat audit: mark the model/data-level button criterion resolved with `buttons.test.ts` + AVM1 action-block integration evidence; add the exhaustive placement corpus, clip-action/import model suites, and tag-coverage tool to the §2.2 evidence row; retain runtime pointer/hit-test work as a P4/P7 boundary, not as a P2 decoder gap |
+| 1.14 | 2026-10-10 | P5 C1/C2 progress recorded: tier-report CLI and 95-test focused suite; IMPL-050 test IDs are isolated as `T-AVM1-FE-*`, while language gates `T-AVM1-008/009/012/025` remain runtime-owned and open; C3/C4 robustness and corpus gates remain outstanding |
+| 1.15 | 2026-10-10 | P5 C3 audited: reconcile the 102-row AVM1 catalog and exact reserved ranges; pin payload/version/stack metadata and synthetic disassembly; the seeded 10^6 mutation/truncation gate passes. Explicitly retain the missing byte parser/serializer round trip as an open P5 criterion; C4 and runtime-owned language gates remain open |
+| 1.16 | 2026-10-11 | Record the P5/P7 phase-boundary decision: P5 front-end acceptance remains open for its own byte-round-trip, corpus/reviewer, and FE-030 gates; runtime semantics/interpreter/scheduling execution move to P7. Mark C0–C4 complete as audit checkpoints without closing P5. |
+| 1.17 | 2026-10-11 | Record the byte-round-trip scope decision: retain the existing inverse criterion as a P5 gate; keep it open and require a separate lossless contract/work package before implementation. |
+| 1.18 | 2026-10-11 | Add explicit Completed/In progress/Not started phase labels, reconcile P1's audited exit readiness and accepted deferrals, keep P5/P7 ownership and open gates explicit, and mark P0 in progress because T-SWF-009/014/017 and the parser allocation acceptance lack current gate evidence. |
+| 1.19 | 2026-10-11 | Add the P0 acceptance-bottleneck audit and AI-readable resolution plan; expand the P0 in-progress basis to include partial vector/recovery tests, missing browser/fuzz/allocation evidence, and the unimplemented diagnostic-literal lint gate. |

@@ -60,11 +60,20 @@ const monoCodes: Readonly<Record<2 | 3 | 4 | 5, readonly number[]>> = {
   5: [7, 23, 12, 31],
 };
 
+/**
+ * Expected output for `monoCodes`, worked out from the IMA algorithm by hand rather than captured
+ * from a decoder run. For `bits = 2`, step index 0 (step 7), header sample 1000:
+ *
+ *   code 1 -> sign 0, magnitude 1: delta = (7>>1) + 7 = 10  -> 1010, index += 2 -> 2 (step 9)
+ *   code 2 -> sign 1, magnitude 0: delta = (9>>1)     =  4  -> 1006, index += -1 -> 1 (step 8)
+ *   code 0 -> sign 0, magnitude 0: delta = (8>>1)     =  4  -> 1010, index += -1 -> 0 (step 7)
+ *   code 3 -> sign 1, magnitude 1: delta = (7>>1) + 7 = 10  -> 1000
+ */
 const monoReference: Readonly<Record<2 | 3 | 4 | 5, readonly number[]>> = {
   2: [1000, 1010, 1006, 1010, 1000],
-  3: [1000, 1005, 1004, 1012, 997],
-  4: [1000, 1006, 1000, 1011, 987],
-  5: [1000, 1006, 1000, 1010, 979],
+  3: [1000, 1004, 1003, 1011, 996],
+  4: [1000, 1004, 1000, 1010, 987],
+  5: [1000, 1004, 1000, 1010, 979],
 };
 
 const stereoCodes: Readonly<Record<2 | 3 | 4 | 5, readonly (readonly number[])[]>> = {
@@ -100,25 +109,66 @@ const stereoReference: Readonly<Record<2 | 3 | 4 | 5, readonly (readonly number[
     [-1000, -1010, -1014, -1002, -997],
   ],
   3: [
-    [1000, 1005, 1006, 994, 992],
-    [-1000, -1012, -1014, -1007, -1005],
+    [1000, 1004, 1005, 994, 992],
+    [-1000, -1011, -1013, -1006, -1004],
   ],
   4: [
-    [1000, 1002, 1002, 989, 987],
-    [-1000, -1013, -1015, -1010, -1009],
+    [1000, 1001, 1001, 990, 988],
+    [-1000, -1011, -1013, -1009, -1008],
   ],
   5: [
-    [1000, 1001, 1001, 988, 986],
-    [-1000, -1013, -1015, -1010, -1009],
+    [1000, 1000, 1000, 989, 987],
+    [-1000, -1011, -1013, -1009, -1008],
   ],
 };
 
+/**
+ * The IMA/DVI ADPCM step table, transcribed from the IMA reference and cross-checked against
+ * `ruffle`'s `STEP_TABLE`. This exists so the suite has a copy that did **not** come from
+ * `adpcm-tables.ts`: when the two were the same transcription, entries 69-71 were wrong in both
+ * and nothing could notice (`F-P3-19`, `F-P3-21`).
+ */
 const REFERENCE_STEP_TABLE = [
   7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97, 107, 118,
   130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796, 876, 963, 1060,
-  1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5360, 5897, 6487,
+  1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428, 4871, 5358, 5894, 6484,
   7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350, 22385, 24623, 27086, 29794, 32767,
 ] as const;
+
+/**
+ * IMA's delta reconstruction, written as `ruffle` writes it: one explicit closure per code width,
+ * each term shifted and truncated separately. The production decoder collapses these into a single
+ * loop, so this is a structurally different statement of the same algorithm — which is the point.
+ * A generalisation bug in `imaDelta` shows up here as a disagreement.
+ */
+const REFERENCE_DELTA: Readonly<Record<2 | 3 | 4 | 5, (step: number, magnitude: number) => number>> = {
+  2: (step, magnitude) => {
+    let delta = step >> 1;
+    if (magnitude & 1) delta += step;
+    return delta;
+  },
+  3: (step, magnitude) => {
+    let delta = step >> 2;
+    if (magnitude & 1) delta += step >> 1;
+    if (magnitude & 2) delta += step;
+    return delta;
+  },
+  4: (step, magnitude) => {
+    let delta = step >> 3;
+    if (magnitude & 1) delta += step >> 2;
+    if (magnitude & 2) delta += step >> 1;
+    if (magnitude & 4) delta += step;
+    return delta;
+  },
+  5: (step, magnitude) => {
+    let delta = step >> 4;
+    if (magnitude & 1) delta += step >> 3;
+    if (magnitude & 2) delta += step >> 2;
+    if (magnitude & 4) delta += step >> 1;
+    if (magnitude & 8) delta += step;
+    return delta;
+  },
+};
 const REFERENCE_INDEX_TABLES: Readonly<Record<2 | 3 | 4 | 5, readonly number[]>> = {
   2: [-1, 2],
   3: [-1, -1, 2, 4],
@@ -164,7 +214,7 @@ function referenceDecode(bytes: Uint8Array, channels: 1 | 2, sampleCount: number
         const code = reader.read(bits);
         const magnitude = code & (sign - 1);
         const step = REFERENCE_STEP_TABLE[index[channel] ?? 0] ?? 7;
-        const delta = Math.floor(((2 * magnitude + 1) * step) / 2 ** (bits - 1));
+        const delta = REFERENCE_DELTA[bits](step, magnitude);
         const direction = code & sign ? -1 : 1;
         prediction[channel] = Math.max(-32768, Math.min(32767, (prediction[channel] ?? 0) + direction * delta));
         const table = REFERENCE_INDEX_TABLES[bits];
@@ -255,6 +305,86 @@ describe('SWF ADPCM', () => {
     expect(decoded.channels[0]?.[4096]).toBe(-2222);
   });
 
+  it('T-AUD-102: real-world payload lengths fit 4096 samples per packet exactly, not 4095', () => {
+    // Measured from shipped Flash content, not constructed here: each row is a real ADPCM
+    // DefineSound, its declared SoundSampleCount and the exact byte length of its payload.
+    // Harvested by tools/adpcm_hunt.py; see audits/P3-ADPCM-PACKET-LENGTH.md and errata E-031.
+    //
+    // The discrimination is that a packet emitting 4096 samples needs ceil(N/4096) packets and
+    // codes N - packets frames, while ruffle's 4095 reading needs codes for all N. The second
+    // costs more bytes, so a payload sized for the first is *too short* for the second.
+    const corpus = [
+      { samples: 369_350, channels: 1, bits: 2, payload: 92_566, source: 'renegade_racing.swf' },
+      { samples: 49_152, channels: 1, bits: 2, payload: 12_319, source: 'backyard-monsters.swf' },
+      { samples: 613_793, channels: 1, bits: 3, payload: 230_529, source: 'Learn_to_Fly.swf' },
+      { samples: 1_931, channels: 1, bits: 3, payload: 727, source: 'thundercars.swf' },
+      { samples: 4_587_840, channels: 1, bits: 4, payload: 2_296_443, source: 'Riddle_School_3.swf' },
+      { samples: 22_248, channels: 1, bits: 4, payload: 11_138, source: 'flash_kingdom.swf' },
+      { samples: 140_145, channels: 1, bits: 5, payload: 87_666, source: 'Mario.swf' },
+      { samples: 7_728, channels: 1, bits: 5, payload: 4_835, source: 'crush-the-castle.swf' },
+      { samples: 93_312, channels: 2, bits: 5, payload: 116_738, source: 'Sticky_Ninja.swf' },
+      { samples: 15_725, channels: 2, bits: 5, payload: 19_674, source: 'Sticky_Ninja.swf' },
+    ] as const;
+
+    for (const { samples, channels, bits, payload, source } of corpus) {
+      // A payload of exactly the observed length decodes completely under our reading.
+      const bytes = new Uint8Array(payload);
+      bytes[0] = (bits - 2) << 6; // AdpcmCodeSize in the top two bits, MSB-first
+      const decoded = decodeSwfAdpcm(bytes, { channels, sampleCount: samples });
+      expect(decoded.bitsPerCode, source).toBe(bits);
+      expect(decoded.truncated, `${source}: ${payload} B should hold ${samples} samples`).toBe(false);
+      expect(decoded.decodedSampleCount, source).toBe(samples);
+
+      // And it is *minimal*: one byte fewer no longer fits. That is what rules out 4095 samples
+      // per packet, which would have required between 1 and 560 bytes more than these files
+      // actually contain — had the encoder used it, a byte could be spared here.
+      const short = bytes.slice(0, payload - 1);
+      expect(decodeSwfAdpcm(short, { channels, sampleCount: samples }).truncated, `${source}: minimal`).toBe(true);
+    }
+  });
+
+  it('T-AUD-102: separates a short final packet from a structurally broken stream', () => {
+    // 26% of real ADPCM sounds (165 of 643, audits/P3-ADPCM-PACKET-LENGTH.md §8) end 1-6 frames
+    // short of their declared SoundSampleCount. At 22.05 kHz the largest measured gap is <0.28 ms.
+    // A shortfall in the *last required packet* is benign; an incomplete earlier packet is not,
+    // even when fewer than 4096 declared frames remain.
+    const codes = (count: number, writer = new BitWriter().bits(0, 2)) => {
+      writer.signed(100, 16).bits(0, 6);
+      for (let i = 0; i < count; i += 1) writer.bits(1, 2);
+      return writer;
+    };
+
+    // Declared 40 frames, payload carries 1 header + 36 codes = 37: three frames short.
+    const short = decodeSwfAdpcm(codes(36).toBytes(), { channels: 1, sampleCount: 40 });
+    expect(short.truncated).toBe(true);
+    expect(short.shortFinalPacket).toBe(true);
+    expect(short.decodedSampleCount).toBe(37);
+
+    // A payload whose second packet header is missing entirely is a structural break, not a
+    // trailing-frame artefact: 4096 declared frames need a second packet that simply is not there.
+    const broken = decodeSwfAdpcm(codes(4095).toBytes(), { channels: 1, sampleCount: 8192 });
+    expect(broken.truncated).toBe(true);
+    expect(broken.shortFinalPacket).toBe(false);
+
+    // A truncated FIRST packet is not benign just because fewer than 4096 declared frames remain.
+    // The byte-rounded payload supplies 4000 of its codes (the two padding bits decode as one
+    // extra code), leaving 999 frames, but the missing data is before the required second packet.
+    const early = decodeSwfAdpcm(codes(3999).toBytes(), { channels: 1, sampleCount: 5000 });
+    expect(early.truncated).toBe(true);
+    expect(early.decodedSampleCount).toBe(4001);
+    expect(early.shortFinalPacket).toBe(false);
+
+    // An empty payload is not a "short final packet" either — there is no packet at all.
+    const empty = decodeSwfAdpcm(new Uint8Array(0), { channels: 1, sampleCount: 64 });
+    expect(empty.truncated).toBe(true);
+    expect(empty.shortFinalPacket).toBe(false);
+
+    // A complete sound is neither.
+    const whole = decodeSwfAdpcm(codes(39).toBytes(), { channels: 1, sampleCount: 40 });
+    expect(whole.truncated).toBe(false);
+    expect(whole.shortFinalPacket).toBe(false);
+  });
+
   it('T-AUD-102: emits an exact-length zero-padded result for a truncated packet header', () => {
     const bytes = new BitWriter().bits(1, 2).toBytes();
     const decoded = decodeSwfAdpcm(bytes, { channels: 1, sampleCount: 32 });
@@ -265,12 +395,35 @@ describe('SWF ADPCM', () => {
     expect(Array.from(decoded.channels[0] ?? [])).toEqual(Array.from({ length: 32 }, () => 0));
   });
 
-  it('T-AUD-004: pins the SWF/IMA reference table lengths and boundary entries', () => {
-    expect(SWF_ADPCM_STEP_TABLE).toHaveLength(89);
-    expect(SWF_ADPCM_STEP_TABLE[0]).toBe(7);
-    expect(SWF_ADPCM_STEP_TABLE[88]).toBe(32767);
+  it('T-AUD-004: pins every entry of the step table, not just its ends', () => {
+    // Checking only [0] and [88] is what let entries 69-71 be wrong for the whole of P1-P2
+    // (F-P3-19): the table is 89 numbers and any one of them being off changes decoded audio.
+    expect(Array.from(SWF_ADPCM_STEP_TABLE)).toEqual(Array.from(REFERENCE_STEP_TABLE));
+    expect(SWF_ADPCM_STEP_TABLE.slice(69, 72)).toEqual([5358, 5894, 6484]);
     expect(SWF_ADPCM_INDEX_TABLES[2]).toEqual([-1, 2]);
+    expect(SWF_ADPCM_INDEX_TABLES[3]).toEqual([-1, -1, 2, 4]);
+    expect(SWF_ADPCM_INDEX_TABLES[4]).toEqual([-1, -1, -1, -1, 2, 4, 6, 8]);
     expect(SWF_ADPCM_INDEX_TABLES[5]).toEqual([-1, -1, -1, -1, -1, -1, -1, -1, 1, 2, 4, 6, 8, 10, 13, 16]);
+  });
+
+  it('T-AUD-101: reconstructs deltas by truncated shift accumulation, not the closed form', () => {
+    // floor(((2m + 1) * step) / 2^(bits-1)) looks like the same quantity and is not: it disagrees
+    // on 884 of the 2670 (step, magnitude) pairs. This pins one worked case so a "simplification"
+    // back to the closed form fails here rather than quietly detuning every ADPCM asset (F-P3-20).
+    const closedForm = (step: number, magnitude: number, bits: number): number =>
+      Math.floor(((2 * magnitude + 1) * step) / 2 ** (bits - 1));
+
+    expect(REFERENCE_DELTA[4](7, 1)).toBe(1); // (7>>3) + (7>>2) = 0 + 1
+    expect(closedForm(7, 1, 4)).toBe(2); // floor(21/8)
+    let disagreements = 0;
+    for (const bits of [2, 3, 4, 5] as const) {
+      for (const step of REFERENCE_STEP_TABLE) {
+        for (let magnitude = 0; magnitude < 2 ** (bits - 1); magnitude += 1) {
+          if (REFERENCE_DELTA[bits](step, magnitude) !== closedForm(step, magnitude, bits)) disagreements += 1;
+        }
+      }
+    }
+    expect(disagreements).toBe(884);
   });
 
   it('rejects impossible sample counts before allocating untrusted PCM buffers', () => {

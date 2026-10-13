@@ -566,3 +566,56 @@ describe('T-SWF-011 (512 MiB bomb / RSS) — the memory bound, D-4', () => {
     expect(file.body.length).toBe(0);
   });
 });
+
+describe('T-SWF-018 lazy index strategy', () => {
+  it('indexStrategy=lazy defers tag-index construction until first access', () => {
+    // A file with an out-of-order FileAttributes produces SF0025 — and ordering diagnostics are
+    // only emitted during buildStream, which is what we want to confirm is deferred.
+    const outOfOrder = buildSwf({
+      version: 8,
+      body: concat(defineTag(2, 7), tag(69, new Uint8Array([1, 0, 0, 0])), placeObject2(7, 1), showFrames(1), endTag()),
+    });
+    const lazy = openSwf(outOfOrder, { indexStrategy: 'lazy' });
+    // Before any access, ordering diagnostics are absent.
+    expect(lazy.diagnostics.map((d) => String(d.code))).not.toContain('SF0025');
+    expect(lazy.diagnostics.map((d) => String(d.code))).not.toContain('SF0026');
+    expect(lazy.tagIndex.tags.length).toBeGreaterThan(0);
+    // After access, ordering diagnostics appear.
+    expect(lazy.diagnostics.map((d) => String(d.code))).toContain('SF0025');
+    // Sanity: definitions is lazy too.
+    const eager = openSwf(outOfOrder);
+    expect(eager.definitions.length).toBe(lazy.definitions.length);
+  });
+});
+
+describe('T-SWF-001 header matrix', () => {
+  it('accepts versions across the SWF 1…43 range without implausible-version diagnostics', () => {
+    // FileAttributes arrived in v8, so versions < 8 omit FileAttributes and should produce no
+    // version-specific errors. Versions ≥ 8 need FileAttributes first; we provide it.
+    for (const version of [1, 3, 4, 6, 8, 10, 15, 20, 32, 43]) {
+      const body =
+        version >= 8
+          ? concat(tag(69, new Uint8Array([1, 0, 0, 0])), showFrames(1), endTag())
+          : concat(showFrames(1), endTag());
+      const file = openSwf(buildSwf({ version, body }));
+      const codes = file.diagnostics.map((d) => String(d.code));
+      expect(codes).not.toContain('SF0029'); // non-positive frame size
+      expect(codes.filter((c) => c.startsWith('SF00') && c !== 'SF0002' && c !== 'SF0033')).toEqual([]);
+    }
+  });
+
+  it('reports SF0022 for an implausible frame rate (0 fps) and accepts a normal one', () => {
+    const zeroRate = buildSwf({
+      version: 8,
+      body: concat(tag(69, new Uint8Array([1, 0, 0, 0])), endTag()),
+      frameRateRaw: 0,
+    });
+    expect(openSwf(zeroRate).diagnostics.map((d) => String(d.code))).toContain('SF0022');
+    const normal = buildSwf({
+      version: 8,
+      body: concat(tag(69, new Uint8Array([1, 0, 0, 0])), showFrames(1), endTag()),
+      frameRateRaw: 31 * 256,
+    });
+    expect(openSwf(normal).diagnostics.map((d) => String(d.code))).not.toContain('SF0022');
+  });
+});

@@ -1,0 +1,21 @@
+package game_fla
+{
+   import flash.display.MovieClip;
+   
+   [Embed(source="/_assets/assets.swf", symbol="symbol564")]
+   public dynamic class mcFlipperArt_Gambino_92 extends MovieClip
+   {
+      
+      public function mcFlipperArt_Gambino_92()
+      {
+         super();
+         addFrameScript(0,frame1);
+      }
+      
+      internal function frame1() : *
+      {
+         stop();
+      }
+   }
+}
+

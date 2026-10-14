@@ -182,7 +182,7 @@ only.
 | P3 (`060`,`070`,`080`,`090`) | 74 | 7 | 81 | all 7 owned: `T-MOD-122`→P4, `T-MOD-306/307/308`→P6, `T-MOD-507/508`→P9, `T-AUD-114`→P8 |
 | P4/P7 (`130`) | 1 | 20 | 21 | `T-RT-101…122` are **P7's** (roadmap §3 splits doc 130: P4 = §5 only) → F-REG-01; `T-RT-122` was added 2026-10-13 for scope-chain/`SetTarget` resolution against a nested display tree |
 | P5 (`050`) | 38 | 3 | 41 | `T-AVM1-FE-024` → P7 by Route A; `-034` → `WP-050-18` (serializer, unbuilt); `-035` → `WP-050-11` (grammar test, unwritten). `-037`/`-038`/`-039` are cited by `test/region-framing.test.ts`, `-040` by `test/try-bodies.test.ts` (landed with the `E-039` fix) and `-041` by `test/region-flow.test.ts` (landed with the `E-040` fix, §10.4) |
-| P6 (`120`) | 1 | 8 | 9 | `T-CMP-005` wired 2026-10-14 by `WP-120-02`; `T-CMP-001…004`, `006…009` await their work packages (`T-CMP-009` was added 2026-10-13 to receive `T-MOD-030`'s emitter half) |
+| P6 (`120`) | 6 | 7 | 13 | wired so far: `T-CMP-005` (`WP-120-02`), `-001`/`-010` (`WP-120-05`), `-011` (`WP-120-06`), `-012` (`WP-120-03`), `-013` (`WP-120-04`). `T-CMP-002…004`, `006…009` await their work packages (`T-CMP-009` was added 2026-10-13 to receive `T-MOD-030`'s emitter half) |
 | P10 (`110`) | 0 | 17 | 17 | phase not started; `T-MOD-917` is the one P6-owned row (`WP-110-12`) |
 | P11 (`140`) | 2 | 2 | 4 | phase in progress |
 | P12 (`150`) / P13 (`160`) | 0 | 28 | 28 | phases not started |
@@ -1198,3 +1198,69 @@ serializer (`WP-050-18`) are still gated on P5 and on P6's own asset chain, and 
 that compiles with zero suppressions — is untouched by this work. What did change is that the two passes that
 were specifiable entirely from P6's own documents are now code, and one of them paid for itself by finding a
 defect in P5 that no P5 test could see.
+
+### 11.4 `WP-120-03` + `WP-120-04` — the two proof-shaped passes, and three holes they had to fail closed on
+
+`packages/compile/src/passes/dead-code.ts` and `passes/shake.ts` landed together: the first proves which
+characters and action blocks nothing can reach, the second turns `ActionIR.requirements` into the set of runtime
+modules the emitter may include. Both are pass objects on the spine, so `dead-code` now runs before `shake`
+because `PASS_ORDER` says so and not because of registration order — which is asserted (`IMPL-120-R013`). 21
+tests in `dead-code.test.ts`, 12 in `shake.test.ts`; the package is at **117 tests across six files**, and
+doc 120 v1.7 carries the three new `R005` clauses, the `R006` fold rule and one new rule, `IMPL-120-R035`.
+
+**These two passes are different in kind from the first two, and it showed.** `names` and `frames` transform
+data; a pruning pass *decides what may be deleted*, so every input it cannot read has to become a blocker
+rather than a gap in a table. Writing the fixtures over *decoded* movies (never hand-built model objects —
+P2's field lists leak, and a hand-built `VectorShape` would have let the pass look correct while its
+quarantine check was unreachable) produced three findings, all now errata:
+
+- **`E-045` (open):** `HostApiGroup` carries a 14th value, `timeline`, that AVM1 §8.1's 13-row table cannot
+  name, and it is not a corner case — `ActionStop` alone reaches it, so 17 of 119 corpus blocks across 11 of
+  73 movies name a group with no runtime module behind it, and in 6 of those it is the only member of the
+  movie-object pair. P6 folds it through a total map and reports the fold as a decision; §8.1 owns the durable
+  fix, and the fold's deletion belongs to whichever way that goes.
+- **`E-046` (open):** three reference sites the model cannot answer. `DefineFont2/3`'s `HaveBitmaps` gives every
+  glyph a `BitmapCharacterID` and `DefineFontModel` has no field for it (`grep -i bitmap
+  packages/swf/src/tags/fonts.ts` → nothing); `DefineVideo4`'s `DeblockCharacterID` has no video payload in
+  `CharacterModel` at all; and a reader that over-runs its tag leaves no mark — measured on a 3-byte
+  `DefineShape`: tag span `[0, 5)`, `vectorShape` non-null, `quarantined` **unset**, and the single signal is
+  `SF0013`, a **warning**, at offset **7**, which is inside the *next* tag. So a partial payload is
+  indistinguishable from a complete one, and **no offset rule can attribute it** — the cursor of an over-read
+  lands past the tag that caused it, which is why a slack window or "nearest preceding tag" heuristic would be
+  a guess dressed as a rule. P6 fails closed on all three: font2/font3/video are reported as incomplete
+  referencers and disable pruning movie-wide, as does an unresolvable placement id, a text run with no readable
+  `fontId`, or edit text naming no font by id or export name. The tests pin the *other* side too — `font` v1,
+  `font4`, bitmap, sound, `binaryData`, `imported`, `missing` are allowed, because a rule that blocked on every
+  font would be quietly unusable. On this corpus the font block costs 2 of 73 movies (67 characters, 2 of them
+  `DefineFont2`, 0 video, 0 `unknown`, 0 quarantined).
+- **`IMPL-120-R035` (new rule, from a defect in my own first draft):** the pass originally read
+  `ctx.diagnostics` to learn which payloads were interrupted. A cached `model` stage re-runs nothing and
+  re-emits nothing, so a warm build would have pruned what a cold build refused to — `CMP-R040`'s "a hit must
+  not change output bytes" broken by an input that was never in the key, and it would not fail, it would
+  disagree. The list is now derived in the stage and carried on the artifact
+  (`ModelArtifact.readInterruptions`, error-severity only, intersected with each definition tag's
+  `headerOffset … headerOffset + length` span), and the sink is read for reporting only.
+
+One ordinary bug fell out of the fixtures and is worth the space because it is the common kind: a
+`DoInitAction` tag lives at *movie level*, so the model's `TagRef.inSprite` is null and an ownership rule built
+on it gives an init action no owner — the init action then outlives the sprite it initialises, and the group
+only it required is emitted forever. Ownership comes from the schedule's `spriteId` (`IMPL-050-R073`,
+`E-040`). A `DefineShape` defined *inside* a sprite, by contrast, is not in `model.characters` at all, so the
+per-character verdict for a nested definition belongs to the sprite's own entry — which is why the closure test
+defines its shape at top level and places it inside.
+
+| Gate | Result after `WP-120-03`/`WP-120-04` |
+| --- | --- |
+| Docs / status | `verify_docs` **ISSUES 0**; doc 120 v1.6 → **v1.7**; errata v2.13 → **v2.14** (`E-045`, `E-046` filed); roadmap 1.30 → 1.31 |
+| Tests | `corepack pnpm test` **73 files / 898 tests** (was 71 / 865); `packages/compile` **117** across six files (was 84 across four) |
+| Development audit | `findings=52 known=57 new=0 fixed=5`; **597 rules** and **456 ids = 239 cited + 215 unwired + 2 source-only**, against `590 / 454 = 237 + 215 + 2` at `HEAD` — the +7 rules are `IMPL-120-R035` plus the six `R005`–`R010` bullets, which arrived with doc 120 v1.6 in this same uncommitted state (`HEAD` still holds v1.5), and the +2 ids are `T-CMP-012`/`013`, defined *and* cited here for the first time. P6's ledger: **6 cited / 7 unwired / 13** |
+| Audit tooling self-test | `test:audit` **100 OK** |
+| Negative controls | init-action ownership back to `inSprite` ⇒ 1 failure (`shake.test.ts`, the prune-alongside test); `font2` allowed to be a leaf ⇒ 2 failures (`dead-code.test.ts`, `E-046` pair); `GROUP_FOLD` emptied ⇒ 4 failures in `shake.test.ts`, including the union equality, which is the assertion that shows a fold is load-bearing rather than cosmetic |
+| Unaffected lanes | `corpus:verify` 73/73 · `test:avm1-restart` both reports identical (exit 0) · `test:audit` 100 · `lint` clean |
+
+The shake pass is the first P6 code whose *evidence* is partly synthetic by necessity: five of the 13 groups
+(`data`, `drawing`, `bitmap`, `geometry`, `filters`) are named by no block anywhere in the licensed corpus, so
+no admissible file can show a drop happening — the corpus measures the fold, the fixtures measure the dropping.
+P6 stands at **6 of 14 work packages delivered**, the phase **In progress**, and the gating in §6 is
+unchanged: `WP-120-07`…`WP-120-14` sit behind P6's own asset chain, P5's `WP-050-18` serializer, and P0's
+unbuilt `WP-010-11`.

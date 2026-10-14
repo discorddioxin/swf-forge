@@ -41,6 +41,8 @@ import type { HostApiRequirement, MovieAnalysis } from '@swf-forge/avm1';
 
 import type { FramePlan } from './passes/frames.js';
 import type { NameTable } from './passes/names.js';
+import type { DeadCodePlan } from './passes/dead-code.js';
+import type { ShakePlan } from './passes/shake.js';
 import { PipelineCancelled, createCancellationToken, type CancellationToken } from './cancel.js';
 import { stableForm } from './codec.js';
 import { configHash, type ForgeConfig, type RunSwitches, DEFAULT_RUN_SWITCHES } from './config.js';
@@ -97,6 +99,16 @@ export interface ModelArtifact {
   readonly frameCount: number;
   readonly characterCount: number;
   readonly initActionCount: number;
+  /**
+   * Dictionary entries whose payload the reader could not finish, with the code that says so.
+   *
+   * This lives on the *stage artifact* rather than being read off the live sink by a later pass, because the
+   * sink is not part of a cache hit: a pass that asked `ctx.diagnostics` directly would prune on a warm run
+   * what it refused to prune on a cold one, which is `CMP-R040` ("a hit must not change output bytes")
+   * violated in whichever direction the cache was warm. Deriving the list here keeps the verdict a property
+   * of the input bytes. `IMPL-120-R005`'s proof consumes it; see doc 120 §3.2.
+   */
+  readonly readInterruptions: readonly { readonly characterId: number; readonly code: string }[];
 }
 
 export interface AnalysisArtifact {
@@ -132,6 +144,10 @@ export interface PipelineState {
   readonly names?: NameTable;
   /** The frame-script grouping and hoists (`WP-120-06`). */
   readonly frames?: FramePlan;
+  /** The unreachable-code proof (`WP-120-03`); removal depends on `config.pruneDeadCode`. */
+  readonly deadCode?: DeadCodePlan;
+  /** The runtime-module selection (`WP-120-04`); reads `deadCode` when that pass ran. */
+  readonly shake?: ShakePlan;
   readonly passes?: readonly PassReport[];
 }
 

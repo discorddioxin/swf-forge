@@ -102,12 +102,12 @@ tool version, the input hash and the relevant-config hash (`CMP-R038`).
 
 | Pass | Job | Rules |
 | --- | --- | --- |
-| Dead code | Remove unreachable frames/actions never held by any reachable character, with roots = frame scripts + exports + `_root`-reachable names | `IMPL-120-R005`, opt-in via `--prune-dead-code`; default on for *unreferenced characters only* |
-| Requirement shake | Compute the union of host-API requirements per entry point; emit only used runtime modules | `IMPL-120-R006` |
-| Tier finalise | Merge per-function tier verdicts with the *call graph*: a T0 function that calls a T2 function stays T0 (it calls into the interpreter) | `IMPL-120-R007` |
-| Name assignment | Deterministic symbol names: recovered name → `sanitised` → `_2`, `_3` suffixes by sorted order | `IMPL-120-R008` |
-| Frame scripts | Group frame action blocks into per-frame functions; hoist blocks identical across frames | `IMPL-120-R009` |
-| Asset plan | Order of asset encodes, parallelism cap, budget accounting, fallback ladder selection | `IMPL-120-R010` |
+| Dead code | Prove which characters and action blocks nothing can reach, report it, and remove it only when `--prune-dead-code` is set | `R005` |
+| Requirement shake | Compute the union of host-API requirements per entry point; emit only used runtime modules | `R006` |
+| Tier finalise | Merge per-function tier verdicts with the *call graph*: a T0 function that calls a T2 function stays T0 (it calls into the interpreter) | `R007` |
+| Name assignment | Deterministic symbol names: recovered name → `sanitised` → `_2`, `_3` suffixes by sorted order | `R008` |
+| Frame scripts | Group frame action blocks into per-frame functions; hoist blocks identical across frames | `R009` |
+| Asset plan | Order of asset encodes, parallelism cap, budget accounting, fallback ladder selection | `R010` |
 
 - **IMPL-120-R011** Symbol names MUST be assigned in a single pass over a *sorted* list of candidates
   (by source range, then character id), never by traversal order of a Map. Recovered names are a
@@ -116,6 +116,63 @@ tool version, the input hash and the relevant-config hash (`CMP-R038`).
   name table is closed *before* emission so that two passes cannot disagree.
 - **IMPL-120-R013** Dead-code pruning MUST be reported per character and per action block, with
   reasons; pruning is never silent (design `CMP-D07`).
+- **IMPL-120-R005** Removal of unreachable code or unreferenced characters MUST be opt-in through
+  `--prune-dead-code` (`CMP` §4.6 step 5, §12's config table); without the flag the pass MUST still run and
+  MUST still report what it *would* remove, because the report is what makes a "0 suppressions" claim
+  reviewable. A character may be reported as prunable only on a **proof**, not on the absence of a known
+  reference: every character that could reference another (`DefineSprite`, `DefineButton*`,
+  `DefineShape1–4`, `DefineMorphShape`, `DefineText`, `DefineEditText`) must have been *fully* decoded by
+  the model — a quarantined shape or morph, or an unparsed payload of a referencer kind, disables pruning for
+  the whole movie and says so — because a payload this pass cannot read is a payload that may name anything.
+  References the model *does* record cover placements, removals, button records and button/timeline sound
+  ids, shape and morph fill/line bitmaps (including `FILL_CLIP`'s clip character, which the decoder stores as
+  the same `bitmapId`), and text `fontId`; name-based addressing (`StartSound2`, `EditText` `fontClass`,
+  `attachMovie`) resolves through `ExportAssets`, so exported characters are roots by construction.
+  An action block is prunable only when it is statically unreachable — a basic block the front end flagged
+  `unreachable`, or a block owned by a character this pass proves dead — never because a heuristic expected
+  the frame not to play. Three consequences of reading the rule literally are recorded here because each one
+  was found by writing the test rather than the code. (a) A payload that can name a character id the model does
+  not record is an unparsed referencer for this purpose, which is why `DefineFont2`/`3` (bitmap glyph ids) and
+  `DefineVideo4` (a deblocking bitmap) block pruning movie-wide while the flavours whose payload holds no
+  character id at all — `DefineFont` v1, `DefineFont4`, bitmap, sound, `DefineBinaryData`, `imported`,
+  `missing` — are explicitly allowed (errata `E-046`). (b) A reference the decoder could not resolve is not
+  evidence of absence: a placement whose target the display list did not name, a text run with no readable
+  `fontId`, and edit text naming no font by id or export name each count as incomplete, not as an empty
+  reference set. (c) A `DoInitAction` tag sits at *movie level* but belongs to the sprite it initialises, so the
+  owning character comes from the schedule's `spriteId` and never from the tag's `inSprite`, which is null;
+  without that link an init action would outlive the sprite it was written into, and the group only it required
+  would be emitted forever (`IMPL-050-R073`, errata `E-040`).
+- **IMPL-120-R006** The shake pass MUST compute, per entry point, the union of the host-API requirement
+  groups of every block that entry point can reach, and MUST emit only the runtime modules for the union of
+  all entry points; `requirements` is the sole input (no re-scan of ops). Entry points are the
+  scheduled blocks — frame scripts, init actions, clip-event and button handlers — plus the functions their
+  call graph can reach, which until the call graph is resolved means *every* kept block in the movie:
+  a per-entry-point union that dropped a group a `CallFunction` needed would be a runtime crash reported as
+  a size win. The union MUST stay over-approximating in exactly one further place: a **T2** block requires
+  every group, because its residual blob can call anything at runtime. Over-approximation from dynamic
+  *operands* is `IMPL-050-R061`'s job, not this pass's — the group list is already widened there ("when a
+  dynamic operand could reach a group, the group is required"), and re-widening it here would hide which of
+  the two conservatisms is responsible (`T-CMP-013`). Where the IR's group vocabulary is wider than §8.1's
+  table — `HostApiGroup` carries `timeline`, which the spec's "Movie objects" row covers without naming
+  (errata `E-045`) — the pass MUST fold the unmapped group onto the row that owns the surface through a total
+  map over the IR's values, and MUST report the fold as a decision. §8.1's list stays the only set of modules
+  the emitter can ask for; a fold that is not reported is indistinguishable from a dropped module.
+- **IMPL-120-R007** Tier verdicts MUST be merged with the call graph before emission: a T0 function that
+  calls a T2 function stays T0 (it calls into the interpreter), and the *reason* strings of both functions
+  MUST be carried on the merged verdict, so the emitter can explain a downgrade. No function's tier may be
+  raised by a caller's verdict.
+- **IMPL-120-R008** A symbol's base name MUST be resolved in `AVM1-R036`'s order — export name, then
+  declared name, then the synthetic default `<kind><CharacterId>_<n>` — and the result MUST be legal as an
+  ECMAScript identifier (see §3.1's sanitisation table). The table MUST be closed before emission.
+- **IMPL-120-R009** Frame scripts MUST be grouped per frame in schedule order and emitted as
+  `frame<N>(vm, target, frame)`-shaped functions (`IMPL-120-R017`); a block that is byte-for-byte the same
+  code on two or more frames — and carries the same tier verdict and reasons (§3.1, `IMPL-120-R034`) — MUST
+  be hoisted into one shared function that each frame calls, and MUST be reported as hoisted with the frame
+  list it serves.
+- **IMPL-120-R010** The asset planner MUST order encodes deterministically (by asset identity, never by
+  concurrency-finish order), cap parallelism from the config, choose each asset's fallback ladder before
+  encoding, and account every choice into `budgets.json` — with `IMPL-120-R028`/`R031`'s source-extent
+  reading for video bytes.
 - **IMPL-120-R033** A synthetic identifier MUST NOT embed a byte offset or any other source position.
   Offsets shift under editing, under a re-ordered dictionary, and under any change to an unrelated tag, so
   a name that contains one is unstable across runs and defeats `IMPL-120-R011` at its root: the sort order
@@ -129,11 +186,24 @@ tool version, the input hash and the relevant-config hash (`CMP-R038`).
   as a pair on purpose: a "same code, different position" test alone passes for a projection that throws
   the targets away, which would merge blocks that branch differently.
 
+- **IMPL-120-R035** A post-model pass MUST take its inputs from stage artifacts, never from the live
+  diagnostic sink. A signal a verdict depends on is computed in the stage that owns the data and carried on
+  that stage's artifact — for the dead-code proof, `ModelArtifact.readInterruptions` — because a stage whose
+  result is served from the cache re-runs nothing and therefore re-emits nothing into the sink: a pass reading
+  the sink would see a clean slate on a warm build and make a decision the cold build refused to make. That is
+  `CMP-R040`'s "a cache hit must not change output bytes" broken by an input that was never in the key, and it
+  does not fail: it silently disagrees with itself. Reporting MAY still read the sink, since a report is not a
+  verdict; the boundary is whether removing the input would change what the pass *does*.
+
 ### 3.1 Name assignment and frame-script grouping (as delivered by `WP-120-05`/`WP-120-06`)
 
 The two passes live in `packages/compile/src/passes/{names,frames}.ts` and register as `namesPass()` and
-`framesPass()` on the `runPipeline` spine, which orders them per `IMPL-120-R013` (after `tier-finalise`,
-`shake` and `dead-code`, all still unregistered and reported as such). Five decisions the pass table left
+`framesPass()` on the `runPipeline` spine, which places them after `tier-finalise`, `shake` and `dead-code`
+(the latter two registered by `WP-120-03`/`WP-120-04`; `tier-finalise` still is not, and is reported as
+unregistered). The position comes from `CMP` §2's stage order — passes
+run between `analyze` and `plan` — and it is `IMPL-120-R001`'s purity rule that makes the position stable
+rather than incidental: a pass that read the clock or the filesystem would have its output change with
+*where* it sits. Five decisions the pass table left
 open:
 
 - **`CMP-D-CMP-N1`** — *the base name*: export name → declared name (the front end's recovered map) →
@@ -302,6 +372,8 @@ because the report is produced by the plan pass (`budgets.json`).
 | `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 | P6 |
 | `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one | F1 | P6 |
 | `T-CMP-010` | name assignment is a pure function of content and order: the serialised table is identical under 100 permutations of the `ExportAssets` dictionary **dealt into slots interleaved between the control tags**, so the claim cannot be satisfied by absolute offsets that happen not to move — the test asserts those offsets take several distinct tuples — plus the sanitisation table, the base-claim and `_2`/`_3` collisions, and `IMPL-120-R033`'s ban on offset-bearing names | F1 | P6 |
+| `T-CMP-012` | dead-code pass: with `--prune-dead-code` off nothing is removed and every candidate is reported with its proof; with it on, a quarantined shape or an unparsed referencer payload disables pruning for the whole movie rather than proceeding partially, and a block is called unreachable only on the front end's own flag | F1 | P6 |
+| `T-CMP-013` | shake: the emitted group set equals the union over every block that survives pruning, an entry point's own union is reported beside it, a T2 block forces the full set, and no group is dropped while any kept block names it | F1 | P6 |
 | `T-CMP-011` | hoisting is sound: blocks differing only in position canonicalise equal, blocks differing only in a rebased jump or branch target do not (`IMPL-120-R034`), a T2 block is never hoisted, and every ungrouped or unhoisted block carries a reason | F1 | P6 |
 
 ## 9. Work packages
@@ -310,8 +382,8 @@ because the report is produced by the plan pass (`budgets.json`).
 | --- | --- | --- | --- | --- |
 | WP-120-01 | Pipeline runner: stages, context, cancellation | WP-020-10 | 4 | `packages/compile/src/pipeline.ts` |
 | WP-120-02 | Cache: content-keyed stage cache + `--verify-cache` | WP-120-01 | 5 | `codec.ts`, `cache.ts`, cacheable `analyze`; T-CMP-005 — **Done**, evidence in §2.2 |
-| WP-120-03 | Dead-code pass + reporting | WP-120-01, WP-050-08 | 3 | `passes/dead-code.ts` |
-| WP-120-04 | Requirement tree-shaking + module grouping | WP-120-01, WP-050-09 | 3 | `passes/shake.ts` |
+| WP-120-03 | Dead-code pass + reporting | WP-120-01, WP-050-08 | 3 | `passes/dead-code.ts`, §3 `R005` — **Done**, `T-CMP-012` wired; a payload the model cannot read disables pruning movie-wide (`E-046`), and the inputs come from stage artifacts (`R035`) |
+| WP-120-04 | Requirement tree-shaking + module grouping | WP-120-01, WP-050-09 | 3 | `passes/shake.ts`, §3 `R006` — **Done**, `T-CMP-013` wired; the 14th IR group is folded onto the §8.1 row that owns it and reported (`E-045`) |
 | WP-120-05 | Name assignment pass | WP-120-01, WP-050-10 | 2 | `passes/names.ts`, §3.1 — **Done**, T-CMP-001/010 wired; the P5-side obligations stay open under `E-044` |
 | WP-120-06 | Frame-script grouping/hoisting | WP-120-01, WP-030-09 | 3 | `passes/frames.ts`, §3.1 — **Done**, T-CMP-011 wired |
 | WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-12 | 4 | `passes/assets.ts` |
@@ -349,3 +421,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.4 | 2026-10-14 | P6 started: `WP-120-01` delivered as `@swf-forge/compile` (`packages/compile/src/pipeline.ts`, `cancel.ts`, `config.ts`, `stages/*`). §2 gains the stage-spine mapping between this doc's seven stage names and `CMP` §2's S0–S10 (`read` = S0+S1, `decode` = S3+S4, `analyze` = S5+S6, `report` = S9, S10 `verify` is a command and not a stage), and states that the five §3 passes run on their own spine between `analyze` and `plan`. New §2.1 registers `SF0500` (info: a stage has no implementation in this build), the first code in the `SF05xx` compile range, added to the `IMPL-010` §7 registry |
 | 1.5 | 2026-10-14 | `WP-120-02` delivered (`packages/compile/src/cache.ts`, `codec.ts`; `pipeline.ts`'s cache path), wiring `T-CMP-005` in `packages/compile/test/cache.test.ts`. New §2.2 records the entry format and the rules a reader needs to apply them (effects outside the key, stage options inside the input hash, corrupt-entry-is-a-miss, structural serialisation) and states that `--verify-cache` cannot prove the codec lossless while cold-vs-warm output equivalence can. `SF0503` (warning: a cached output did not match its recomputation) joins §2.1; `analyze` becomes the first cacheable real stage |
 | 1.6 | 2026-10-14 | `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as pass objects on the runner spine, with §3.1 recording the five decisions the pass table left open. Two new rules: `IMPL-120-R033` (a synthetic name never embeds a source position) and `IMPL-120-R034` (a hoist candidate is position-independent but content-complete, and a T2 block is never hoisted), with obligations `T-CMP-010`/`T-CMP-011`. `T-CMP-001`'s dictionary permutation is what makes the first one measurable, and it is a test P5's `T-AVM1-FE-012` cannot be: shuffling a candidate array with an empty export map never moves a byte offset. The `WP-120-02` row here is corrected to 5 days with its deliverables, matching the roadmap. |
+| 1.7 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as pass objects on the spine, with `packages/compile/src/passes/{dead-code,shake}.ts` and 33 tests over real decoded fixtures. `R005` grows three clauses the fixtures forced — model blind spots count as unparsed referencers (`E-046`), an unresolvable reference is never an absence of references, and a `DoInitAction` block's owner is its schedule entry's sprite, not the tag's `inSprite` — and `R006` gains the fold rule for `timeline`, the group 040's §8.1 table cannot name (`E-045`). One new rule: `IMPL-120-R035` (a pass reads stage artifacts, never the live diagnostic sink — a warm build would otherwise prune what a cold one refused), which is the shape `ModelArtifact.readInterruptions` exists to give. `T-CMP-012`/`T-CMP-013` are wired to the two test files. |

@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.30 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.31 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -87,7 +87,7 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   records the five decisions those passes had to make, including the reading of doc 050's `R062` and
   `AVM1-R036` step 1 the phase had to adopt because P5's pass discards the export map — a measured gap (0 of 20 exported
   names appear among 149 recovered ones, `E-044`), not a stylistic preference; the P5-side fix is `WP-050-10`
-  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 10 work packages. `decode` waits on P6's own asset chain
+  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 8 work packages. `decode` waits on P6's own asset chain
   (`WP-070-06`…`-09`, `WP-080-10`'s KTX2 half, `WP-080-11`, `WP-090-12`, `WP-110-12`), `emit` waits on P5's
   `WP-050-18` serializer for the losslessness claim it has to prove, and `WP-120-07` transitively on P0's
   unbuilt `WP-010-11` (§4.6 item F). P6's exit gate — a project that compiles with zero suppressions — is
@@ -96,14 +96,28 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   table gave six `T-CMP-*` ids different meanings; the impl doc owns the band now) and `E-043` (the
   diagnostic model has three severities and no `requirement` field, so `--fail-on=risk`, `risk.json` and the
   design spec's CI default are unimplementable until P0 extends the model — P6 rejects the config value
-  loudly in the meantime).
+  loudly in the meantime). `WP-120-03` and `WP-120-04` are the next two passes, and they are different in kind
+  from the first two: `passes/dead-code.ts` decides what may be *deleted*, and `passes/shake.ts` decides what
+  may be *omitted*, so every input either cannot read becomes a blocker rather than a gap in a table.
+  `dead-code` proves reachability by closure over placements, removals, button records and sound ids, shape and
+  morph fill/line bitmaps (clip fills included) and text font ids, with exports as roots; `shake` selects the
+  emitted runtime modules as the union of host-API requirement groups over the kept blocks. 33 tests, all over
+  *decoded* fixtures, and the fixtures are what found the three things worth reading before `WP-120-08`: a
+  `DoInitAction` block's owner is its schedule entry's sprite and not the tag's `inSprite`, which is null at
+  movie level; `HostApiGroup` names a 14th group, `timeline`, that AVM1 §8.1's 13-row table cannot — reached by
+  `ActionStop` alone, so 17 of 119 corpus blocks in 11 of 73 movies ask for a module that does not exist
+  (`E-045`, folded and reported at the P6 boundary); and `DefineFont2/3`'s bitmap glyph ids, `DefineVideo4`'s
+  deblocking bitmap and a payload our own reader over-ran leave nothing for a proof to read (`E-046`), so all
+  three fail closed movie-wide. The fourth item is `IMPL-120`'s new `R035`, and it came from a defect in the first draft:
+  reading `ctx.diagnostics` for a verdict makes a cached warm build prune what a cold build refused, so derived
+  signals belong on the stage artifact (`ModelArtifact.readInterruptions`). Doc 120 v1.7 carries the clauses.
 - **P7–P10 — Not started:** phase-owned acceptance has not begun. P3 decoders/assets and the P4 no-script renderer are prerequisites, not proof of P7 runtime execution, P8 playback/sync, P9 fidelity, or P10 video gates.
 - **P11 — In progress:** CI currently runs spec verification, typecheck, tests, a 10⁴-mutation smoke fuzz gate, build, lint, development audit, tag coverage, and a **browser lane** (headless Chromium over the shared §8 vectors — the P0-owned minimal lane of §4.2, which P11 extends into the three-engine matrix). The P11 release gates remain open: 24-hour fuzz history, the security suite, bundle/texture/audio/manifest budgets, and a decision register with no un-triaged entries.
 - **P12–P13 — Not started:** the design specs exist, but inspector and clean-engine phase acceptance has not begun.
 
 **Shared verification snapshot (2026-10-14):** `corepack pnpm build`, `typecheck` (now including
-`packages/compile/tsconfig.test.json`), `test` (**69 files / 819 tests**), `audit:dev`
-(**190 codes**, **588 rules**, **452 test ids — 234 cited / 216 unwired**, `new=0`), `corpus:verify`
+`packages/compile/tsconfig.test.json`), `test` (**73 files / 898 tests**), `audit:dev`
+(**190 codes**, **597 rules**, **456 test ids — 239 cited / 215 unwired / 2 source-only**, `new=0`), `corpus:verify`
 (73/73 against the pinned manifest), `test:avm1-restart` (both reports identical), `test:browser` (**31 cases in headless Chromium 153.0.8010.0**, the same 26 vectors and the same pinned fingerprint as the Node lane), and `lint` pass. Carried forward from the 2026-10-11 snapshot: `python3 tools/verify_docs.py` (`ISSUES: 0`) and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations). These shared checks do not supersede the phase-specific open criteria above.
 
 Each phase's document-level detail lives in the per-area implementation specs; this document owns
@@ -784,3 +798,4 @@ art):
 | 1.28 | 2026-10-14 | **P6 started**: §2's P6 row is **In progress** and the P6–P10 bullet is split. `WP-120-01` delivered as `@swf-forge/compile` — the pipeline runner (stage spine, pass spine, run context, threaded cancellation, cache seam, `--dry-run`), stage adapters for `read`/`model`/`analyze` over the delivered suppliers with the AVM2 refusal, and `SF0500` so an unimplemented stage is reported rather than skipped; 24 tests, all gates green. Doc 120 v1.4 records the stage-spine mapping to the design spec's S0–S10 and registers the code. Two defects found by starting the phase: `E-042` (the design spec's §13 and doc 120 §8 gave six `T-CMP-*` ids different meanings — the design spec no longer mints them, and its unowned build-time criterion is recorded) and `E-043` (no `risk` severity and no `requirement` field in the diagnostic model, so `--fail-on=risk` is unimplementable; P6 rejects the value and the model extension is dispositioned to P0). CMP is now Draft 1.2, errata v2.12 |
 | 1.29 | 2026-10-14 | P6's second work package: `WP-120-02` (stage cache + structural codec) delivered, `T-CMP-005` wired — P6's first cited obligation — and the shared snapshot refreshed. The cache was proven by cold-versus-warm byte equivalence over the 73-title corpus and negative-controlled by deliberately losing data; the control is what showed `--verify-cache` cannot see a consistently lossy format, and `IMPL-120` v1.5 §2.2 records both mechanisms and that division. `RELEVANT_CONFIG_KEYS.analyze` was over-declared in v1.28 and is corrected to what the stage reads (nothing); `.gitignore` gains `CMP` §12's `.forge/` |
 | 1.30 | 2026-10-14 | P6's third and fourth work packages: `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as the first passes on the runner's pass spine, `T-CMP-001` wired and `T-CMP-010`/`T-CMP-011` added for doc 120's two new rules `R033`/`R034`, each negative-controlled by injecting the defect it forbids. `IMPL-120` → 1.6: §3.1 records the five decisions those passes had to make, and its `WP-120-02` row is aligned to the roadmap's 5 days — the drift `verify_docs.py`'s §7↔§10 cross-check caught when this document moved. The index follows to ≈ 668.5 d and §7's P6 row to 68 d |
+| 1.31 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as the next two objects on the pass spine, wiring `T-CMP-012`/`T-CMP-013`; `packages/compile` is at 117 tests across six files and the suite at 73/898. `IMPL-120` → 1.7: `R005` gains the three clauses the fixtures forced, `R006` gains the fold rule, and one new rule (`IMPL-120`'s `R035`: a pass takes its inputs from stage artifacts, never the live diagnostic sink — a cache hit re-emits nothing, so a sink-reading pass would prune on a warm build what it refused on a cold one). Two errata filed, both owned by P2 and neither patched from P6: `E-045` (the IR's `timeline` group has no §8.1 row; 17 of 119 corpus blocks in 11 of 73 movies) and `E-046` (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and an over-read that leaves `quarantined` unset while `SF0013` reports a *warning* at an offset inside the *next* tag — so no consumer can tell a partial payload from a complete one and no offset rule can attribute it). `errata.md` → 2.14, §2's P6 bullet now carries 6 of 14 work packages, and the shared snapshot is re-measured. |

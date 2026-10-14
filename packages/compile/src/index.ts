@@ -86,6 +86,27 @@ export type {
 } from './passes/names.js';
 
 export { canonicalForm, extendNameTable, framesPass, groupFrameScripts, namesPass } from './passes/frames.js';
+export {
+  analyseDeadCode,
+  deadCodeDecisions,
+  deadCodePass,
+  referencesOf,
+  type BlockVerdict,
+  type CharacterVerdict,
+  type DeadCodeInput,
+  type DeadCodePassOptions,
+  type DeadCodePlan,
+} from './passes/dead-code.js';
+export {
+  SPEC_GROUPS,
+  shakeDecisions,
+  shakePass,
+  shakeRequirements,
+  type EntryPointUnion,
+  type ShakeInput,
+  type ShakePassOptions,
+  type ShakePlan,
+} from './passes/shake.js';
 export type { FrameGroup, FramePlan, FrameScriptUnit, FramesPassOptions, HoistedUnit } from './passes/frames.js';
 
 export { readStage } from './stages/read.js';

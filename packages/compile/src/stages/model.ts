@@ -9,7 +9,46 @@
  * already computed. Supplying one here would create a second notion of identity for the same bytes.
  */
 
-import { buildMovieModel, type SwfFile } from '@swf-forge/swf';
+import { buildMovieModel, type Diagnostic, type SwfFile, type TagRef } from '@swf-forge/swf';
+
+/**
+ * Only `error`-severity diagnostics are attributed to a payload, and only when their offset falls inside the
+ * tag's own span.
+ *
+ * The temptation is to widen this to the soft-read codes (`SF0013`, `SF0010`), which mean "a value was zeroed
+ * so the reader could continue" — exactly the hole `IMPL-120-R005` cannot tolerate. It cannot be done from an
+ * offset: a soft over-read records where the cursor *ended up*, which is past the tag's declared limit and
+ * usually inside the *next* tag's bytes. Measured on a three-byte `DefineShape`: the tag spans `[0, 5)` and
+ * the diagnostic reports offset `7`. Attribution therefore has to come from the reader, which is errata
+ * `E-046`; until that lands, a silently truncated payload stays invisible to every consumer, and this pass
+ * says so in its report rather than guessing.
+ */
+function isReadInterruption(diagnostic: Diagnostic): boolean {
+  return diagnostic.severity === 'error';
+}
+
+export function readInterruptionsFor(
+  diagnostics: readonly Diagnostic[],
+  characters: Iterable<[number, { readonly index: TagRef | null }]>,
+): { readonly characterId: number; readonly code: string }[] {
+  const flagged = diagnostics.filter(isReadInterruption);
+  if (flagged.length === 0) return [];
+  const out: { characterId: number; code: string }[] = [];
+  for (const [characterId, character] of characters) {
+    const index = character.index;
+    if (index === null) continue;
+    // `offset` is the payload start and `length` covers the header too, so the span is header→payload end.
+    const start = index.headerOffset ?? index.offset;
+    const end = start + index.length;
+    for (const diagnostic of flagged) {
+      if (diagnostic.offset >= start && diagnostic.offset < end) {
+        out.push({ characterId, code: diagnostic.code });
+        break;
+      }
+    }
+  }
+  return out.sort((a, b) => a.characterId - b.characterId);
+}
 
 import { requireArtifact } from '../pipeline.js';
 import type { ModelArtifact, PipelineState, Stage, StageContext, StageOutcome } from '../pipeline.js';
@@ -25,7 +64,7 @@ export function modelStage(options: ModelStageOptions = {}): Stage {
   return {
     id: 'model',
     effects: { reads: [], writes: [] },
-    run(state: PipelineState, _ctx: StageContext): StageOutcome {
+    run(state: PipelineState, ctx: StageContext): StageOutcome {
       const read = requireArtifact(state.read, 'model', 'read');
       const model = buildMovieModel(read.file, {
         strictTimeline: options.strictTimeline ?? false,
@@ -36,6 +75,10 @@ export function modelStage(options: ModelStageOptions = {}): Stage {
         frameCount: model.frameCount,
         characterCount: model.characters.size,
         initActionCount: model.initActions.length,
+        readInterruptions: readInterruptionsFor(
+          ctx.diagnostics.list(),
+          [...model.characters].map(([id, character]) => [id, { index: character.index }]),
+        ),
       };
       return { state: { model: artifact } };
     },

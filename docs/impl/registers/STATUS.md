@@ -25,8 +25,8 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 19 | 52 | 7 | 41 | 26 | ✅ |
-| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 11 | 4 | ✅ |
-| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **294** | **257** | |
+| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 13 | 4 | ✅ |
+| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **296** | **257** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -75,7 +75,7 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | 020 | `T-SWF-001`, `T-SWF-002`, `T-SWF-003`, `T-SWF-007`, `T-SWF-008`, `T-SWF-010`, `T-SWF-011`, `T-SWF-012`, `T-SWF-018`, `T-SWF-019`, `T-SWF-020`, `T-SWF-021`, `T-SWF-022`, `T-SWF-023` |
 | 140 | `T-TST-101`, `T-TST-102`, `T-TST-103`, `T-TST-104` |
 | 050 | `T-AVM1-FE-001`, `T-AVM1-FE-002`, `T-AVM1-FE-003`, `T-AVM1-FE-004`, `T-AVM1-FE-005`, `T-AVM1-FE-006`, `T-AVM1-FE-007`, `T-AVM1-FE-008`, `T-AVM1-FE-009`, `T-AVM1-FE-010`, `T-AVM1-FE-011`, `T-AVM1-FE-012`, `T-AVM1-FE-013`, `T-AVM1-FE-014`, `T-AVM1-FE-015`, `T-AVM1-FE-016`, `T-AVM1-FE-017`, `T-AVM1-FE-018`, `T-AVM1-FE-019`, `T-AVM1-FE-020`, `T-AVM1-FE-021`, `T-AVM1-FE-022`, `T-AVM1-FE-023`, `T-AVM1-FE-024`, `T-AVM1-FE-025`, `T-AVM1-FE-026`, `T-AVM1-FE-027`, `T-AVM1-FE-028`, `T-AVM1-FE-029`, `T-AVM1-FE-030`, `T-AVM1-FE-031`, `T-AVM1-FE-032`, `T-AVM1-FE-033`, `T-AVM1-FE-034`, `T-AVM1-FE-035`, `T-AVM1-FE-036`, `T-AVM1-FE-037`, `T-AVM1-FE-038`, `T-AVM1-FE-039`, `T-AVM1-FE-040`, `T-AVM1-FE-041` |
-| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008`, `T-CMP-009`, `T-CMP-010`, `T-CMP-011` |
+| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008`, `T-CMP-009`, `T-CMP-010`, `T-CMP-011`, `T-CMP-012`, `T-CMP-013` |
 
 `T-SWF-*` is shared by the two container documents (010 declares the primitive tests; 020 the header,
 tag-stream and dictionary tests, and each cites the other explicitly). `030` owns `T-MOD-001`–`012`,

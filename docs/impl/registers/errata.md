@@ -1434,6 +1434,111 @@ leaves open:
 blocked: its table is correct either way, and when the P5 fix lands the consulted name arrives through
 `recoveredName` instead of through this pass's own dictionary lookup.
 
+## E-045 — the AVM1 IR's requirement groups carry a 14th value that AVM1-§8.1's table cannot name (open)
+
+**Found in:** implementing `WP-120-04`, the requirement-shake pass, whose sole input is
+`ActionIR.requirements` and whose output is the list of runtime modules the emitter will include.
+
+**What the documents say:** `docs/specs/language/040-avm1-to-typescript.md` §8.1 enumerates **13** host-API
+groups — core-objects, movie-objects, events, sound, loading, data, drawing, bitmap, geometry, filters,
+colour, misc-system, legacy-as1 — and `IMPL-120-R006` says the pass selects "the union of `HostApiGroup`
+values over kept blocks", which presumes the IR's vocabulary and the spec's table are the same set.
+
+**What is wrong:** they are not. `HostApiGroup` in `packages/avm1/src/frontend/requirements.ts` has **14**
+values; the extra one, `timeline`, covers the frame-control and `_currentframe`/`_totalframes` surface that
+§8.1 files inside the "Movie objects" row without giving it a group of its own. Nothing is *unsound* about
+that — the IR is allowed a finer partition than the spec's module list — but a consumer that reads
+`requirements` as a module list, which is exactly what `R006` instructs, is handed a name with no runtime
+module behind it.
+
+**Measurement**, over the 73 licensed corpus titles (`pnpm corpus:verify` passes on all of them):
+
+| measurement | value |
+| --- | --- |
+| action blocks analysed | 119 |
+| …naming `timeline` | **17 (14 %)**, in 11 of 73 movies |
+| …naming `timeline` but *not* `movie-objects` | 6 |
+| group frequency | core-objects 115, movie-objects 87, misc-system 84, timeline 17, loading 7, legacy-as1 6, events 1, sound 1, colour 1 |
+
+So the mismatch is not a corner of one malformed file: it reaches a seventh of the corpus's blocks, and for
+6 blocks `timeline` is the *only* group in the movie-object pair, which is where a naive fold-into-nothing
+would drop a module something still calls. The frequency row is also why `T-CMP-013`'s fixtures are synthetic:
+five groups (data, drawing, bitmap, geometry, filters) are named by **no** block in the licensed corpus, so no
+real file can show a drop happening.
+
+**Resolution:** P6 folds `timeline` into `movie-objects` at its own boundary — `GROUP_FOLD` in
+`packages/compile/src/passes/shake.ts`, a total map over all 14 values, with one decision entry per entry
+point saying so (`IMPL-120-R006`). The fold is the *interim* shape; the durable fix is one line either way:
+
+- P5/`specs/040`: either add a "Timeline" row to §8.1 (and let `WP-120-07`'s runtime layout grow a 14th module),
+  or rename the IR value `movie-objects` and delete the fold. Which of the two is a spec decision, not a P6
+  one, because §8.1's row list is also what doc 120's emission order (`IMPL-120-R008`) is indexed against.
+- Whichever way it goes, `GROUP_FOLD` and this entry's test are deleted in the same change, not left as a
+  second source of truth.
+
+**Encoded by:** `packages/compile/test/shake.test.ts`, "folds the IR-only timeline group into the spec row that
+owns those APIs (`E-045`)", which asserts the raw IR names `timeline`, that `SPEC_GROUPS` does not contain it,
+that the selection contains `movie-objects`, and that the fold is reported rather than silent.
+
+---
+
+## E-046 — three payloads a dead-code proof cannot read, one of them from our own reader (open)
+
+**Found in:** implementing `WP-120-03`, whose rule is that a character is prunable only when *every* payload
+that could name it has been read. `IMPL-040`/`IMPL-120-R005` list the reference sites; three of them turn out
+not to exist in the model P2 publishes, and one is not detectable at all.
+
+1. **`DefineFont2`/`3` bitmap glyphs.** With `HaveBitmaps` set, every glyph outline in the font carries a
+   `BitmapCharacterID` naming a `DefineBitsJPEG`-family character. `DefineFontModel`
+   (`packages/swf/src/tags/fonts.ts:46–64`) decodes glyphs, codes, metrics and kerning and has **no** field for
+   it — `grep -i bitmap packages/swf/src/tags/fonts.ts` returns nothing, so the flag is neither recorded nor
+   reported. A bitmap pruned out from under such a font draws as nothing, with no diagnostic anywhere in the
+   build.
+2. **`DefineVideo4`'s `DeblockCharacterID`.** Same shape of hole, bigger: `CharacterModel` carries no video
+   payload field at all, so the tag's own trailing character id cannot be read by any consumer.
+3. **A payload our reader over-ran.** A `DefineShape` whose declared size is smaller than its content is the
+   case the proof most needs to catch, and it is invisible. Measured on a 3-byte body: the tag spans
+   `[0, 5)`, `buildMovieModel` returns `kind: 'shape'` with a non-null `vectorShape` and `quarantined`
+   **unset**, and the only signal is `SF0013` — a *warning*, at offset **7**, which is inside the *next* tag's
+   span. Two consequences follow. A partial payload is indistinguishable from a complete one, so a proof over
+   the model is not a proof. And no rule can attribute the diagnostic: the cursor position of an over-read
+   lands past the tag that caused it, so both "nearest preceding tag" and any slack window are guesses. What
+   is sound is the narrow version: an **error**-severity diagnostic whose offset falls inside a definition tag's
+   span (`headerOffset … headerOffset + length`) means that payload was interrupted — which is what P6 uses.
+
+**Measurement**, over the 73 licensed titles (67 characters in total): 2 `DefineFont2` characters in 2 movies,
+0 video characters, 0 `unknown` kinds, 0 quarantined shapes. The font block therefore disables pruning for
+**2 of 73 movies** — cheap on this corpus, and the honest direction for a real one, where a bitmap font is
+normal.
+
+**Resolution:** P6 fails closed, and says so. `font2`/`font3`/`video` are reported as incomplete referencers
+(`font` v1, `font4`, bitmap, sound, `binaryData`, `imported` and `missing` are *not* — their payloads contain no
+character id, and the tests pin that half too, because a rule that blocked on every font would be quietly
+unusable); an unresolvable placement id, a text run with no readable `fontId`, and edit text naming no font by
+id or export name are each incomplete; and a character whose payload was interrupted is treated as an
+incomplete *referencer*, which disables pruning movie-wide rather than for that one character. The
+interruption list is derived in the `model` stage and carried on the artifact
+(`ModelArtifact.readInterruptions`), never read from the live diagnostic sink — see `IMPL-120-R035`. The three
+underlying gaps are P2's:
+
+- `WP-020-*`: record `HaveBitmaps`' per-glyph character ids on `DefineFontModel`, and a `DefineVideo4` payload
+  view with its `DeblockCharacterID`, so a reference a file makes is a field a consumer can read.
+- `WP-020-*`: an over-read must mark the payload it truncated. `quarantined` is the existing field for "this
+  payload is not trustworthy"; reusing it for a soft truncation needs no new model type, and it makes every
+  downstream proof — not just this one — able to fail closed.
+- `WP-020-*`: if `SF0013` keeps a warning severity for an over-read that changes what a payload *contains*,
+  then severity is carrying information the model does not otherwise expose. Either promote the over-read to an
+  error, or expose the truncation as a field; a consumer should not have to infer model state from diagnostic
+  severity.
+
+**Encoded by:** `packages/compile/test/dead-code.test.ts`, "what a payload can hide (`E-046`)" — both the
+blocking and the non-blocking kinds, plus the movie-wide disable driven from a real `DefineFont2` tag that is a
+root (a dead referencer cannot hold anything alive, which is why the first version of that fixture proved
+nothing) — and "PINS a gap: a silently truncated payload still reads as complete", which asserts the *wrong*
+side on purpose so the suite fails when the reader starts marking partial payloads.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -1462,3 +1567,4 @@ blocked: its table is correct either way, and when the P5 fix lands the consulte
 | 2.11 | 2026-10-13 | `E-040` fixed (`IMPL-050-R073`, `frontend/control-flow.ts` + `frontend/stack.ts`, `T-AVM1-FE-041`): a region op now falls into its body, a body falls into the region's `finally` and then into the record after the region, so the continuation is a real join over the bodies' exits; and a predecessor that never settled no longer blocks a join forever, which had been dropping every block downstream of unreachable code from the IR. Corpus: T0 124 → 119, T1 120 → 130, T2 25 → **23**, errors 15 → **14**, functions 150 → **153**, clean exits 59 → **60 of 73**, with `string_coercion`'s disassembly growing 119 → 654 lines of recovered IR. `E-041` stays open |
 | 2.12 | 2026-10-14 | P6 started (`WP-120-01`, `@swf-forge/compile`) and the first two documents it had to read disagreed with each other or with the code: `E-042` (CMP §13's acceptance table and doc 120 §8 give six `T-CMP-*` ids different meanings — the impl doc owns the band, CMP §13 stops minting ids, and two of its criteria are recorded as gaps, one with no owner anywhere) and `E-043` (the implemented diagnostic model has three severities and no `requirement` field, while CMP §9 specifies four and one, so `--fail-on=risk`, `risk.json` and `CMP-D05` are unimplementable; P6 now rejects `failOn: 'risk'` loudly, and the model extension is dispositioned to P0) |
 | 2.13 | 2026-10-14 | `E-044` recorded while implementing `WP-120-05` (doc 120's name-assignment pass): P5's `recoverNames` discards the export map its own rule requires (`void exportMap;` under a comment claiming the opposite), 96 of 149 corpus function names embed a byte offset, and `detectClasses` has no production caller so class recovery reports zero everywhere by construction. Measured across all 73 licensed titles and pinned from both sides; dispositioned to `WP-050-10`/`WP-050-11` rather than patched from P6, which builds its own closed table under the new `IMPL-120-R033` |
+| 2.14 | 2026-10-14 | `E-045` and `E-046`, both from `WP-120-03`/`WP-120-04`: `E-045` (open) — `HostApiGroup` carries a 14th value `timeline` that AVM1-§8.1's 13-row table cannot name, reaching 17 of 119 corpus blocks in 11 of 73 movies, so `requirements` cannot be read as a module list; P6 folds it and reports it, and §8.1 owns the durable fix. `E-046` (open) — three reference sites the model cannot answer (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and a reader that over-ran its tag: `SF0013` is a warning at an offset inside the *next* tag, `quarantined` unset, so a partial payload is indistinguishable from a complete one and no offset rule can attribute it); P6 fails closed on all three and moves the derived signal onto the stage artifact under the new `IMPL-120-R035` |

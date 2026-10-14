@@ -137,18 +137,108 @@ export function simulateFrames(options: SimulateOptions, frames: FrameSet): SimR
     }
   }
 
-  // The first block of a region-body scope is entered from its region op.
-  const bodyEntryFrame = new Map<number, number>();
+  // The first block of each region-body scope is entered from its region op, so it is keyed by
+  // scope rather than by record: a `Try` has three body scopes (try/catch/finally) sharing a
+  // single region record, and keying by record left the catch and finally entry frames with no
+  // settled input depth, so they were never simulated and their ops never reached the IR
+  // (errata E-039). All three bodies start at the depth the region op saw: the player restores
+  // the stack to the `Try` entry before running the catch body and binds the thrown value to the
+  // catch variable or register rather than pushing it
+  // (ruffle-rs/ruffle `core/src/avm1/activation.rs` `action_try`).
+  const bodyEntryFrame = new Map<string, number>();
   for (const frame of frames.frames) {
     if (frame.regionRecord === null) continue;
     const first = frames.frames
       .filter((f) => f.scopeKey === frame.scopeKey)
       .sort((a, b) => a.firstOffset - b.firstOffset)[0];
-    if (first !== undefined && bodyEntryFrame.get(frame.regionRecord) === undefined) {
-      bodyEntryFrame.set(frame.regionRecord, first.id);
+    if (first !== undefined && bodyEntryFrame.get(frame.scopeKey) === undefined) {
+      bodyEntryFrame.set(frame.scopeKey, first.id);
     }
   }
   const regionEntry = new Map<number, Depth>();
+
+  const frameById = new Map<number, BlockFrame>();
+  const framesByScope = new Map<string, BlockFrame[]>();
+  for (const frame of frames.frames) {
+    frameById.set(frame.id, frame);
+    const list = framesByScope.get(frame.scopeKey);
+    if (list === undefined) framesByScope.set(frame.scopeKey, [frame]);
+    else list.push(frame);
+  }
+
+  // The frames that leave a scope: their terminator points nowhere, or at a frame in another scope.
+  // A `finally` body is entered from those of the try scope (normal path) and of the catch scope
+  // (throw path), because the player runs it on the stack whichever body left behind rather than
+  // resetting it (ruffle-rs/ruffle `core/src/avm1/activation.rs` `action_try`: the catch path
+  // truncates to the `Try` entry, the finally path does not truncate at all).
+  const scopeExits = new Map<string, number[]>();
+  for (const [key, list] of framesByScope) {
+    const exits: number[] = [];
+    for (const frame of list) {
+      const term = frame.terminator;
+      const nexts =
+        term.kind === 'branch'
+          ? [term.targetOffset, term.nextOffset]
+          : term.kind === 'jump'
+            ? [term.targetOffset]
+            : term.kind === 'fallthrough' || term.kind === 'target'
+              ? [term.nextOffset]
+              : [];
+      const leaves = nexts.every((offset) => {
+        if (offset === null) return true;
+        const id = indexByStart.get(offset);
+        return id === undefined || frameById.get(id)?.scopeKey !== key;
+      });
+      if (leaves) exits.push(frame.id);
+    }
+    scopeExits.set(key, exits);
+  }
+
+  /**
+   * The input depth of a region body's entry frame, or `undefined` while a depth it depends on is
+   * still pending. `try`, `catch` and `with` bodies enter at the depth their region op saw; a
+   * `finally` body enters at the join of the try and catch bodies' exits (`IMPL-050-R072`).
+   */
+  const regionBodyDepth = (frame: BlockFrame): Depth | undefined => {
+    const recordIndex = frame.regionRecord;
+    if (recordIndex === null) return undefined;
+    if (!frame.scopeKey.startsWith('finally:')) {
+      const depth = regionEntry.get(recordIndex);
+      if (depth !== undefined) return depth;
+      // Nothing left to wait for: the region op is in a block that never settled, so fall back to
+      // the dynamic answer rather than dropping the body's records from the IR altogether.
+      if (relaxed) return 'unknown';
+      return undefined;
+    }
+    const keys = (options.bodyScopeKeys.get(recordIndex) ?? []).filter((key) => !key.startsWith('finally:'));
+    if (keys.length === 0) return regionEntry.get(recordIndex) ?? (relaxed ? 'unknown' : undefined);
+    let value = -1;
+    let unknown = false;
+    let conflict = false;
+    for (const key of keys) {
+      for (const id of scopeExits.get(key) ?? []) {
+        const sim = sims.get(id);
+        const out = sim?.out ?? null;
+        if (out === null) {
+          if (!relaxed) return undefined;
+          unknown = true;
+          continue;
+        }
+        if (out === 'unknown') unknown = true;
+        else if (value === -1) value = out;
+        else if (value !== out) conflict = true;
+      }
+    }
+    // A disagreement is not a mismatch to report: the player really does run the same finally body
+    // after both paths, so the honest static answer is a dynamic depth (T1), never `SF0406`.
+    if (unknown || conflict) {
+      dynamicStack = true;
+      return 'unknown';
+    }
+    return value;
+  };
+
+  let relaxed = false;
 
   for (let iter = 0; iter < 1000; iter += 1) {
     let changed = false;
@@ -158,29 +248,44 @@ export function simulateFrames(options: SimulateOptions, frames: FrameSet): SimR
       const sim = sims.get(frame.id);
       if (sim === undefined || sim.in !== null) continue;
       const isEntry = frame.id === frames.entryId;
-      const bodyEntry = frame.regionRecord !== null ? bodyEntryFrame.get(frame.regionRecord) : undefined;
+      const bodyEntry = frame.regionRecord !== null ? bodyEntryFrame.get(frame.scopeKey) : undefined;
       const preds = predEdges.get(frame.id) ?? [];
 
       let inDepth: Depth | null = null;
       if (isEntry) {
         inDepth = 0;
       } else if (frame.regionRecord !== null && bodyEntry === frame.id) {
-        inDepth = regionEntry.get(frame.regionRecord) ?? 'unknown';
+        // A region op records its entry depth when the block holding it is simulated, which can be a
+        // later iteration than the first. Leave the frame unsettled until that depth exists: `sim.in`
+        // is never revisited, so latching `unknown` here would cost every region body its verified
+        // depth for good (errata E-039). A depth may itself be `unknown`, which does settle.
+        const depth = regionBodyDepth(frame);
+        if (depth !== undefined) inDepth = depth;
       } else if (preds.length > 0) {
         let settled = true;
         let conflict = false;
         let unknown = false;
         let value = -1;
+        let contributing = 0;
         for (const pred of preds) {
           const out = sims.get(pred)?.out ?? null;
           if (out === null) {
-            settled = false;
-            break;
+            // A predecessor that never settled is dead code — nothing ever established its own input
+            // depth. Waiting for it would drop the join (and everything after it) from the IR, which
+            // is what a region body's unreachable tail did once regions got real successors
+            // (errata E-040). Wait while the fixpoint can still move; ignore it once it cannot.
+            if (!relaxed) {
+              settled = false;
+              break;
+            }
+            continue;
           }
+          contributing += 1;
           if (out === 'unknown') unknown = true;
           else if (value === -1) value = out;
           else if (value !== out) conflict = true;
         }
+        if (settled && contributing === 0) settled = false; // every predecessor is dead: so is this
         if (settled) {
           if (conflict) {
             inDepth = 'unknown';
@@ -222,7 +327,16 @@ export function simulateFrames(options: SimulateOptions, frames: FrameSet): SimR
       }
       changed = true;
     }
-    if (!changed) break;
+    if (!changed) {
+      // One more pass with `relaxed` set, so bodies waiting on a depth that will never arrive (an
+      // unreachable region op, a dead exit inside a region body) still settle instead of losing
+      // their records.
+      if (!relaxed) {
+        relaxed = true;
+        continue;
+      }
+      break;
+    }
   }
 
   // Build the final blocks (region ops carry placeholder body lists that get patched next).
@@ -287,8 +401,6 @@ export function simulateFrames(options: SimulateOptions, frames: FrameSet): SimR
   // Reachability (R055): BFS from the entry; unreachable blocks are retained and marked.
   const reachable = new Set<number>([frames.entryId]);
   const queue: number[] = [frames.entryId];
-  const frameById = new Map<number, BlockFrame>();
-  for (const frame of frames.frames) frameById.set(frame.id, frame);
   while (queue.length > 0) {
     const id = queue.pop();
     if (id === undefined) continue;

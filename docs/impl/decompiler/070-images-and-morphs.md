@@ -413,29 +413,29 @@ so a 300-morph movie produces a readable report rather than 300 identical lines.
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-301` | `DefineBits` + `JPEGTables` splice produces a decodable JPEG (byte-compare the merged stream) | F1 |
-| `T-MOD-302` | lossless row padding: a 3×3 24-bit image with distinct rows decodes with rows in place | F1 |
-| `T-MOD-303` | lossless/lossless2 colour order: corner-colour fixtures prove XRGB vs ARGB channels | F1 |
-| `T-MOD-304` | JPEG3/4 alpha inflate: exact `w × h`, mismatch path, alpha-over-black composite | F1 |
-| `T-MOD-305` | PNG/GIF passthrough is byte-identical to the tag payload | F1 |
-| `T-MOD-306` | classification stability: the same input classifies identically across 100 runs | F1 |
-| `T-MOD-307` | mip ladder residual error within the AST-R021 tolerance on the corpus | F2 |
-| `T-MOD-308` | `.sfa` round-trip: decode → emit → decode yields identical pixels | F1 |
-| `T-MOD-309` | row padding for all four pixel sizes (indexed 1 B, PIX15 2 B, PIX24 4 B, ARGB 4 B) incl. the 253-px example | F1 |
-| `T-MOD-310` | `ALPHABITMAPDATA` un-premultiply: round-trip, `alpha == 0` case, 255-clamp | F1 |
-| `T-MOD-311` | `PIX15` bit order (`Reserved/R/G/B` 5-bit fields) and `PIX24` zero byte | F1 |
-| `T-MOD-312` | erroneous `FFD9FFD8` prefix tolerated; multiple `JPEGTables` → first wins + `SF0257` | F1 |
-| `T-MOD-313` | `DefineBitsLossless2` format 4 decoded with `SF0259`; unknown format quarantined (`SF0260`) | F1 |
-| `T-MOD-401` | morph endpoints: ratio 0/65535 renders identical to the static shapes (via IR diff) | F1 |
-| `T-MOD-402` | morph style pairing on count mismatch (fill/line arrays) | F1 |
-| `T-MOD-403` | degenerate correspondence for unequal edge counts | F1 |
-| `T-MOD-404` | two-stream parse: style changes only in `StartEdges`, the `EndEdges` header byte, an inconsistent `Offset` (`SF0264`) | F1 |
-| `T-MOD-405` | `MORPHGRADIENT`: the single `GRADIENT`-style header byte, start/end matrix order, interleaved `(ratio, colour)` pairs | F1 |
-| `T-MOD-406` | `MORPHLINESTYLE2`: one shared flag word, miter `× StartWidth`/`× EndWidth`, `HasFillFlag` fill pair | F1 |
-| `T-MOD-407` | straight↔curved pairing with odd deltas: rational twips retained, single deterministic rounding | F1 |
-| `T-MOD-408` | morph restriction checks: unequal edge counts, different bitmap ids, missing `MoveTo` counterpart | F2 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-301` | `DefineBits` + `JPEGTables` splice produces a decodable JPEG (byte-compare the merged stream) | F1 | P3 |
+| `T-MOD-302` | lossless row padding: a 3×3 24-bit image with distinct rows decodes with rows in place | F1 | P3 |
+| `T-MOD-303` | lossless/lossless2 colour order: corner-colour fixtures prove XRGB vs ARGB channels | F1 | P3 |
+| `T-MOD-304` | JPEG3/4 alpha inflate: exact `w × h`, mismatch path, alpha-over-black composite | F1 | P3 |
+| `T-MOD-305` | PNG/GIF passthrough is byte-identical to the tag payload | F1 | P3 |
+| `T-MOD-306` | classification stability: the same input classifies identically across 100 runs | F1 | P6 (WP-070-06) |
+| `T-MOD-307` | mip ladder residual error within the AST-R021 tolerance on the corpus | F2 | P6 (WP-070-07) |
+| `T-MOD-308` | `.sfa` round-trip: decode → emit → decode yields identical pixels | F1 | P6 (WP-070-08) |
+| `T-MOD-309` | row padding for all four pixel sizes (indexed 1 B, PIX15 2 B, PIX24 4 B, ARGB 4 B) incl. the 253-px example | F1 | P3 |
+| `T-MOD-310` | `ALPHABITMAPDATA` un-premultiply: round-trip, `alpha == 0` case, 255-clamp | F1 | P3 |
+| `T-MOD-311` | `PIX15` bit order (`Reserved/R/G/B` 5-bit fields) and `PIX24` zero byte | F1 | P3 |
+| `T-MOD-312` | erroneous `FFD9FFD8` prefix tolerated; multiple `JPEGTables` → first wins + `SF0257` | F1 | P3 |
+| `T-MOD-313` | `DefineBitsLossless2` format 4 decoded with `SF0259`; unknown format quarantined (`SF0260`) | F1 | P3 |
+| `T-MOD-401` | morph endpoints: ratio 0/65535 renders identical to the static shapes (via IR diff) | F1 | P3 |
+| `T-MOD-402` | morph style pairing on count mismatch (fill/line arrays) | F1 | P3 |
+| `T-MOD-403` | degenerate correspondence for unequal edge counts | F1 | P3 |
+| `T-MOD-404` | two-stream parse: style changes only in `StartEdges`, the `EndEdges` header byte, an inconsistent `Offset` (`SF0264`) | F1 | P3 |
+| `T-MOD-405` | `MORPHGRADIENT`: the single `GRADIENT`-style header byte, start/end matrix order, interleaved `(ratio, colour)` pairs | F1 | P3 |
+| `T-MOD-406` | `MORPHLINESTYLE2`: one shared flag word, miter `× StartWidth`/`× EndWidth`, `HasFillFlag` fill pair | F1 | P3 |
+| `T-MOD-407` | straight↔curved pairing with odd deltas: rational twips retained, single deterministic rounding | F1 | P3 |
+| `T-MOD-408` | morph restriction checks: unequal edge counts, different bitmap ids, missing `MoveTo` counterpart | F2 | P3 |
 
 ## 9. Work packages
 

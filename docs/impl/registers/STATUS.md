@@ -1,7 +1,7 @@
 # IMPL STATUS — implementation-spec coverage
 
 **Generated** by [`tools/gen_status.py`](../../../tools/gen_status.py) — do not hand-edit.
-**Snapshot:** 2026-10-11 · source: `docs/impl/**/*.md`
+**Snapshot:** 2026-10-14 · source: `docs/impl/**/*.md`
 
 State legend: ✅ grounded = written against the upstream chapter text · ✅ written / ✅ ready =
 chapter-independent · ⏳ partial = open items remain (each listed in that document's §Open items).
@@ -18,15 +18,15 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [080](../decompiler/080-fonts-and-text.md) | Fonts and Text | 14 | 45 | 7 | 18 | 16 | ✅ |
 | [090](../decompiler/090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 | 6 | 15 | 19 | ✅ |
 | [100](../decompiler/100-buttons.md) | Buttons, Tracking, and Hit Testing | 10 | 26 | 5 | 19 | 10 | ✅ |
-| [110](../decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 | 6 | 16 | 16 | ✅ |
+| [110](../decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 12 | 36 | 6 | 17 | 16 | ✅ |
 | [160](../engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 | 0 | 14 | 17 | ✅ |
-| [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 20 | 0 | ✅ |
-| [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 2 | 10 | 30 | ✅ |
+| [130](../engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 | 0 | 21 | 0 | ✅ |
+| [010](../foundation/010-binary-io-and-records.md) | Binary IO and Primitive Records | 12 | 20 | 0 | 10 | 30 | ✅ |
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
-| [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 | 7 | 33 | 26 | ✅ |
-| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 | 0 | 8 | 2 | ✅ |
-| **Total** | 16 documents | **211** | **≈ 658.5** | **72** | **281** | **255** | |
+| [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 19 | 52 | 7 | 41 | 26 | ✅ |
+| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 11 | 4 | ✅ |
+| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **294** | **257** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -50,7 +50,7 @@ count, because `010` restates the container codes it owns jointly with `020`.
 | 010 | `SF0001`, `SF0002`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0008`, `SF0009`, `SF0010`, `SF0011`, `SF0012`, `SF0013`, `SF0014`, `SF0015`, `SF0016`, `SF0020`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033` | SF0001–SF0033 |
 | 020 | `SF0001`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033`, `SF0101`, `SF0102`, `SF0103`, `SF0104`, `SF0107`, `SF0109` | SF0001–SF0109 |
 | 050 | `SF0400`, `SF0401`, `SF0402`, `SF0403`, `SF0404`, `SF0405`, `SF0406`, `SF0407`, `SF0408`, `SF0409`, `SF0410`, `SF0411`, `SF0412`, `SF0413`, `SF0414`, `SF0415`, `SF0416`, `SF0417`, `SF0418`, `SF0419`, `SF0420`, `SF0421`, `SF0422`, `SF0423`, `SF0424`, `SF1000` | SF0400–SF1000 |
-| 120 | `SF0501`, `SF0502` | SF0501–SF0502 |
+| 120 | `SF0500`, `SF0501`, `SF0502`, `SF0503` | SF0500–SF0503 |
 
 The authoritative range allocation (which document may define which codes) is `010` §7; `SF1000+`
 is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g. `SF1000` in 040/050/120,
@@ -68,14 +68,14 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | 080 | `T-MOD-501`, `T-MOD-502`, `T-MOD-503`, `T-MOD-504`, `T-MOD-505`, `T-MOD-506`, `T-MOD-507`, `T-MOD-508`, `T-MOD-509`, `T-MOD-510`, `T-MOD-511`, `T-MOD-512`, `T-MOD-513`, `T-MOD-514`, `T-MOD-515`, `T-MOD-516`, `T-MOD-517`, `T-MOD-518` |
 | 090 | `T-AUD-101`, `T-AUD-102`, `T-AUD-103`, `T-AUD-104`, `T-AUD-105`, `T-AUD-106`, `T-AUD-107`, `T-AUD-108`, `T-AUD-109`, `T-AUD-110`, `T-AUD-111`, `T-AUD-112`, `T-AUD-113`, `T-AUD-114`, `T-AUD-115` |
 | 100 | `T-MOD-801`, `T-MOD-802`, `T-MOD-803`, `T-MOD-804`, `T-MOD-805`, `T-MOD-806`, `T-MOD-807`, `T-MOD-808`, `T-MOD-809`, `T-MOD-810`, `T-MOD-811`, `T-MOD-812`, `T-MOD-813`, `T-MOD-814`, `T-MOD-815`, `T-MOD-816`, `T-MOD-817`, `T-MOD-841`, `T-MOD-842` |
-| 110 | `T-MOD-901`, `T-MOD-902`, `T-MOD-903`, `T-MOD-904`, `T-MOD-905`, `T-MOD-906`, `T-MOD-907`, `T-MOD-908`, `T-MOD-909`, `T-MOD-910`, `T-MOD-911`, `T-MOD-912`, `T-MOD-913`, `T-MOD-914`, `T-MOD-915`, `T-MOD-916` |
+| 110 | `T-MOD-901`, `T-MOD-902`, `T-MOD-903`, `T-MOD-904`, `T-MOD-905`, `T-MOD-906`, `T-MOD-907`, `T-MOD-908`, `T-MOD-909`, `T-MOD-910`, `T-MOD-911`, `T-MOD-912`, `T-MOD-913`, `T-MOD-914`, `T-MOD-915`, `T-MOD-916`, `T-MOD-917` |
 | 160 | `T-CLN-101`, `T-CLN-102`, `T-CLN-103`, `T-CLN-104`, `T-CLN-105`, `T-CLN-106`, `T-CLN-107`, `T-CLN-108`, `T-CLN-109`, `T-CLN-110`, `T-CLN-111`, `T-CLN-112`, `T-CLN-113`, `T-CLN-114` |
-| 130 | `T-RT-101`, `T-RT-102`, `T-RT-103`, `T-RT-104`, `T-RT-105`, `T-RT-106`, `T-RT-107`, `T-RT-108`, `T-RT-109`, `T-RT-110`, `T-RT-111`, `T-RT-112`, `T-RT-113`, `T-RT-114`, `T-RT-115`, `T-RT-116`, `T-RT-117`, `T-RT-118`, `T-RT-120`, `T-RT-121` |
+| 130 | `T-RT-101`, `T-RT-102`, `T-RT-103`, `T-RT-104`, `T-RT-105`, `T-RT-106`, `T-RT-107`, `T-RT-108`, `T-RT-109`, `T-RT-110`, `T-RT-111`, `T-RT-112`, `T-RT-113`, `T-RT-114`, `T-RT-115`, `T-RT-116`, `T-RT-117`, `T-RT-118`, `T-RT-120`, `T-RT-121`, `T-RT-122` |
 | 010 | `T-SWF-001`, `T-SWF-003`, `T-SWF-004`, `T-SWF-009`, `T-SWF-013`, `T-SWF-014`, `T-SWF-015`, `T-SWF-016`, `T-SWF-017`, `T-SWF-024` |
 | 020 | `T-SWF-001`, `T-SWF-002`, `T-SWF-003`, `T-SWF-007`, `T-SWF-008`, `T-SWF-010`, `T-SWF-011`, `T-SWF-012`, `T-SWF-018`, `T-SWF-019`, `T-SWF-020`, `T-SWF-021`, `T-SWF-022`, `T-SWF-023` |
 | 140 | `T-TST-101`, `T-TST-102`, `T-TST-103`, `T-TST-104` |
-| 050 | `T-AVM1-FE-001`, `T-AVM1-FE-002`, `T-AVM1-FE-003`, `T-AVM1-FE-004`, `T-AVM1-FE-005`, `T-AVM1-FE-006`, `T-AVM1-FE-007`, `T-AVM1-FE-008`, `T-AVM1-FE-009`, `T-AVM1-FE-010`, `T-AVM1-FE-011`, `T-AVM1-FE-012`, `T-AVM1-FE-013`, `T-AVM1-FE-014`, `T-AVM1-FE-015`, `T-AVM1-FE-016`, `T-AVM1-FE-017`, `T-AVM1-FE-018`, `T-AVM1-FE-019`, `T-AVM1-FE-020`, `T-AVM1-FE-021`, `T-AVM1-FE-022`, `T-AVM1-FE-023`, `T-AVM1-FE-024`, `T-AVM1-FE-025`, `T-AVM1-FE-026`, `T-AVM1-FE-027`, `T-AVM1-FE-028`, `T-AVM1-FE-029`, `T-AVM1-FE-030`, `T-AVM1-FE-031`, `T-AVM1-FE-032`, `T-AVM1-FE-033` |
-| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008` |
+| 050 | `T-AVM1-FE-001`, `T-AVM1-FE-002`, `T-AVM1-FE-003`, `T-AVM1-FE-004`, `T-AVM1-FE-005`, `T-AVM1-FE-006`, `T-AVM1-FE-007`, `T-AVM1-FE-008`, `T-AVM1-FE-009`, `T-AVM1-FE-010`, `T-AVM1-FE-011`, `T-AVM1-FE-012`, `T-AVM1-FE-013`, `T-AVM1-FE-014`, `T-AVM1-FE-015`, `T-AVM1-FE-016`, `T-AVM1-FE-017`, `T-AVM1-FE-018`, `T-AVM1-FE-019`, `T-AVM1-FE-020`, `T-AVM1-FE-021`, `T-AVM1-FE-022`, `T-AVM1-FE-023`, `T-AVM1-FE-024`, `T-AVM1-FE-025`, `T-AVM1-FE-026`, `T-AVM1-FE-027`, `T-AVM1-FE-028`, `T-AVM1-FE-029`, `T-AVM1-FE-030`, `T-AVM1-FE-031`, `T-AVM1-FE-032`, `T-AVM1-FE-033`, `T-AVM1-FE-034`, `T-AVM1-FE-035`, `T-AVM1-FE-036`, `T-AVM1-FE-037`, `T-AVM1-FE-038`, `T-AVM1-FE-039`, `T-AVM1-FE-040`, `T-AVM1-FE-041` |
+| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008`, `T-CMP-009`, `T-CMP-010`, `T-CMP-011` |
 
 `T-SWF-*` is shared by the two container documents (010 declares the primitive tests; 020 the header,
 tag-stream and dictionary tests, and each cites the other explicitly). `030` owns `T-MOD-001`–`012`,

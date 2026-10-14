@@ -441,35 +441,35 @@ opt-in dedupe pass (WP-060-13) may rewrite indices only when the whole shape is 
 
 ## 9. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-101` | edge decoder: all four quadrants × both edge kinds, hand-computed bytes | F1 |
-| `T-MOD-102` | straight-edge `GeneralLineFlag`/`VertLineFlag` combinations incl. zero-length moves | F1 |
-| `T-MOD-103` | fill0/fill1 chaining: rectangle, donut (hole), self-intersection | F1 |
-| `T-MOD-104` | bitmap fill matrix: repeating vs clipped on the same shape; all four bitmap types | F1 |
-| `T-MOD-105` | gradients: stop ordering, duplicates, focal clamp, linear-RGB flag preserved | F1 |
-| `T-MOD-106` | `StateNewStyles` mid-stream re-scoping (fixture with two style sets) | F1 |
-| `T-MOD-107` | quantisation + simplification determinism over 10⁴ random shapes; fixed 4-step order | F1 |
-| `T-MOD-108` | IR stability: shape → IR byte-identical across runs, platforms and engines | F1 |
-| `T-MOD-109` | open path with fill closes; stroke keeps open semantics; `NoClose` honoured | F2 |
-| `T-MOD-110` | integration: 200-shape corpus decodes without `SF0180`, bounds agree within 1 % | F2 |
-| `T-MOD-111` | fill rule: `UsesFillWindingRule` 1/0 selects non-zero/even-odd on the same geometry | F1 |
-| `T-MOD-112` | `LINESTYLE2` byte layout + miter cut-off (`MiterLimitFactor × Width`) + `NoClose` | F1 |
-| `T-MOD-113` | `0xFF` extended counts: present in Shape2/3/4, literal 255 in v1 (both directions) | F1 |
-| `T-MOD-114` | `StateNewStyles` record carries its own indices before the arrays; indices re-based | F1 |
-| `T-MOD-115` | curved edge: all four deltas at `NumBits + 2`; boundary `NumBits == 0` | F1 |
-| `T-MOD-116` | caps × joins matrix (3×3) incl. miter factor absent for non-miter joins | F1 |
-| `T-MOD-117` | `SHAPE` (font glyph) path reuses the record decoder with an empty style set | F2 |
-| `T-MOD-118` | `DefineShape4` edge bounds vs shape bounds on a stroked fixture; recompute cross-check | F2 |
-| `T-MOD-119` | gradient header byte: spread/interp/count decode in all four shape versions; legacy non-zero modes reported (`SF0192`) but honoured | F1 |
-| `T-MOD-120` | control points: 8 vs 15 ceilings, `NumGradients == 0`, ratio sorting and duplicate retention, RGB vs RGBA by tag | F1 |
-| `T-MOD-121` | focal gradient: `FIXED8` decode (`0xFF00`/`0x0000`/`0x0100`), Shape4-only rule (`SF0195`), clamp at the sampler | F1 |
-| `T-MOD-122` | spread ×3 (pad/reflect/repeat) and interpolation ×2 reach the renderer config and the manifest | F2 |
-| `T-MOD-123` | Appendix A shape walk, asserted at bit level: `FillStyleCount` 0 / `LineStyleCount` 1 (20-twip black line), `NumFillBits` 0 / `NumLineBits` 1, style-change flags `0 1 0 0 1` with `MoveBits` 14 and Δ(4900, 1680), the four 13-bit straight edges, the `End` record, and the six padding bits with **no** byte alignment between records (`T-TST-102`) | F1 |
-| `T-MOD-124` | Production `buildMovieModel` exposes VectorShape + decoded bounds for DefineShape/2/3/4 without a raw-tag reparse | F1 |
-| `T-MOD-125` | `inspect --shapes` reports the model's stable static-shape summary and geometry digest only when requested | F1 |
-| `T-MOD-126` | Shape4 reserved flags preserve the raw byte and emit one `SF0188` per file; pre-SWF-8 use reports `SF0183` | F1 |
-| `T-MOD-127` | `SF0190` fires at the style-array ceiling only for byte-identical fill/line duplicates; distinct styles remain quiet | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-101` | edge decoder: all four quadrants × both edge kinds, hand-computed bytes | F1 | P3 |
+| `T-MOD-102` | straight-edge `GeneralLineFlag`/`VertLineFlag` combinations incl. zero-length moves | F1 | P3 |
+| `T-MOD-103` | fill0/fill1 chaining: rectangle, donut (hole), self-intersection | F1 | P3 |
+| `T-MOD-104` | bitmap fill matrix: repeating vs clipped on the same shape; all four bitmap types | F1 | P3 |
+| `T-MOD-105` | gradients: stop ordering, duplicates, focal clamp, linear-RGB flag preserved | F1 | P3 |
+| `T-MOD-106` | `StateNewStyles` mid-stream re-scoping (fixture with two style sets) | F1 | P3 |
+| `T-MOD-107` | quantisation + simplification determinism over 10⁴ random shapes; fixed 4-step order | F1 | P3 |
+| `T-MOD-108` | IR stability: shape → IR byte-identical across runs, platforms and engines | F1 | P3 |
+| `T-MOD-109` | open path with fill closes; stroke keeps open semantics; `NoClose` honoured | F2 | P3 |
+| `T-MOD-110` | integration: 200-shape corpus decodes without `SF0180`, bounds agree within 1 % | F2 | P3 |
+| `T-MOD-111` | fill rule: `UsesFillWindingRule` 1/0 selects non-zero/even-odd on the same geometry | F1 | P3 |
+| `T-MOD-112` | `LINESTYLE2` byte layout + miter cut-off (`MiterLimitFactor × Width`) + `NoClose` | F1 | P3 |
+| `T-MOD-113` | `0xFF` extended counts: present in Shape2/3/4, literal 255 in v1 (both directions) | F1 | P3 |
+| `T-MOD-114` | `StateNewStyles` record carries its own indices before the arrays; indices re-based | F1 | P3 |
+| `T-MOD-115` | curved edge: all four deltas at `NumBits + 2`; boundary `NumBits == 0` | F1 | P3 |
+| `T-MOD-116` | caps × joins matrix (3×3) incl. miter factor absent for non-miter joins | F1 | P3 |
+| `T-MOD-117` | `SHAPE` (font glyph) path reuses the record decoder with an empty style set | F2 | P3 |
+| `T-MOD-118` | `DefineShape4` edge bounds vs shape bounds on a stroked fixture; recompute cross-check | F2 | P3 |
+| `T-MOD-119` | gradient header byte: spread/interp/count decode in all four shape versions; legacy non-zero modes reported (`SF0192`) but honoured | F1 | P3 |
+| `T-MOD-120` | control points: 8 vs 15 ceilings, `NumGradients == 0`, ratio sorting and duplicate retention, RGB vs RGBA by tag | F1 | P3 |
+| `T-MOD-121` | focal gradient: `FIXED8` decode (`0xFF00`/`0x0000`/`0x0100`), Shape4-only rule (`SF0195`), clamp at the sampler | F1 | P3 |
+| `T-MOD-122` | spread ×3 (pad/reflect/repeat) and interpolation ×2 reach the renderer config and the manifest | F2 | P4 (WP-060-14) |
+| `T-MOD-123` | Appendix A shape walk, asserted at bit level: `FillStyleCount` 0 / `LineStyleCount` 1 (20-twip black line), `NumFillBits` 0 / `NumLineBits` 1, style-change flags `0 1 0 0 1` with `MoveBits` 14 and Δ(4900, 1680), the four 13-bit straight edges, the `End` record, and the six padding bits with **no** byte alignment between records (`T-TST-102`) | F1 | P3 |
+| `T-MOD-124` | Production `buildMovieModel` exposes VectorShape + decoded bounds for DefineShape/2/3/4 without a raw-tag reparse | F1 | P3 |
+| `T-MOD-125` | `inspect --shapes` reports the model's stable static-shape summary and geometry digest only when requested | F1 | P3 |
+| `T-MOD-126` | Shape4 reserved flags preserve the raw byte and emit one `SF0188` per file; pre-SWF-8 use reports `SF0183` | F1 | P3 |
+| `T-MOD-127` | `SF0190` fires at the style-array ceiling only for byte-identical fill/line duplicates; distinct styles remain quiet | F1 | P3 |
 
 ## 10. Work packages
 

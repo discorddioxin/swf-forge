@@ -1,6 +1,6 @@
 # CMP — Compiler Pipeline, IR, Codegen Contract, CLI
 
-**Doc ID:** CMP · **Status:** Draft 1.1 · **Normative:** yes
+**Doc ID:** CMP · **Status:** Draft 1.2 · **Normative:** yes
 
 ---
 
@@ -615,21 +615,24 @@ symbol is an error at runtime boot, not a silent no-op.
 
 **CMP-R041** For the fixture set, the compiler MUST satisfy:
 
-| Criterion | Target |
-| --- | --- |
-| Determinism | Two clean builds byte-identical (`T-CMP-001`) |
-| Emitted TS quality | Zero suppressions; zero `any` outside `unknown`-guarded shims (`T-CMP-002`) |
-| Diagnostics | Every `risk`/`warning` carries a decision ID or requirement ID (`T-CMP-003`) |
-| Residual reporting | Every T2 function has a reason string and byte range (`T-CMP-004`) |
-| Verify pass | `swfforge verify` clean on all C1 fixture builds (`T-CMP-005`) |
-| Build time | ≤ 90 s for a 5 MiB SWF on the CI baseline runner, warm cache (`T-CMP-006`) |
+| Criterion | Target | Carried by |
+| --- | --- | --- |
+| Determinism | Two clean builds byte-identical | `IMPL-120` §8's double-build obligation |
+| Emitted TS quality | Zero suppressions; zero `any` outside `unknown`-guarded shims | `IMPL-120` §8's forbidden-construct obligation, over the bans in `IMPL-120-R014`/`R015`/`R016` |
+| Diagnostics | Every `risk`/`warning` carries a decision ID or requirement ID | `IMPL-120` §10 criterion 5 carries the reporting half; the `requirement` half and the whole `risk` severity are **blocked** by errata `E-043` — the implemented model has three severities and no `requirement` field |
+| Residual reporting | Every T2 function has a reason string and byte range | `IMPL-050` §8's tier and residual obligations (P5), which deliver both per function |
+| Verify pass | `swfforge verify` clean on all C1 fixture builds | `IMPL-120` §8's `verify --deep` obligation, with "all C1 fixtures" bounded by [`registers/corpus.md`](../../impl/registers/corpus.md) |
+| Build time | ≤ 90 s for a 5 MiB SWF on the CI baseline runner, warm cache | **no owner in any impl document** — a CI property rather than a compiler output; recommended home is P11's budget lane, and errata `E-042` is its record until a work package takes it |
+
+This table does not mint test ids. `IMPL-120` §8 owns the `T-CMP-*` band; this section used to cite six of
+those ids with meanings of its own, which is errata `E-042`.
 
 ## 14. Decision register
 
 | ID | Decision | Default | Verification | Notes |
 | --- | --- | --- | --- | --- |
 | CMP-D01 | Placements emitted as data vs. imperative calls | Data | CMP-R017 | Needed for pre-batching |
-| CMP-D02 | Name-recovery conflict resolution | Deterministic suffixes `_2`, `_3` by definition order | T-CMP-007 | Never by hash (unreadable) |
+| CMP-D02 | Name-recovery conflict resolution | Deterministic suffixes `_2`, `_3` by definition order | `IMPL-120` §8's name-assignment obligation (`IMPL-120-R011`) | Never by hash (unreadable) |
 | CMP-D03 | Are sprites' timelines pre-flattened when statically constant? | No (v1) | GFX budget review | Possible optimisation later |
 | CMP-D04 | Max emitted file size before splitting | 4000 lines | REPO-D02 | Emitter must warn at split |
 | CMP-D05 | `--fail-on=risk` default in CI? | Yes for `main` | CI config | Risk-aware CI |
@@ -642,3 +645,4 @@ symbol is an error at runtime boot, not a silent no-op.
 | --- | --- | --- |
 | 1.0 | initial | First draft |
 | 1.1 | 2026-10-04 | Tech-spec pass: `CMP-R001b` added — the S0–S10 pipeline is the flash target; the clean target shares S0–S2/S5–S6 and assets, and differs only in emission (`CLN`, `TECH-R006`) |
+| 1.2 | 2026-10-14 | §13 stops minting `T-CMP-*` ids: the band belongs to `IMPL-120` §8, and the two documents had assigned six of the same ids different obligations (errata `E-042`). Each criterion now names what carries it, which exposes two gaps — the `requirement`/`risk` half of the diagnostics criterion is blocked by the diagnostic model (errata `E-043`) and the build-time criterion has no owner in any impl document. `CMP-D02`'s verification cell re-pointed the same way |

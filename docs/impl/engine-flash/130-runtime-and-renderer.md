@@ -204,28 +204,29 @@ for each tick:
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-RT-101` | emitted vs interpreter equivalence on the shared fixture set (same observable state) | F2 |
-| `T-RT-102` | depth ordering + `swapDepths` semantics, incl. negative depths | F2 |
-| `T-RT-103` | phase order observable through a fixture that reads state at each phase | F2 |
-| `T-RT-104` | timers delivered in `preSimulate`; no mid-simulate delivery under load | F2 |
-| `T-RT-105` | `_visible=false` subtrees still run scripts | F2 |
-| `T-RT-106` | nested masking with stencil ref counting | F2 |
-| `T-RT-107` | hit testing vs `_xmouse` consistency under scale/rotate | F2 |
-| `T-RT-108` | `variableName` binding two-way (field ↔ variable) | F2 |
-| `T-RT-109` | IME/paste/maxLength/password enforcement | F2 |
-| `T-RT-110` | cache invalidation: transform/filter/geometry changes each force a redraw | F1 |
-| `T-RT-111` | glyph tessellation agreement between atlas path and runtime path | F1 |
-| `T-RT-112` | context loss/restore mid-play returns to the same frame with correct pixels | F2 |
-| `T-RT-113` | WebGL2 vs WebGPU frame parity within the GFX tolerance (where WebGPU is enabled) | F3 |
-| `T-RT-114` | audio scheduling happens once per frame at the audio boundary (instrumented mixer) | F1 |
-| `T-RT-115` | CSP-clean boot: no inline script, no `eval`, no `blob:` beyond the policy | F1 |
-| `T-RT-116` | network façade: every blocked request counted, no direct fetch/XHR anywhere | F1 |
-| `T-RT-117` | frame-rate fidelity: 24 fps title runs at 24 fps ± drift bound; tab-hide clamped | F2 |
-| `T-RT-118` | draw-call budget gate on the reference title's worst frame | F2 |
-| `T-RT-120` | AVM1 object model: slot/prototype/display-property lookup order pinned by fixtures (R021) | F2 |
-| `T-RT-121` | `for…in`: own/prototype insertion order, non-enumerable filtering, shadowing and start-time snapshot (R033; semantic gate T-AVM1-012) | F2 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-RT-101` | emitted vs interpreter equivalence on the shared fixture set (same observable state) | F2 | P7 |
+| `T-RT-102` | depth ordering + `swapDepths` semantics, incl. negative depths | F2 | P7 |
+| `T-RT-103` | phase order observable through a fixture that reads state at each phase | F2 | P7 |
+| `T-RT-104` | timers delivered in `preSimulate`; no mid-simulate delivery under load | F2 | P7 |
+| `T-RT-105` | `_visible=false` subtrees still run scripts | F2 | P7 |
+| `T-RT-106` | nested masking with stencil ref counting | F2 | P9 masks (WP-130-08) |
+| `T-RT-107` | hit testing vs `_xmouse` consistency under scale/rotate | F2 | P9 hit testing (WP-130-13) |
+| `T-RT-108` | `variableName` binding two-way (field ↔ variable) | F2 | P9 dynamic text (WP-130-10) |
+| `T-RT-109` | IME/paste/maxLength/password enforcement | F2 | P9 IME/password (WP-130-13) |
+| `T-RT-110` | cache invalidation: transform/filter/geometry changes each force a redraw | F1 | P9 filters/cache (WP-130-09) |
+| `T-RT-111` | glyph tessellation agreement between atlas path and runtime path | F1 | P4 (§5 renderer, WP-130-07) |
+| `T-RT-112` | context loss/restore mid-play returns to the same frame with correct pixels | F2 | P7 |
+| `T-RT-113` | WebGL2 vs WebGPU frame parity within the GFX tolerance (where WebGPU is enabled) | F3 | P7 WebGPU behind the flag (WP-130-17) |
+| `T-RT-114` | audio scheduling happens once per frame at the audio boundary (instrumented mixer) | F1 | P8 audio (130 §7, WP-130-14) |
+| `T-RT-115` | CSP-clean boot: no inline script, no `eval`, no `blob:` beyond the policy | F1 | P8 DOM shell (130 §7, WP-130-15) |
+| `T-RT-116` | network façade: every blocked request counted, no direct fetch/XHR anywhere | F1 | P7 net façade (WP-130-11); security suite is P11 |
+| `T-RT-117` | frame-rate fidelity: 24 fps title runs at 24 fps ± drift bound; tab-hide clamped | F2 | P8 playback rate (130 §7) |
+| `T-RT-118` | draw-call budget gate on the reference title's worst frame | F2 | P7 budgets (WP-130-16); needs the reference title |
+| `T-RT-120` | AVM1 object model: slot/prototype/display-property lookup order pinned by fixtures (R021) | F2 | P7 |
+| `T-RT-121` | `for…in`: own/prototype insertion order, non-enumerable filtering, shadowing and start-time snapshot (R033; semantic gate T-AVM1-012) | F2 | P7 |
+| `T-RT-122` | scope chain, `with`, and `SetTarget` resolution against a nested display tree: `/abs`, `..`, bare relative, `""` and the dot form resolve to the same clip the front end's `TargetRef` names, and an unresolvable path is a runtime error, not a silent `_root` fallback | F2 | P7 |
 
 ## 9. Work packages
 
@@ -233,7 +234,7 @@ for each tick:
 | --- | --- | --- | --- | --- |
 | WP-130-01 | Object model (slots, prototypes, enumeration, properties) | model | 6 | `object/avm1-object.ts`, T-RT-120/121, T-AVM1-012 |
 | WP-130-02 | Coercions + operators | WP-130-01 | 4 | `coercion.ts`, T-AVM1-008/009/025 |
-| WP-130-03 | Scope chain, `with`, `SetTarget` resolution | WP-130-01 | 4 | `object/scope.ts` |
+| WP-130-03 | Scope chain, `with`, `SetTarget` resolution | WP-130-01 | 4 | `object/scope.ts`, T-RT-122 |
 | WP-130-04 | Display node + display list + depth ops | manifest | 6 | `display/*` |
 | WP-130-05 | Timeline playback + frame scripts + clip events | WP-130-04 | 5 | `display/timeline.ts`; runtime call/resume and `DoInitAction`/`DoAction` execution forwards from FE-024/027/028 |
 | WP-130-06 | Renderer: context, batching, basic fills/strokes | GFX design | 8 | `renderer/*` |
@@ -278,3 +279,4 @@ budgets). The two suites are different tests with different owners, and the band
 | 1.1 | 2026-10-04 | Test obligations re-banded to `T-RT-1xx` (`T-RT-101`–`120`) so they no longer collide with the design spec's `T-RT-00x` block; the object-model lookup test referenced by `R021`/`WP-130-01` is now defined as `T-RT-120`; errata `E-023` |
 | 1.2 | 2026-10-10 | Explicitly assign AVM1 `for…in` ordering and snapshot semantics (AVM1-R045/R046, T-AVM1-012) to runtime R033/WP-130-01 and add runtime verification gate T-RT-121 |
 | 1.3 | 2026-10-11 | Record P7 ownership of executable AVM1 language/interpreter gates while preserving the normative language-spec obligations; map runtime coercion, enumeration, formatting, budget, frame-call, unwind, and scheduling execution to IMPL-130 work packages. |
+| 1.4 | 2026-10-13 | P0–P5 completion audit (roadmap §4.6 item E): `T-RT-122` gives `WP-130-03` an obligation. `SetTarget` resolution was the receiving end of P2's `T-MOD-602` forward and of `IMPL-050-R037`'s grammar, and the row carried no test id, so the path grammar had no owner in any phase |

@@ -5,7 +5,8 @@
  * Ranges (owner in brackets): `SF0001`–`SF0019` IO (010) · `SF0020`–`SF0049` container (020) ·
  * `SF0100`–`SF0109` tag stream/dictionary (020) · `SF0110`–`SF0129` placements (030) ·
  * `SF0130`–`SF0139` buttons (100) · `SF0150`–`SF0179` control/metadata (040) · `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
- * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF1000+` fatal (050).
+ * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF0500`–`SF0509` compile pipeline (120) ·
+ * `SF1000+` fatal (050).
  */
 
 import type { Severity } from './types.js';
@@ -216,6 +217,9 @@ export const Codes = {
   SOUND_LATENCY_SEEK_MISMATCH: 'SF0330',
   SOUND_ZERO_BLOCK: 'SF0331',
   SOUND_MONO_ENVELOPE_MISMATCH: 'SF0332',
+  // ---- compile pipeline (120) -----------------------------------------------------------------
+  STAGE_UNIMPLEMENTED: 'SF0500',
+  CACHE_DRIFT: 'SF0503',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -694,6 +698,16 @@ const REGISTRY: Record<string, CodeInfo> = {
   },
   SF0331: { code: 'SF0331', severity: 'info', meaning: 'empty MP3 stream block advances the timeline without samples' },
   SF0332: { code: 'SF0332', severity: 'info', meaning: 'mono sound envelope has differing L/R levels and is averaged' },
+  SF0500: {
+    code: 'SF0500',
+    severity: 'info',
+    meaning: 'a pipeline stage has no implementation in this build; the run report names it',
+  },
+  SF0503: {
+    code: 'SF0503',
+    severity: 'warning',
+    meaning: 'a cached stage output did not match a recomputation (--verify-cache); the entry was evicted',
+  },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };
 

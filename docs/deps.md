@@ -1,15 +1,16 @@
 # Dependency review record
 
-**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.2** · **Owner:** `SEC-D04` (specs/100)
+**Doc ID:** DEPS · **Status:** ✅ living register · **Draft 1.3** · **Owner:** `SEC-D04` (specs/100)
 
 Every third-party dependency that ships in `packages/*` or `apps/*` is recorded here with its
 licence, the review that cleared it, and the obligation it carries. This is the register that
 `SEC-D04` requires; `SEC-R0xx` in [`specs/quality/100-security-licensing.md`](specs/quality/100-security-licensing.md)
 states the rules, this file records the decisions.
 
-Draft 1.0 of this register held an empty table (the specification-only phase); Drafts 1.1–1.2 record
+Draft 1.0 of this register held an empty table (the specification-only phase); Drafts 1.1–1.3 record
 the build tooling, all of it dev-only — nothing in this table ships in `packages/*` or `apps/*`
-runtime output.
+runtime output. Draft 1.3 adds the browser test lane (roadmap §4.2) and, for the first time, an entry
+that is **fetched rather than depended upon**.
 
 ## 1. Reviewed dependencies
 
@@ -21,6 +22,9 @@ runtime output.
 | `prettier` | `^3.3.3` (3.9.9 installed) | MIT | formatting check in `pnpm lint` (`TECH-R008`) | 2026-10-04 | none; dev-only, not shipped | cleared |
 | `eslint` | `^10.12.0` | MIT | lint gate in `pnpm lint` (`TECH-R008`); flat config bans `eval`/`with`/`Proxy`/`Function` | 2026-10-04 | none; dev-only, not shipped | cleared |
 | `typescript-eslint` | `^8.71.0` | MIT | TypeScript parser + rules for the ESLint flat config (non-type-aware) | 2026-10-04 | none; dev-only, not shipped | cleared |
+| `@vitest/browser` | `2.1.9` (pinned to the `vitest` version) | MIT | browser test lane: runs the shared `IMPL-010` §8 vector table in a real browser engine, as CI job `browser` (`IMPL-010` §11.1 criterion 1, roadmap §4.2) | 2026-10-13 | none; dev-only, not shipped. Must stay version-locked to `vitest` | cleared |
+| `playwright` | `^1.64.0` (1.64.0 installed) | Apache-2.0 | browser provider for `@vitest/browser`, and the sanctioned engine installer (`pnpm exec playwright install chromium`) | 2026-10-13 | Apache-2.0 attribution would apply only on redistribution, and there is none: dev-only, and the engines it downloads are never committed (`REPO-R017`) | cleared |
+| `@sparticuz/chromium` | `153.0.0` — **not a manifest dependency**; fetched on demand by `tools/browser-lane.mjs install` | MIT (the package); the Chromium it carries is BSD-3-Clause, and its bundled NSS/NSPR libraries are MPL-2.0 | restricted-network fallback source for the browser engine, when only `registry.npmjs.org` is reachable | 2026-10-13 | unpacked into `~/.cache/swf-forge-browser`, never committed and never vendored; the MPL-2.0 libraries remain separate unmodified `.so` files loaded via `LD_LIBRARY_PATH`, so no copyleft reaches shipped code (§2 rule 2) | cleared |
 
 ## 2. Rules this register enforces
 
@@ -45,3 +49,4 @@ runtime output.
 | 1.0 | 2026-10-04 | Register created (empty): provides the target `SEC-D04` requires and makes the `docs/deps.md` references in `specs/100` and `specs/110` resolvable |
 | 1.1 | 2026-10-04 | First build tools reviewed: `typescript`, `vitest`, `@types/node`, `prettier` — all dev-only, permissive licences, no shipped-code obligation |
 | 1.2 | 2026-10-04 | `eslint` + `typescript-eslint` reviewed for the lint gate; the config's banned-construct rules implement the "no `eval`/`with`/`Proxy`/`Function`" non-negotiable |
+| 1.3 | 2026-10-13 | Browser test lane reviewed: `@vitest/browser` (MIT, version-locked to `vitest`) + `playwright` (Apache-2.0) as dev-only dependencies, and `@sparticuz/chromium` recorded as a *fetched* engine source rather than a dependency — unpacked into a disposable cache, never committed, with its MPL-2.0 NSS/NSPR libraries kept as separate unmodified shared objects |

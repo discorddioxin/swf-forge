@@ -288,16 +288,21 @@ export function buildSwf(options: SwfFixtureOptions): Uint8Array {
 }
 
 /**
- * A `DoAction`-style action block: a `UI32` `Length` then the record bytes. An `End` (0x00) is
- * appended when the caller did not supply one. (`IMPL-050-R003`/`R006`.)
+ * A `DoAction` payload: the `ACTIONRECORD` bytes and nothing else. An `End` (0x00) is appended when
+ * the caller did not supply one (`IMPL-050-R006` accepts a missing terminator, but a generator
+ * should emit one).
+ *
+ * There is **no** block-level length prefix. `IMPL-050-R003`'s `Length` is the *per-record* `UI16`
+ * inside an `ACTIONRECORDHEADER`, present only when the `ActionCode`'s high bit is set; the only
+ * `UI32` size in this area is `CLIPACTIONRECORD.ActionRecordSize`, which belongs to clip actions and
+ * not to `DoAction`/`DoInitAction`. Emitting one here once made this helper agree with a front end
+ * that skipped four bytes, so the two were self-consistent and both wrong — every real-world file
+ * mis-parsed while the suite stayed green (`E-034`).
  */
 export function actionBlock(records: readonly number[]): Uint8Array {
   const body = [...records];
   if (body.length === 0 || body[body.length - 1] !== 0x00) body.push(0x00);
-  const w = new ByteWriter();
-  w.u32(body.length);
-  for (const b of body) w.bytes(Uint8Array.from([b]));
-  return w.toUint8Array();
+  return Uint8Array.from(body);
 }
 
 /** Minimal valid file: header, one `ShowFrame`, `End`. */

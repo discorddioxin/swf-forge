@@ -1,0 +1,1291 @@
+{
+  "schemaVersion": 1,
+  "command": "node apps/decompiler/dist/main.js analyze <cached-file.swf> --tiers --json",
+  "buildCommand": "corepack pnpm build",
+  "fetchCommand": "node tools/open-corpus.mjs fetch",
+  "exitCodePolicy": "CMP-R029: 0 ok, 1 error-severity diagnostics, 2 unreadable, 3 AVM2 (SF1000), 5 internal bug. Only 5 fails this lane.",
+  "corpusClass": "C4 (licensed external conformance corpus; fetched into .forge-cache, never committed)",
+  "policy": "IMPL-020-R038 sanctions three committed-binary roles and an external movie is none of them.",
+  "corpusScope": [
+    {
+      "sourceClass": "licensed-external-conformance (ruffle-rs/ruffle@2372a4e148a6)",
+      "licence": "Apache-2.0 OR MIT",
+      "reuseBasis": "Ruffle's own AVM1 conformance suite: each test ships its ActionScript source (test.as/test.fla) and an expected trace (output.txt) beside test.swf, so the bytes are project-authored test data under the repository licence, not redistributed third-party content.",
+      "count": 73
+    }
+  ],
+  "generated": "2026-10-14",
+  "integrity": {
+    "hashMismatches": [],
+    "internalErrors": [],
+    "unreadable": [],
+    "avm2": [],
+    "stderrNoise": []
+  },
+  "summary": {
+    "files": 73,
+    "entries": 272,
+    "actionBlocks": 119,
+    "functions": 153,
+    "tiers": {
+      "T0": 119,
+      "T1": 130,
+      "T2": 23
+    },
+    "t2ReasonCounts": {
+      "stack-mismatch": 20,
+      "dynamic-pool": 37,
+      "dynamic-stack": 12,
+      "frame-call-target-unresolved": 1,
+      "dynamic-args": 5,
+      "target-in-branch": 3,
+      "call-dynamic-target": 4,
+      "dynamic-with": 2,
+      "register-out-of-range": 1,
+      "branch-out-of-bounds": 3
+    },
+    "reasonCounts": {
+      "dynamic-pool": 127,
+      "dynamic-stack": 21,
+      "dynamic-args": 8,
+      "call-dynamic-target": 6,
+      "stack-mismatch": 20,
+      "frame-call-target-unresolved": 2,
+      "dynamic-with": 7,
+      "target-in-branch": 4,
+      "register-out-of-range": 1,
+      "branch-out-of-bounds": 3
+    },
+    "unknownOpcodeReasons": 0,
+    "diagnosticCodes": {
+      "SF0410": 161,
+      "SF0104": 7,
+      "SF0030": 90,
+      "SF0187": 13,
+      "SF0189": 3,
+      "SF0023": 7,
+      "SF0414": 1,
+      "SF0275": 2,
+      "SF0406": 12,
+      "SF0173": 1,
+      "SF0012": 12,
+      "SF0013": 1,
+      "SF0280": 1,
+      "SF0277": 1,
+      "SF0025": 2,
+      "SF0416": 1,
+      "SF0405": 2,
+      "SF0153": 2
+    },
+    "diagnostics": {
+      "total": 319,
+      "errors": 14,
+      "warnings": 190,
+      "infos": 115
+    },
+    "exitCodes": {
+      "0": 60,
+      "1": 13
+    },
+    "perGroup": {
+      "record-framing": {
+        "files": 4,
+        "entries": 24,
+        "functions": 20,
+        "T0": 6,
+        "T1": 18,
+        "T2": 0
+      },
+      "functions": {
+        "files": 7,
+        "entries": 46,
+        "functions": 24,
+        "T0": 16,
+        "T1": 20,
+        "T2": 10
+      },
+      "control-flow": {
+        "files": 6,
+        "entries": 22,
+        "functions": 16,
+        "T0": 4,
+        "T1": 17,
+        "T2": 1
+      },
+      "target-paths": {
+        "files": 11,
+        "entries": 29,
+        "functions": 16,
+        "T0": 9,
+        "T1": 17,
+        "T2": 3
+      },
+      "version-semantics": {
+        "files": 19,
+        "entries": 38,
+        "functions": 19,
+        "T0": 27,
+        "T1": 9,
+        "T2": 2
+      },
+      "strings-encoding": {
+        "files": 7,
+        "entries": 20,
+        "functions": 13,
+        "T0": 7,
+        "T1": 13,
+        "T2": 0
+      },
+      "enumerate-determinism": {
+        "files": 4,
+        "entries": 11,
+        "functions": 7,
+        "T0": 6,
+        "T1": 4,
+        "T2": 1
+      },
+      "dynamic-watch": {
+        "files": 7,
+        "entries": 32,
+        "functions": 22,
+        "T0": 7,
+        "T1": 19,
+        "T2": 6
+      },
+      "frame-control": {
+        "files": 5,
+        "entries": 33,
+        "functions": 6,
+        "T0": 27,
+        "T1": 6,
+        "T2": 0
+      },
+      "coercion": {
+        "files": 3,
+        "entries": 17,
+        "functions": 10,
+        "T0": 10,
+        "T1": 7,
+        "T2": 0
+      }
+    }
+  },
+  "files": [
+    {
+      "name": "add",
+      "group": "record-framing",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "32a5b6867fa51e0b1ca0013287eb969ceb68a4db4ee8a62d31cceda28a90df4e",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 1,
+        "T1": 2,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "add2",
+      "group": "record-framing",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "46c9258d3e44810eee5a5adde5d31ea46f966b0fb86fd19b9f22e7e0f6ed71bc",
+      "entries": 10,
+      "functions": 9,
+      "tiers": {
+        "T0": 1,
+        "T1": 9,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "action_to_integer",
+      "group": "record-framing",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "bec8cf67508652e31be6ff2fccac8fa93724b026b103c3a290dcd194e3423766",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "string_coercion",
+      "group": "record-framing",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "576afdf6bc8575c659b3f4e63b59c5ed2ec54f9c8f1d6c073029e1fbfae8bae2",
+      "entries": 9,
+      "functions": 8,
+      "tiers": {
+        "T0": 2,
+        "T1": 7,
+        "T2": 0
+      },
+      "reasons": ["dynamic-stack", "dynamic-args", "call-dynamic-target", "dynamic-pool"]
+    },
+    {
+      "name": "function_as_function",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "807812cdf54d06991e1a4066e1b1696894f741173217a141ae3d10e4fbae136a",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "function_base_clip",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "7104880f138c4bdd1b7042339c25cc012f80030d8db100cbc693fe8f76340c43",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "function_suppress_and_preload",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "c8548b3f7de70e022b8150028a550680842fb318d0e48391685a0bd4df3056ad",
+      "entries": 9,
+      "functions": 7,
+      "tiers": {
+        "T0": 3,
+        "T1": 6,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "extends_chain",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "937f4831ed7853d4a5b66222c13990b9a3d790340677efbe63b182fcc5bee663",
+      "entries": 22,
+      "functions": 13,
+      "tiers": {
+        "T0": 4,
+        "T1": 10,
+        "T2": 8
+      },
+      "reasons": ["stack-mismatch", "dynamic-pool"]
+    },
+    {
+      "name": "extends_native_type",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "56b5493d5f17b8b829a6ff4f06bf6165f038ca8b25572b9240133154f9bd4555",
+      "entries": 3,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-pool"]
+    },
+    {
+      "name": "call",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "2dc4a455ff4614bc29c16e54bc9349aae5f46f5bc3529401d4ae03d083bc0047",
+      "entries": 7,
+      "functions": 1,
+      "tiers": {
+        "T0": 5,
+        "T1": 1,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-stack", "frame-call-target-unresolved", "dynamic-args", "dynamic-pool"]
+    },
+    {
+      "name": "call_method_empty_name",
+      "group": "functions",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "447cd1de8035212ff171768e5669d50e99edfe809f2824003fe0065118427ed3",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "try_catch_finally",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "98a6c737f66def58991dd0230ea2d6927c51f252d0cc746b11cc4a564e8b7b8d",
+      "entries": 9,
+      "functions": 8,
+      "tiers": {
+        "T0": 1,
+        "T1": 8,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool", "dynamic-stack"]
+    },
+    {
+      "name": "try_catch_stack",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "f49c6fbc0385ec3bba3a0f506adcfcbe15df90a859da2b0236b815297c03d435",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 0,
+        "T1": 0,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-stack"]
+    },
+    {
+      "name": "try_finally_simple",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "95a5d596d43af996fb67a8a8d844790e71e67401985196a069483c0811369008",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "with",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "edb0067a2c7723fd5eaa3d2f0b037d51af51c987f958e13d4677491037b34359",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 0,
+        "T1": 5,
+        "T2": 0
+      },
+      "reasons": ["dynamic-with", "dynamic-pool"]
+    },
+    {
+      "name": "with_return",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "2244ca38981bd27ad0a6e5da9de98440217dde2d81ab821e020161abd18029ff",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool", "dynamic-with"]
+    },
+    {
+      "name": "with_variable_scopes",
+      "group": "control-flow",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "3cf2e9c0dc6a6869f3138d427ba4b2d852888b77911ce7ccad786ed88d42d46e",
+      "entries": 4,
+      "functions": 3,
+      "tiers": {
+        "T0": 1,
+        "T1": 3,
+        "T2": 0
+      },
+      "reasons": ["dynamic-with", "dynamic-pool"]
+    },
+    {
+      "name": "set_target_2_swf5",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "79350f15e09095ef4877aaf97dc578f54792f0904d82196fa42129f0463b7981",
+      "entries": 7,
+      "functions": 4,
+      "tiers": {
+        "T0": 2,
+        "T1": 4,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-stack", "target-in-branch", "dynamic-pool"]
+    },
+    {
+      "name": "set_target_2_swf6",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "ca997e5f7d4f12f581ed34403d7e3595135e9b54a5382c1a209960c3f35c90ef",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 0,
+        "T1": 4,
+        "T2": 1
+      },
+      "reasons": [
+        "stack-mismatch",
+        "dynamic-stack",
+        "target-in-branch",
+        "call-dynamic-target",
+        "dynamic-args",
+        "dynamic-pool"
+      ]
+    },
+    {
+      "name": "set_target_2_swf7",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "e91fd92ea9b0e86b672e3d5542f48d5601bb74ea3d0a357ae717c15fbce6b95b",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 0,
+        "T1": 4,
+        "T2": 1
+      },
+      "reasons": [
+        "stack-mismatch",
+        "dynamic-stack",
+        "target-in-branch",
+        "call-dynamic-target",
+        "dynamic-args",
+        "dynamic-pool"
+      ]
+    },
+    {
+      "name": "target_path",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "2210a012ffb67c5f2d21cc544749701d1362316570946477f671f1b2241a54b2",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "target_clip_swf5",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "55d3b78bb58182070b5c1865aa04a1f454b1249716f423a5f89ff3bb2dab98e4",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "target_clip_swf6",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "137709c09fe69528955f053aa1282df48801c8e896ec0a37d32a0a74e132dde7",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "string_paths_basic",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "8459f28ecc2b06af3480a442e21535c9fd2d45bcff8815fbc04a06058281a5a8",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "string_paths_eval",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "5e7b9decad39b04086503d83c95718d185f0b26a1767cde574c25698fe670d4a",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "string_paths_variable_scopes",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "077776e525b3e4dafea5ae5cd959be2e940f6c4cba29392f186d4d5a4625c601",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "string_paths_other",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "2610dc3d86511e864c8d25bf5a9c506d7eda241974ea70d9ce9e32dea50d9480",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 0,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-stack", "call-dynamic-target", "dynamic-args"]
+    },
+    {
+      "name": "string_paths_hidden",
+      "group": "target-paths",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "356c1f5fae2e2b38c30139d355095e09bbf516215d585c668a69578dacc1aa08",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "add_swf4",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "99322c6dcdf1489a915b14e5fac48df552ffd3acee822ff6c3e741a179b26b3a",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 1,
+        "T1": 2,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "add_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "23ed119c8253b757fdbefa56259e888d114fd493d66aad00e5dd076e49ab567a",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 1,
+        "T1": 2,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "equals_swf4",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "d36b947796beca081a94a7843bd367b47fe6d6015b25e036787177ac631d959c",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "equals_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "adbc0bc7d92b61a767d174adda4cca29cd7a9e88d911dc18673e756b1bcc66e9",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 3,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "lessthan_swf4",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "aa0289fac64dd59d1838c8004dfa412263c153b8cd98dd36999a7028a08041f9",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "lessthan_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "bef0fc4ce0af7c45ce29b7fd9a5f89b9fcdab3609a45f0394a57b94594231666",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 3,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "greaterthan_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "c82153caf7ba2a98f977b3fa9da58caf306590937261a10ed3c3c72cc9a80968",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "swf4_actions_bool",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "b011f69ace8963df75f18360cb49bbe098e99260ff3a91b87b1231fe03e8a416",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "swf4_actions_coercion_order",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "310fb86458b569264965d654eabd34bffdd800f16418cf5df738bba0d345d592",
+      "entries": 4,
+      "functions": 3,
+      "tiers": {
+        "T0": 3,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["frame-call-target-unresolved", "target-in-branch"]
+    },
+    {
+      "name": "swf4_function_calls",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "77dcba9aa9764a1445a2e8f8d914c97189f1984422609057e6220e3f9b250d1d",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "swf4_vars",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "e39a55e70b2a719ac2b03cfb78b58e55f1ed76220ac39cdf3754d54714020afe",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "getproperty_swf4",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "ae086f1c4800124dcb97aaaf35ef7560681c021a789827e7f28b19f038556465",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "getproperty_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "efe1fb5435b35a77efc611ecbbef9bfb9e6bb6afc6316898127315797c4548e3",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "this_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "b192694c69a6926c3aa356843e2bda9bc3e88bd957de8204869e9b0be8a8db5e",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 0,
+        "T1": 1,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-stack", "dynamic-with", "dynamic-pool"]
+    },
+    {
+      "name": "globals_swf5",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "f6628b8ec9d691dfdd788841a27447b36fa8fffb74a9f3892fbe1d5471b559f7",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "globals_swf6",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "6432ecbff366984d9c32f883a8a1bcb1e838cea82fce678d2fc54be33c7b7a98",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "globals_swf7",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "64a8324c9316f0612eb1bb7a360fd69a75209eedfb2d2b48f372f636b7da7aa5",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "globals_swf8",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "118ab4ab602ffe26dcca0895054bef4964a9689199e6d4f0b06c166dffb52046",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "global_swf5_6_7_8_9",
+      "group": "version-semantics",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "21602822ee8571dd65c4137b30fac67788944ec4f7db1b8d30a454062b743a07",
+      "entries": 4,
+      "functions": 3,
+      "tiers": {
+        "T0": 1,
+        "T1": 2,
+        "T2": 1
+      },
+      "reasons": ["dynamic-pool", "register-out-of-range", "branch-out-of-bounds"]
+    },
+    {
+      "name": "swf5_encoding",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "af56d0966a96a3819ae0c4c66bc9be94a08a0eccfae881f4aac0bf15e12d4ee7",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "string_methods",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "f1c43b532b8b074d7c795c86bc94cf1fcf6baf1aa6c545d9827e884a46279e88",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "string_methods_swfv5",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "2e8d0309b97822171a328e99273d3ad888b944246af938907503ba1200d78d36",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 1,
+        "T1": 2,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "string_ops_swf6",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "4736047901af80560705ae16048eafb0a7b89faa22f8d9a5003f1be1ac1c97bc",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "undefined_to_string_swf6",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "9bc1e54b3f89c813389cf54a7d1f0b34ac07a1cfb4423a501a91d69b2d16b955",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "object_string_coerce_swf5",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "3144d082d8165fb1b47a734f08fbf9649c0c510f9372352c98927a66c3767cb3",
+      "entries": 6,
+      "functions": 5,
+      "tiers": {
+        "T0": 1,
+        "T1": 5,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "object_string_coerce_swf6",
+      "group": "strings-encoding",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "f8e89d176a3531f808b448b2f1f208a53d30f3bfef658e4b28023776675b44cf",
+      "entries": 6,
+      "functions": 5,
+      "tiers": {
+        "T0": 1,
+        "T1": 5,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "enumerate",
+      "group": "enumerate-determinism",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "6776d079a427dbbb6fe8b0e82e412975e2396f9db8829538c38764728a59ff8f",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 0,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-stack", "dynamic-args"]
+    },
+    {
+      "name": "prototype_enumerate",
+      "group": "enumerate-determinism",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "86124cb8366fc4d5823c3b4cf864bb82e66af0bd69b63cab19b82bc826e862b6",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-stack"]
+    },
+    {
+      "name": "prototype_properties",
+      "group": "enumerate-determinism",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "6fb98ae6c51d4d5c842f56155493667630d095d5486fc2f8a307965c4be227a2",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 3,
+        "T1": 2,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "prototype_delete",
+      "group": "enumerate-determinism",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "45ffcaea5d58e764d0e1566b9746cbcaa3be2fb814afcc189ab8328037c557f8",
+      "entries": 3,
+      "functions": 2,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch", "dynamic-stack", "call-dynamic-target", "dynamic-args"]
+    },
+    {
+      "name": "watch",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "7ab9a38d12fd4dd969faf882bc3403ad904237b584499956dde09d11ac7946cc",
+      "entries": 10,
+      "functions": 8,
+      "tiers": {
+        "T0": 1,
+        "T1": 6,
+        "T2": 3
+      },
+      "reasons": ["dynamic-pool", "branch-out-of-bounds", "dynamic-stack", "stack-mismatch"]
+    },
+    {
+      "name": "watch_virtual_property",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "05141819571e0b575208c375dd2a50eb12b4313695732d0d605413646818b4da",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 1,
+        "T1": 4,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool", "dynamic-stack"]
+    },
+    {
+      "name": "watch_proto_recursion",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "9e866f10ced67d26f5bad80e24c52d30c34447937bd91b81ab5d4272fbb17e27",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 1,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "watch_recursion_swf6",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "9a29a0cff618a430980aa89d303def2ecf9b075e8a854cb6bbb3bbd3ee5f0d81",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 1,
+        "T1": 4,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "watch_recursion_swf7",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "e4472d9cb6111f7f093aea395d91b3fc46f030806d53d730416f3fabb5985769",
+      "entries": 5,
+      "functions": 4,
+      "tiers": {
+        "T0": 1,
+        "T1": 4,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "delete",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "f0295b5d80343a32b71c2787daf55ccab398361e4dce9b4120ccc925f4ac7148",
+      "entries": 3,
+      "functions": 0,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 1
+      },
+      "reasons": ["stack-mismatch"]
+    },
+    {
+      "name": "delete2",
+      "group": "dynamic-watch",
+      "source": "ruffle-avm1",
+      "exit": 1,
+      "sha256": "461ddb55478160edd5fbf324f0995390f0fa5e8e3f359b93e21ea61dab76a8b8",
+      "entries": 2,
+      "functions": 1,
+      "tiers": {
+        "T0": 0,
+        "T1": 0,
+        "T2": 2
+      },
+      "reasons": [
+        "stack-mismatch",
+        "dynamic-stack",
+        "dynamic-args",
+        "call-dynamic-target",
+        "dynamic-with",
+        "dynamic-pool"
+      ]
+    },
+    {
+      "name": "goto_frame2",
+      "group": "frame-control",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "9b752679d1feb00462a5549601eb3f1b9f611d08f89824a5ef5e066168fde9b8",
+      "entries": 20,
+      "functions": 5,
+      "tiers": {
+        "T0": 15,
+        "T1": 5,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "goto_label",
+      "group": "frame-control",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "2a6204df54d96df1a83f2ada7c7722dfe5037429abb402eb1bb489b64f41e9e8",
+      "entries": 8,
+      "functions": 1,
+      "tiers": {
+        "T0": 7,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "goto_execution_order",
+      "group": "frame-control",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "ea14536fb2d7c5bc4cb4d18b676fa70e5f36f57a7730d855f3eba666c01cb0d1",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "goto_both_ways1",
+      "group": "frame-control",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "b95a6b00d650991515434974917b5ed3b8a5f8573466bffa9c8b2f861cf559c8",
+      "entries": 2,
+      "functions": 0,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "goto_rewind1",
+      "group": "frame-control",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "15eccfa81bf448837ce878b43c04cf55b8007a66ad9b5b6a7ea8cc121a53d6d8",
+      "entries": 2,
+      "functions": 0,
+      "tiers": {
+        "T0": 2,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "instanceof_coercions",
+      "group": "coercion",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "8f0df7e8275bfa7aeb57e160354a6d1555f44c56fac81459f5184bc04d4da84d",
+      "entries": 12,
+      "functions": 8,
+      "tiers": {
+        "T0": 6,
+        "T1": 6,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    },
+    {
+      "name": "swf6_string_as_bool",
+      "group": "coercion",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "b01796980aebdac756f312778f770170571062a5a38e6ef09ace96dc3910e356",
+      "entries": 1,
+      "functions": 0,
+      "tiers": {
+        "T0": 1,
+        "T1": 0,
+        "T2": 0
+      },
+      "reasons": []
+    },
+    {
+      "name": "string_relational_compare",
+      "group": "coercion",
+      "source": "ruffle-avm1",
+      "exit": 0,
+      "sha256": "bb93a967654ed64f8aa7c32d3a63a68f46cbbdc689ecb23556fc32a56a0dc779",
+      "entries": 4,
+      "functions": 2,
+      "tiers": {
+        "T0": 3,
+        "T1": 1,
+        "T2": 0
+      },
+      "reasons": ["dynamic-pool"]
+    }
+  ]
+}

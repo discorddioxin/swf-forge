@@ -4,7 +4,7 @@
 
 import { describe, expect, it } from 'vitest';
 
-import { Cursor, SwfReadError, decomposeMatrix, readMatrix } from '@swf-forge/swf';
+import { Codes, Cursor, SwfReadError, decomposeMatrix, readMatrix } from '@swf-forge/swf';
 import { ByteWriter } from '@swf-forge/swf/test-support';
 
 function rawBits(value: number, width: number): Uint8Array {
@@ -32,6 +32,29 @@ describe('numeric bit IO', () => {
 
   it('T-SWF-004 interprets FB[19] value 0x30000 as exactly 3.0', () => {
     expect(new Cursor(rawBits(0x30000, 19)).fb(19)).toBe(3);
+  });
+
+  it('T-SWF-004 decodes the §8 EncodedU32 vectors and flags only the non-minimal ones', () => {
+    // `IMPL-010` §5.1/§8: `SF0009` fires when the encoding is longer than necessary, or when the
+    // value exceeds 32 bits. The maximal value needs all five groups (7 * 4 + 4 = 32 bits), so its
+    // encoding is minimal and must decode clean. It used to be misreported as overlong because the
+    // minimality check compared a signed int32 (`|=` result) instead of the unsigned value.
+    const maximal = new Cursor(Uint8Array.from([0xff, 0xff, 0xff, 0xff, 0x0f]));
+    expect(maximal.encodedU32()).toBe(0xffffffff);
+    expect(maximal.diagnostics).toEqual([]);
+
+    expect(new Cursor(Uint8Array.from([0x7f])).encodedU32()).toBe(127);
+    expect(new Cursor(Uint8Array.from([0xac, 0x02])).encodedU32()).toBe(300);
+
+    // Zero spelled over five groups: longer than necessary.
+    const overlong = new Cursor(Uint8Array.from([0x80, 0x80, 0x80, 0x80, 0x00]));
+    expect(overlong.encodedU32()).toBe(0);
+    expect(overlong.diagnostics.map((d) => d.code)).toEqual([Codes.ENCODED_U32_OVERLONG]);
+
+    // Excess high bits in the 5th group are masked, and the overflow is reported.
+    const overflow = new Cursor(Uint8Array.from([0xff, 0xff, 0xff, 0xff, 0x7f]));
+    expect(overflow.encodedU32()).toBe(0xffffffff);
+    expect(overflow.diagnostics.map((d) => d.code)).toEqual([Codes.ENCODED_U32_OVERLONG]);
   });
 
   it('T-SWF-013 decodes +90 degrees as right-to-down in SWF y-down coordinates', () => {

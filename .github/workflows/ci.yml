@@ -62,3 +62,41 @@ jobs:
 
       - name: Tag coverage report (P2 exit criterion 4)
         run: pnpm tag:coverage
+
+  # `R-P0-02` requires the browser half of `T-SWF-004` to run "in the pinned toolchain and CI" and
+  # that "the CI log identifies both jobs". This job executes the *same* vector definitions
+  # (`packages/swf/test/support/vector-table.ts`) as the `verify` job's Node lane, in a real
+  # headless browser engine. It is separate so a missing engine fails loudly here instead of
+  # silently shrinking the Node lane (`audits/P0-AUDIT.md` F-P0-01).
+  browser:
+    name: Browser lane - identical vectors in headless Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser engine (Playwright registry + system libraries)
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Fails the job early, with the reason, when no engine is usable; prints the resolved engine
+      # identity as JSON so the log records the host the vectors ran on.
+      - name: Report resolved browser engine
+        run: pnpm browser:probe
+
+      - name: Run the browser lane
+        run: pnpm test:browser

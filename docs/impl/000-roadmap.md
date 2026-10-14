@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.19 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.30 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -39,34 +39,72 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
 
 | Phase | Name | Status | Format-spec chapters | Primary outcome (the demo) | Exit gate |
 | --- | --- | --- | --- | --- | --- |
-| **P0** | Foundations | **In progress** | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven | T-SWF-001…004, T-SWF-009 |
+| **P0** | Foundations | **In progress** | Ch.1 | `swfforge inspect game.swf` prints header + tag list; byte readers proven in **both** the Node and browser lanes | T-SWF-001…004, 009, 014–017 (§6 P0) |
 | **P1** | Container & dictionary | **Completed** | Ch.2 | `inspect --tags --symbols` prints dictionary, sprites, exports, ordering violations | T-SWF-002, 003, 007, 008, 010–012 |
 | **P2** | Model & timeline | **Completed** | Ch.3, 4, 12, 13, 15 | `forge-decompile dump` prints stable, diffable model JSON; ordered placements, sprites, control tags, button records/conditions, and tag dispositions have tests | T-MOD-001–040/601–604/801–817 + `tools/tag_coverage.py` |
 | **P3** | Media decode and build assets | **Completed** | Ch.6–10 + Ch.11 decode/build subset | `forge-decompile assets dump <file.swf> --out <dir>` emits deterministic shape/bitmap PNG debug previews, supported-font WOFF2, PCM/ADPCM WAV previews, MP3 pass-through, and explicit diagnosed fallbacks | T-SWF-005/006 + P3-owned T-MOD/T-AST/T-AUD decode and asset-dump gates |
 | **P4** | Static render (no VM) | **Completed** | — | A no-script SWF renders its main timeline in the browser, frame-accurate | T-GFX-001…005, 020, 021 |
 | **P5** | AVM1 front end | **In progress** | Ch.5 | Front-end acceptance: audited opcode/IR/tier contract, byte round trip, corpus review, and FE-030 disposition | IMPL-050 §13; open P5 evidence remains explicit |
-| **P6** | Emitter | **Not started** | — | `swfforge build` emits a project that compiles with zero suppressions | T-CMP-001…005, T-AVM1-026 |
+| **P6** | Emitter | **In progress** | — | `swfforge build` emits a project that compiles with zero suppressions | T-CMP-001…005, T-AVM1-026 |
 | **P7** | First playable | **Not started** | — | A real open-corpus game boots and plays its first 60 frames with AVM1 runtime gates exercised | C1 (TST-§9.1), T-AVM1-008/009/012/025/027, IMPL-130 runtime execution gates |
 | **P8** | Audio runtime | **Not started** | Ch.11 playback/sync | Music + SFX play, Web Audio scheduling and stream sound stay in sync for 10 minutes | T-AUD-001…010, 020…027 (runtime gates only; decode/build tests are P3) |
 | **P9** | Fidelity hardening | **Not started** | all | Filters, blends, masks, dynamic text, hit testing, device fonts | T-GFX-010…041, T-AST-* |
-| **P10** | Video & long tail | **Not started** | Ch.14 | Video plays; controls/metadata/system tags resolved | T-AST-021, T-RT-* |
-| **P11** | Release engineering | **In progress** | App. A–C | Fuzzing, budgets, three-engine CI, docs, example titles | TST-§9.2, SEC-§9 |
+| **P10** | Video & long tail | **Not started** | Ch.14 | Video plays; controls/metadata/system tags resolved; consumes P0's primitive-consumer register for the 24-bit field inventory (§4.1) | T-AST-021, T-RT-* |
+| **P11** | Release engineering | **In progress** | App. A–C | Fuzzing, budgets, three-engine CI (extends the P0-owned browser lane, §4.2), docs, example titles | TST-§9.2, SEC-§9 |
 | **P12** | Inspector | **Not started** | — | Open a built project: file explorer, highlighting, SWF↔TS navigation, diagnostics panels, dev run view | T-INS-101…114 |
 | **P13** | Clean engine | **Not started** | — | The same title runs on a fixed-step loop with no MovieClip/timeline, with a rewrite log and probes | T-CLN-101…114 |
 
 **Status basis (checked 2026-10-11).** These labels describe phase acceptance, not document readiness or a code/test count. **Completed** requires a reviewed phase exit verdict or audited green exit gates; **In progress** means work is underway but a phase-owned criterion remains open; **Not started** means phase-specific delivery/acceptance work has not begun. Code presence or a test citation alone does not close an obligation. Completed phases can retain explicitly accepted non-blocking deferrals, which remain visible in the owning spec.
 
-- **P0 — In progress:** the [P0 audit](../../audits/P0-AUDIT.md) found incomplete `T-SWF-004` vector/browser evidence; no all-fixture `T-SWF-009` or 10⁵-case `T-SWF-014`; `T-SWF-015/016` tests that do not assert their full recovery/error contracts; no `T-SWF-017` allocation counter or 5 MiB SWF-R001 copy-budget measurement; and no `WP-010-12` reader fuzzer or required diagnostic-literal lint rule. The general suite passing does not close these obligations. The ordered [P0 resolution plan](../../audits/P0-AUDIT-RESOLUTION.md) records the evidence required before this status can change.
+- **P0 — In progress:** the [P0 audit](../../audits/P0-AUDIT.md) found incomplete `T-SWF-004` vector/browser evidence; no all-fixture `T-SWF-009` or 10⁵-case `T-SWF-014`; `T-SWF-015/016` tests that do not assert their full recovery/error contracts; no `T-SWF-017` allocation counter or 5 MiB SWF-R001 copy-budget measurement; and no `WP-010-12` reader fuzzer or required diagnostic-literal lint rule. The general suite passing does not close these obligations. The ordered [P0 resolution plan](../../audits/P0-AUDIT-RESOLUTION.md) records the evidence required before this status can change. Since that audit the browser half of the vector obligation is unblocked at the infrastructure layer: a browser lane now runs the shared §8 vector table in headless Chromium as its own CI job (§4.2), and building it found a real reader defect — `EncodedU32` values ≥ 2³¹ were misreported as overlong and emitted a spurious `SF0009`, now fixed with a regression test (§4.5). Vector *completeness*, `T-SWF-009`'s inventory, the allocation contract, `WP-010-12`, and the diagnostic-literal rule all remain open, so the phase stays **In progress**. **Dependency position (2026-10-13, §4.6):** P0 has no dependency-direction defect — doc 010's WP graph is entirely intra-P0 and the automated check reports no inversion — and every open item is evidence, not sequencing. Its three uncited obligations now carry live `Phase owner` dispositions in doc 010's test table, and `WP-010-11` is recorded as the only P0 package on P6's transitive path (§4.6 item F).
 - **P1 — Completed:** the P1 audit and resolution report all six exit criteria green. This is phase exit readiness, not closure of every work package: standalone `swffuzz`/crasher-corpus tooling, streaming LZMA, the full-scale absolute-RSS follow-up, and the synchronous-zlib partial-yield deviation remain explicitly deferred or pinned in [the P1 resolution](../../audits/P1-AUDIT-RESOLUTION.md) §4–5.
 - **P2 — Completed:** the P2 resolution closes its two minor findings with zero open audit findings; see [P2 audit](../../audits/P2-AUDIT.md) and [resolution](../../audits/P2-AUDIT-RESOLUTION.md).
 - **P3 — Completed:** the C7 closeout records all P3 acceptance gates green and names later-phase forwards; see [P3 audit](../../audits/P3-AUDIT.md) and [resolution](../../audits/P3-AUDIT-RESOLUTION.md).
 - **P4 — Completed:** its three exit gates are green; gradient/bitmap fills, full stencil masks, filters, and WebGPU remain later-phase scope, not an open P4 exit gate. See the [P4 diagnosis](../../audits/archive/P4-DIAGNOSIS.md).
-- **P5 — In progress:** C0–C4 are complete as audit/evidence checkpoints, but P5 remains open for byte round trip, licensed/provenanced open-corpus evidence with two reviewers, and FE-030's unresolved `ActionStringLength` oracle. Route A keeps executable runtime semantics, interpreter/budget, and runtime call/unwind/scheduling acceptance in P7; those gates remain mandatory there. See [P5 resolution](../../audits/P5-AUDIT-RESOLUTION.md).
-- **P6–P10 — Not started:** phase-owned acceptance has not begun. P3 decoders/assets and the P4 no-script renderer are prerequisites, not proof of P6 emission, P7 runtime execution, P8 playback/sync, P9 fidelity, or P10 video gates.
-- **P11 — In progress:** CI currently runs spec verification, typecheck, tests, a 10⁴-mutation smoke fuzz gate, build, lint, development audit, and tag coverage. The P11 release gates remain open: 24-hour fuzz history, the security suite, bundle/texture/audio/manifest budgets, and a decision register with no un-triaged entries.
+- **P5 — In progress:** C0–C4 are complete as audit/evidence checkpoints, but P5 remains open for byte round trip, licensed/provenanced open-corpus evidence with two reviewers, and FE-030's unresolved `ActionStringLength` oracle. Route A keeps executable runtime semantics, interpreter/budget, and runtime call/unwind/scheduling acceptance in P7; those gates remain mandatory there. See [P5 resolution](../../audits/P5-AUDIT-RESOLUTION.md). **Dependency position (2026-10-13, §4.6):** the retained byte-round-trip gate is now specified and schedulable — `IMPL-050` v1.10 §5.7 defines the lossless inverse format in five canonical-encoding rules, `WP-050-18` (5 d) and `T-AVM1-FE-034` carry it, and §13 criterion 2 records the decision to keep the lossy disassembly surface out of the byte-identity path — so what remains is implementation plus the two external-evidence gates, which no amount of implementation closes. Doc 050's test table now carries the Route A forwards (`T-AVM1-FE-024` → P7 and the split FE-025/027/028 halves) as live dispositions.
+- **P6 — In progress:** `WP-120-01` is delivered. `@swf-forge/compile` (`packages/compile/`) now holds the
+  pipeline runner: the stage spine in the order the design spec mandates whatever order stages are
+  registered in, the five post-model passes of doc 120 §3 on their own spine between `analyze` and `plan`, a
+  run context carrying the resolved config, the diagnostic sink and a cancellation token threaded *through*
+  every stage and loop rather than polled from outside, the cache seam the design spec's key formula needs,
+  and `--dry-run` stopping after `plan` without writing a file. Three stage adapters wire the suppliers that
+  exist (`WP-020-10`, `WP-030-09`, `WP-050-*`) including the AVM2 refusal, and a stage with no
+  implementation is reported (`SF0500`, the first code in doc 120's compile range) instead of skipped
+  silently. 24 tests. `WP-120-02` followed the same day: the content-keyed stage cache (`.forge/cache/`, one JSON entry
+  per `CMP` §12 key, effect-set comparison for staleness, atomic writes, a corrupt entry degrading to a miss)
+  and a structural serialisation that tags `Map`/`Set`/`Uint8Array` instead of enumerating fields, so a field
+  the IR grows later cannot be silently dropped. `analyze` is the first cacheable stage; **`T-CMP-005`** is
+  wired by it — cold and warm builds compared as bytes, proven over all 73 licensed corpus movies and
+  negative-controlled by breaking the codec (49 mismatches on exactly the 49 movies carrying `Map` entries,
+  0 with the honest one), which also established that `--verify-cache` cannot detect a lossy cache format
+  and only output equivalence can (doc 120 §2.2). `WP-120-05` and `WP-120-06` followed: `passes/names.ts` and
+  `passes/frames.ts` are the first two objects on the runner's **pass** spine, wiring `T-CMP-001` — 100
+  permutations of the `ExportAssets` dictionary dealt into slots *interleaved between* the control tags, so
+  no absolute offset can sit still — and adding `T-CMP-010`/`T-CMP-011` for two new rules: a synthetic name
+  never embeds a source position (doc 120's new `R033`), and a hoist candidate is position-independent but
+  content-complete, with T2 blocks excluded outright because a residual blob's identity is its bytes (its new
+  `R034`). Each rule is negative-controlled by breaking exactly what it forbids. Doc 120 v1.6
+  records the five decisions those passes had to make, including the reading of doc 050's `R062` and
+  `AVM1-R036` step 1 the phase had to adopt because P5's pass discards the export map — a measured gap (0 of 20 exported
+  names appear among 149 recovered ones, `E-044`), not a stylistic preference; the P5-side fix is `WP-050-10`
+  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 10 work packages. `decode` waits on P6's own asset chain
+  (`WP-070-06`…`-09`, `WP-080-10`'s KTX2 half, `WP-080-11`, `WP-090-12`, `WP-110-12`), `emit` waits on P5's
+  `WP-050-18` serializer for the losslessness claim it has to prove, and `WP-120-07` transitively on P0's
+  unbuilt `WP-010-11` (§4.6 item F). P6's exit gate — a project that compiles with zero suppressions — is
+  not approached by this work package, and the phase is **In progress**, not near closure. Starting it also
+  found two document defects, both recorded: `E-042` (the design spec's acceptance table and doc 120's test
+  table gave six `T-CMP-*` ids different meanings; the impl doc owns the band now) and `E-043` (the
+  diagnostic model has three severities and no `requirement` field, so `--fail-on=risk`, `risk.json` and the
+  design spec's CI default are unimplementable until P0 extends the model — P6 rejects the config value
+  loudly in the meantime).
+- **P7–P10 — Not started:** phase-owned acceptance has not begun. P3 decoders/assets and the P4 no-script renderer are prerequisites, not proof of P7 runtime execution, P8 playback/sync, P9 fidelity, or P10 video gates.
+- **P11 — In progress:** CI currently runs spec verification, typecheck, tests, a 10⁴-mutation smoke fuzz gate, build, lint, development audit, tag coverage, and a **browser lane** (headless Chromium over the shared §8 vectors — the P0-owned minimal lane of §4.2, which P11 extends into the three-engine matrix). The P11 release gates remain open: 24-hour fuzz history, the security suite, bundle/texture/audio/manifest budgets, and a decision register with no un-triaged entries.
 - **P12–P13 — Not started:** the design specs exist, but inspector and clean-engine phase acceptance has not begun.
 
-**Shared verification snapshot (2026-10-11):** `corepack pnpm build`, `typecheck`, `test` (62 files / 718 tests), `lint`, `python3 tools/verify_docs.py` (`ISSUES: 0`), and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations) pass. These shared checks do not supersede the phase-specific open criteria above.
+**Shared verification snapshot (2026-10-14):** `corepack pnpm build`, `typecheck` (now including
+`packages/compile/tsconfig.test.json`), `test` (**69 files / 819 tests**), `audit:dev`
+(**190 codes**, **588 rules**, **452 test ids — 234 cited / 216 unwired**, `new=0`), `corpus:verify`
+(73/73 against the pinned manifest), `test:avm1-restart` (both reports identical), `test:browser` (**31 cases in headless Chromium 153.0.8010.0**, the same 26 vectors and the same pinned fingerprint as the Node lane), and `lint` pass. Carried forward from the 2026-10-11 snapshot: `python3 tools/verify_docs.py` (`ISSUES: 0`) and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations). These shared checks do not supersede the phase-specific open criteria above.
 
 Each phase's document-level detail lives in the per-area implementation specs; this document owns
 sequencing, dependencies, and the definition of done at phase granularity.
@@ -177,8 +215,24 @@ P0 readers ──► P1 container ──► P2 model/timeline ──┬──►
                         P8 audio runtime (needs P3 sound assets + AUD runtime contract)
                         P9 fidelity (needs P4 + P7 + golden harness)
                         P10 video (video decode/build owned here; needs P3 infrastructure + P4 renderer)
-                        P11 release (needs everything)
+                        P11 release (needs everything — including P0's writer and reader fuzz target)
+                        P12 inspector (needs P6 + P4/P7 + P5)
+                        P13 clean engine (needs P2 + P3 + P4/P7 + P5 + P6 + P11)
+
+  measured edges that run against this order (§4.3):
+                        P2 ──► P3, P4/P7, P5      P3 ──► P4/P7, P5, P11      P6 ──► P10
+  capabilities relocated to the earliest phase that needs them (§4.2):
+                        browser lane · reader fuzz target · measurement counters · fixture inventory ──► P0
 ```
+
+The spine is the *declared* order. The measured work-package graph — 211 rows, 183 intra-document and
+70 cross-document edges, extracted mechanically in [`audits/P0-PHASE-DEPENDENCY-MAP.md`](../../audits/P0-PHASE-DEPENDENCY-MAP.md)
+§3 — differs from it in two ways this section now pins: twelve edges run against the phase order
+(§4.3, and `tools/audit_dev.py`'s `dependency-direction` check now enforces the list on every run),
+and the harness coupling `WP-140-01 → WP-010-12` pointed back into P0 while P0's own
+deliverable pointed forward into the harness. That reciprocal pair existed only as prose inside a
+`Deliverable` cell, so it appeared in no dependency table and was invisible to `tools/audit_dev.py`
+and to this index. §4.2 breaks it by ownership relocation; §4.1 states the rule that keeps it broken.
 
 Hard edges that are easy to get wrong:
 
@@ -192,6 +246,217 @@ Hard edges that are easy to get wrong:
 - **P9 → P2**: filter/blend *metadata* comes from `PlaceObject3` in the model (Ch.3), even though the
   implementation lands in P9. Do not defer parsing it — defer *rendering* it.
 
+### 4.1 Dependency direction rule (supply-forward)
+
+**Normative.** An artifact, capability, definition, or piece of information that a phase's exit gate
+requires is owned by that phase or an earlier one. A later phase may *consume* it or *extend* it; a
+later phase may never be the *supplier* of an earlier phase's gate evidence.
+
+Where a gate input was found to live in a later phase, the input is re-homed in the phase that needs
+it, and the later phase becomes a consumer of the earlier copy. The information then flows forward
+through the graph instead of being pulled backwards across it.
+
+Corollaries:
+
+1. **Capability.** If phase N's gate needs capability C, the minimal form of C is a phase-N (or
+   earlier) deliverable. The later phase previously assumed to own C is recorded as its *extender*,
+   with the extension scope named. N never inherits the extender's scope.
+2. **Information.** If phase N's gate needs information I that is documented in a later phase's spec,
+   I is re-homed in phase N as a maintained artifact and the later phase cites N's copy. A later
+   document may be where I was *discovered*; it may not be where I is *owned*.
+3. **Work packages.** A `Depends` cell may name a later-phase work package only when the row also
+   carries a `Phase owner` annotation re-attributing that row to the later phase (the pattern docs
+   060/070/080/090 already use), or an explicit accepted-forward entry in the phase closeout. A
+   silent inversion is a specification defect, corrected the way P3 corrected `WP-070-13`'s
+   accidental P6 dependency — by removing the citation, not by waiting for the later phase.
+4. **Cross-cutting infrastructure** (CI stages, harness, fixture program, measurement counters) is
+   owned by the earliest phase whose exit gate needs it — see §4.2.
+5. **Reciprocity must be declared.** If a later-phase package depends on an earlier-phase
+   deliverable, and that deliverable's own text points back at the later phase, the pair is a cycle.
+   One direction must be removed by relocating ownership; the surviving edge is recorded in a
+   `Depends` cell in both documents, never in prose only.
+
+**Worked example — P0 needing data documented at P10.** `IMPL-010` §10 item 4 requires confirming
+that no `SI24` type exists before P0 may close. The only 24-bit field in the encoded spec set is
+`VP6SWFALPHAVIDEOPACKET.OffsetToAlpha UI24`, documented in doc 110 → **P10, Not started**. Read the
+old way, P0's exit gate needed information owned by an undeveloped phase, and P0 could not close
+until P10 was written.
+
+Under corollary 2 that is inverted. The **field-type inventory is P0-owned**: P0 maintains the
+primitive-consumer register — which primitive types exist, which have no consumer yet, and which
+structure consumes each — answers §10 items 3–4 from it, and records `OffsetToAlpha UI24` as the
+sole 24-bit consumer, satisfied by the existing unsigned `u24` reader. **P10 later consumes that
+register** when it implements the VP6 alpha path; it does not supply it. P0 waits on nobody, and P10
+inherits a checked answer instead of re-deriving one.
+
+Item 3 has the same shape and the opposite sign: the `FLOAT16` consumer is `DefineFontAlignZones`
+(tag 73), decoded in production by doc 080 → **P3, Completed**. The consumer is *recorded in P0's
+register*; the discovery site does not own it. That positive answer falsifies errata `E-004`'s
+sentence "`FLOAT16` does not appear in any AVM1-era tag we parse", which must be re-opened under its
+own re-open clause. `Cursor.u24()` having no production consumer today is likewise a register fact,
+not an open question.
+
+### 4.2 Cross-cutting infrastructure: relocated ownership
+
+Four capabilities blocked P0 while being scheduled at P11. Relocated per §4.1 corollaries 1 and 4.
+"Delivered" means gate evidence exists in this checkout; "Open" means the roadmap decision is made
+and the implementing edit is listed in §4.4.
+
+| Capability | Previously assumed owner | Now owned by | Later extender (named scope) | State |
+| --- | --- | --- | --- | --- |
+| Browser test lane — the §8 vector table executed in a real browser engine | P11 ("three-engine CI") | **P0** — one browser project running the *shared* vector definitions, as its own CI job | P11 — the three-engine matrix, `engine-skip` annotations, `reports/engine-matrix.md` (`TST-R020/021`) | **Delivered** — `vitest.browser.config.ts`, `packages/swf/test/support/vector-table.ts`, `packages/swf/test/io-vectors.lanes.test.ts`, CI job `browser`. 26 vectors / 31 cases pass in headless Chromium 153.0.8010.0 *and*, identically, under Node, tied together by one pinned cross-engine fingerprint |
+| Reader fuzz target (`WP-010-12`) | prose: "`tools/fuzz/readers.ts`, wired into doc 140's harness" | **P0** — re-sited inside the gated tree (`packages/swf/test/fuzz/`), so it is typechecked, linted, and CI-runnable, and can run in both lanes | P11 / doc 140 — hosts the target in the long-run and nightly harness beside the container/tag/action fuzzers | **Open** — file absent; `tools/**` is outside both `eslint.config.js` and the root `tsconfig.json`, and doc 140 has no host work package |
+| Allocation / copy counters (`T-SWF-017`; `SWF-R001` 5 MiB) | unspecified in every document | **P0** — adopts the already-accepted P4 instrumented-counter pattern (`packages/gfx/src/render/stats.ts`, `T-GFX-021`): exact per-site counted allocations are the proof; a coarse heap delta is permitted only as a secondary guard; warm-up and measured interval stated | P11 — runs the same counters as CI budget gates (`TST-R016`) | **Open** — the contract is not yet written into `IMPL-010`; `R-P0-06` correctly forbids the `heapUsed` fudge and tells the agent to stop, which is why it needs a normative home |
+| Fixture inventory ("every fixture", `T-SWF-009`) | `TST-§3.1`'s three fixture classes → P11 corpus program | **P0** — bounded to the in-repo corpus: the 21 committed `.swf` files + the 5 crasher-corpus files + an enumerated deterministic registry of generated synthetic fixtures, checked in as an inventory artifact | P11 — the `open` and `archive` classes, `fixtures/open/`, `fixtures/PROVENANCE.md`, external hash-fetch (`REPO-R017`) | **Open** — no inventory artifact exists, and `IMPL-020` §10's "not committed as opaque binaries" still contradicts the 21 committed files |
+| Browser engine acquisition for the lane | — (unowned) | **P0** — fetched, never committed: `pnpm exec playwright install chromium` on ordinary hosts, `node tools/browser-lane.mjs install` where only the npm registry is reachable | P11 — pins and versions the engine matrix | **Delivered** — registry-only install, 3.2 s, engine verified on arrival. The cache is disposable: a sandbox restore on 2026-10-13 deleted both `node_modules` and the 203 MB engine, and `pnpm install` + `browser-lane install` reproduced the whole lane in under 10 s. No binary is committed (`REPO-R017`) |
+
+Two scope rulings travel with this table, because both were live contradictions:
+
+- **The 5 MiB `SWF-R001` measurement may *drive* P1's container read paths.** `R-P0-07` requires
+  exercising the paths that own payload bytes; those live in `packages/swf/src/container/*` (doc 020 →
+  P1, **Completed**), while the P0 resolution plan's guardrail §1.5 forbids pulling in P1 container
+  work. Ruling: driving completed P1 code as a *read-only consumer* is in scope for P0; changing any
+  P1 behaviour is not, and would reopen P1's exit gate. The ≥5 MiB input must be **generated in
+  memory** by the writer, never committed (`REPO-R017`'s 20 MiB fixture cap and its external-fetch
+  mechanism both stay untouched).
+- **P0 does not inherit P11's scope.** P0 needs *a* browser runner executing *its* vectors, not the
+  three-engine matrix; *an* inventory of the fixtures it has, not the licensed open-corpus program
+  whose failure is recorded as an open **P5** criterion. Reading either obligation against the P11
+  gate would convert P0 from internally blocked to externally blocked, for no engineering reason.
+
+### 4.3 Measured inversions and their disposition
+
+Twelve edges run against the phase order; none has P0 on the depending side. Each is dispositioned
+here instead of being left implicit, and the list is **machine-enforced**: `check_dependency_direction()`
+in `tools/audit_dev.py` re-derives it from every `Depends` cell on every run, fails on an inversion
+that is not dispositioned here, and fails on a disposition whose edge no longer exists (stale
+paperwork hides the next real one). Measurement and the full edge list:
+[`audits/P0-PHASE-DEPENDENCY-MAP.md`](../../audits/P0-PHASE-DEPENDENCY-MAP.md) §3.4 and Appendix A.
+
+Three further inversions are *already* resolved by the `Phase owner` mechanism and so never appear in
+the table: `WP-060-12` and `WP-060-14` (re-attributed to P4) and `WP-080-11` (re-attributed to P6).
+
+| Depending phase | Later phase | Edges | Disposition |
+| --- | --- | --- | --- |
+| P2 | P5 | 3 — `WP-030-06`←`WP-050-01`, `WP-030-12`←`WP-050-05`, `WP-100-04`←`WP-050-03` | **Accepted forward.** P2 decodes the *records* (`CLIPEVENTFLAGS`, `CLIPACTIONS`, `BUTTONCONDACTION`); P5 owns action *semantics*. Re-attribute the three rows via `Phase owner` so the semantic half is visibly P5's |
+| P2 | P3 | 2 — `WP-040-15`←`WP-090-07`, `WP-100-06`←`WP-090-07` | **Accepted forward**, both on the same supplier (`SOUNDINFO` + `StartSound`). P3 is **Completed**, so nothing is blocked; record the edge so the P2 rows are not read as unstartable |
+| P2 | P4/P7 | 1 — `WP-040-09`←`WP-130-08` | **Accepted forward.** `DefineScalingGrid` metadata is parsed at P2; the renderer handoff is P4/P9 work, per the `P9 → P2` hard edge above |
+| P3 | P4/P7 | 2 — `WP-060-12`←`WP-130-04`, `WP-060-14`←`WP-130-04` | **Already re-attributed.** Both rows carry `Phase owner: P4` in doc 060; P3's closeout lists them as explicit forwards |
+| P3 | P5 | 1 — `WP-080-11`←`WP-050-08` | **Already re-attributed** (`Phase owner: P6` in doc 080); the font subsetter's reachability input is P5 tier assignment |
+| P3 | P11 | 1 — `WP-070-14`←`WP-140-03` | **Accepted forward.** The morph corpus needs doc 140's oracle runner; P3 closed with the forward declared |
+| P6 | P10 | 0 — was 1 (`WP-120-07`←`WP-110-06`) | **Inversion removed 2026-10-13** by the §4.1 supply-forward rule (`IMPL-110` v1.4, `IMPL-120` v1.3). The edge was real: the plan pass must report video bytes, but no video tag was decoded anywhere and the named supplier was P10's packet-header validation. `WP-110-12` now re-homes the *header + byte-extent* decode to P6, `WP-120-07` depends on it, and `WP-110-01` (P10) consumes it in turn — a legal forward. Packet-header validation, alpha pairing, transcode, native decoders, emission and verification stay P10; doc 120's R031 records that alpha pairing is a labelled estimate until then |
+| P3 | P6 | 1 — `WP-080-10`←`WP-070-07` | **Defect corrected 2026-10-13** (`IMPL-080` v1.3). Found by the automated check on its first run, and missed by the original measurement because both rows sit in P3-era documents — the inversion only exists once `WP-070-07`'s `Phase owner: P6` is honoured. The delivered code shows the edge was **false**, not merely early: `apps/decompiler/src/assets/font-atlas.ts` rasterises and packs deterministic monochrome PNG pages + JSON (`T-MOD-509`/`T-AST-023`) with no KTX2, no `.sfa` and no mip generation, so it consumes nothing from `WP-070-07`'s re-encode ladder. The `Depends` cell is corrected and the KTX2/`.sfa` + mip half recorded as an explicit P6 forward. Same defect class P3 removed from `WP-070-13` |
+
+The P3 rows show the mechanism that the other rows lack: docs 060/070/080/090 have a `Phase owner`
+column, so an inversion is *re-attributed* rather than argued about. Doc 010 has no such column,
+which is why P0 had no vocabulary for the same move — §4.4 item 1 adds it.
+
+The reciprocal harness pair is **not** in this table because it is no longer an inversion: §4.2
+relocates the reader fuzz target into P0, leaving only the legal forward edge `WP-140-01` (P11)
+depends on `WP-010-12` (P0) — a later phase consuming an earlier phase's deliverable, which is the
+direction §4.1 requires.
+
+### 4.4 Required follow-up edits in the per-area documents
+
+This document owns sequencing and phase-level definition of done; the work-package tables stay
+authoritative for buildable units. The decisions above required these matching edits, each traceable
+to a disposition in
+[`audits/P0-PHASE-DEPENDENCY-MAP.md`](../../audits/P0-PHASE-DEPENDENCY-MAP.md) §7. **All ten were
+applied on 2026-10-13**; the Status column records where each landed.
+
+| # | Document | Edit | Disposition | Status |
+| --- | --- | --- | --- | --- |
+| 1 | `010` §9 | Add a `Phase owner` column (the doc 060/070/080/090 pattern); re-site `WP-010-12`'s deliverable from `tools/fuzz/readers.ts` to `packages/swf/test/fuzz/`, and record the divergence in the changelog | D-P0-DEP-03, D-P0-DEP-04 | Applied — `IMPL-010` v1.6 (all rows P0; `WP-010-12` re-sited) |
+| 2 | `010` §8 | Write the allocation-counter contract normatively, citing the P4 instrumented-counter precedent and enumerating the counted classes separately for `T-SWF-017` (hot-read object allocations) and `SWF-R001` (payload-byte copies) | D-P0-DEP-02 | Applied — three counter rules in `IMPL-010` §8 (v1.6) |
+| 3 | `010` §8, §10 | Add the primitive-consumer register (§4.1); close §10 items 3–4 on the `DefineFontAlignZones` positive and the `SI24` negative | D-P0-DEP-08 | Applied — `IMPL-010` v1.6, §10 items 3–4 closed |
+| 4 | `010` §11.1 | Cite the delivered browser lane as the criterion-1 browser evidence, with P11's matrix recorded as the extension | D-P0-DEP-06 | Applied — `IMPL-010` v1.6 §11 criteria 1 and 4 |
+| 5 | `140` | Amend `WP-140-07` (or add a work package) to host the raw-reader fuzz target, and declare the `WP-140-01 → WP-010-12` edge in both documents so the coupling is machine-visible | D-P0-DEP-05 | Applied — `IMPL-140` v1.2 (§1 deliverable 6 + `WP-140-07`) |
+| 6 | `020` §10 | Resolve "all container fixtures are generated by the synthetic writer, not committed as opaque binaries" against the 21 committed `.swf` files; the `T-SWF-009` inventory cannot be pinned until this is settled | D-P0-DEP-01 | Applied — a fixture-provenance rule in `IMPL-020` §10 (v1.5) |
+| 7 | `errata.md` | Re-open `E-004` under its own clause and correct the "`FLOAT16` does not appear in any AVM1-era tag we parse" sentence | D-P0-DEP-08 | Applied — `E-004` corrected, `E-033` filed, errata 2.7 |
+| 8 | `tools/audit_dev.py` | Add a permanent inversion check over the §4.3 edge list, and admit P11 to `DEFERRED_FORWARD_PHASES` once doc 010 carries `Phase owner` forwards | D-P0-DEP-03 | Applied — see the note below this table |
+| 9 | `specs/foundation/010` §10, `TECH-SPEC` §4.3 | Record that the `browser` CI stage now exists as the P0-owned minimal lane, keeping the three-engine matrix at P11 | D-P0-DEP-06 | Applied — `REPO` 1.2, `TECH` 1.3 |
+| 10 | `010` §8 | **Blocking, needs a decision before the row-by-row matrix can be pinned:** the `UI32` row's Expected cell prints `1163342112`, but its own bytes `20 71 6e 45` are `0x456E7120` = `1164865824`, and the row's hex label agrees with the bytes, not with the decimal. Every other mechanically checkable §8 row is self-consistent. This is a document defect (upstream typesetting, `E-025` class, or our transcription) and must be dispositioned in `errata.md`, not silently absorbed into a test | new — see §4.5 | Applied as far as the evidence allows — see the note below |
+
+Two of the ten need a note rather than a table cell:
+
+- **Item 8 — what the check does, and the one part deliberately not done.** `check_dependency_direction()`
+  re-derives every edge from every `Depends` cell, resolves each row's *effective* phase (its
+  `Phase owner` cell when present, otherwise its document's phase from `DOC_PHASE`), and fails on (a) an
+  inversion absent from `DISPOSITIONED_INVERSIONS`, (b) a disposition whose edge no longer exists,
+  (c) a `Depends` id that is not a work package anywhere, and (d) a row with no resolvable phase.
+  Ten unit tests in `tools/test_audit_dev.py` cover it, including the negative controls — a check that
+  cannot fire is worse than no check. On its first run it found the twelfth inversion (§4.3, P3→P6),
+  which the original hand measurement missed because both rows sit in P3-era documents.
+  The `DEFERRED_FORWARD_PHASES` admission of **P11 was deliberately not made**: that set validates
+  which phase owns a *deferred diagnostic code*, and no entry in `DEFERRED_DIAGNOSTIC_WPS` maps to a
+  P11-owned work package. Doc 010's rows are all P0 and its P11 forward is declared on doc 140's
+  `WP-140-07`, so there is nothing to admit; widening the set would have weakened the check for no
+  consumer. The reasoning is recorded in a comment at the definition site.
+- **Item 10 — applied as far as the in-repo evidence allows, and left open.** The `UI32` discrepancy is
+  filed as **`E-033` (open)**: `IMPL-010` §8's row is annotated `⚠ disputed, E-033` with the
+  byte-derived value printed beside the transcribed one, so nothing was silently overwritten. The
+  provisional resolution applies the rule `E-025` already established for upstream worked examples —
+  the bytes are authoritative — giving `1164865824`, which is what both lanes assert. Settling it
+  permanently needs the upstream Ch.1 text, which this repository does not contain, so the entry stays
+  open and the vector table fails if the discrepancy is ever dropped without being resolved.
+
+### 4.5 Reader defect found while building the browser lane
+
+Delivering the §4.2 browser lane produced the first row-by-row execution of `IMPL-010` §8 against
+the production readers, and it found a real defect — the failure mode `audits/P0-AUDIT.md` F-P0-01
+predicted when it recorded that the vector matrix had never been run.
+
+`EncodedU32` values with bit 31 set were misreported as overlong and emitted a spurious `SF0009`.
+Cause: `packages/swf/src/io/integers.ts` accumulated into a signed int32 with `|=`, then tested
+minimality (`value < 2 ** (7 * (count - 1))`) *before* the `>>> 0` normalisation, so the maximal
+`ff ff ff ff 0f` compared as `-1`. Five groups carry exactly 32 bits, so that encoding is minimal and
+`IMPL-010` §8 expects the value with no diagnostic. Fixed by comparing the unsigned result; covered
+by a regression case in `packages/swf/test/io.test.ts` and by the `encoded-u32-max` row of the shared
+vector table, which both lanes execute. No existing test asserted either behaviour, so nothing
+regressed — which is itself the evidence for F-P0-01's "untested reader" claim.
+
+### 4.6 P0–P5 completion audit: dependency dispositions and open structural items
+
+[`audits/P0-P5-COMPLETION-AND-P6-READINESS.md`](../../audits/P0-P5-COMPLETION-AND-P6-READINESS.md)
+(2026-10-13) re-measured P0–P5 against their own acceptance text and every `Depends` supplier of every
+`WP-120-*` row. Its dependency conclusion is narrow and worth stating plainly: **neither P0 nor P5 has a
+dependency-direction defect.** `tools/audit_dev.py` reports zero inversion findings for both, doc 010's
+WP graph is entirely intra-P0, and doc 050's only cross-document edges point *backwards* to P1
+(`WP-020-04/05/07`). What kept both phases open was structural: obligations whose owner was named in
+archived audit prose and nowhere live, and one P5 exit gate with no work package.
+
+**Dispositions applied 2026-10-13** (all machine-checked; the gates are green):
+
+| # | Change | Where | Why |
+| --- | --- | --- | --- |
+| 1 | The byte-round-trip gate is now specified and schedulable: §5.7 defines the lossless inverse format (`ActionIR` + canonical encoding, bytes → IR → bytes) in five canonical-encoding rules; `WP-050-18` (5 d, `frontend/serialize.ts`) and `T-AVM1-FE-034` carry it; §13 criterion 2 records the decision to drop the disassembly leg from the byte-identity path | `IMPL-050` v1.10 | P5 could not be scheduled to closure: its retained exit gate had no WP, no test id, and no estimate, and `WP-050-16` explicitly disclaims a parser/assembler |
+| 2 | Every numbered impl document's test-obligation table carries a `Phase owner` column (215 rows annotated; docs 080/090 already had one) | `010`–`160` | A deferral must remain visible in the owning spec (§2 status basis). P2 closed with `T-MOD-030`/`T-MOD-602` uncited and their forwards only in `audits/archive/P2-RESOLUTION-AUDIT.md` |
+| 3 | `audit_dev.check_test_dispositions()` fails the build on an uncited impl-declared obligation with no `Phase owner` cell (`tests.undispositioned:*`), or on one whose document is owned by a phase §2 lists as **Completed** while the cell names no later phase (`tests.openincompleted:*`). Phase labels are read from §2, not hardcoded. Both paths were negative-controlled | `tools/audit_dev.py` | The 212-id "scheduled-or-unwired" bucket could not distinguish a documented deferral from a missing test; that is how two P2 forwards stayed invisible through two closeouts |
+| 4 | Doc 130's obligations are attributed per row (`T-RT-111` → P4 §5 renderer; five rows → P9; three → P8 §7; the rest → P7) | `130` §8 | `DOC_PHASE[130] = P4` made 19 P7 obligations count against a Completed phase. The conservative P4 pin stays for *dependency direction* — doc 130 has out-degree 0, so nothing is missed |
+| 5 | `verify_docs.py` cross-checks §7's prose developer-day total against the §10 index | `tools/verify_docs.py` | §7 said 646.5 while §10 said 658.5; the index was right and the prose was unchecked |
+| 6 | §7 reconciled: P0, P1, P2, P6, P10, P11 restated from their phase-owned WP sums, P12/P13 rows added (the Total had excluded 92 d of indexed work), and the four doc-130-sharing rows marked **not reconciled** instead of guessed | §7 | P6 was sized 30–45 d against an authoritative 64 d spread over four documents |
+
+**Open structural items** (owners named; none is a dependency inversion):
+
+| # | Item | Owner | Status |
+| --- | --- | --- | --- |
+| A | Doc 130's 17 WP rows need a `Phase owner` column. Its test obligations are now attributed per row, but the WP table is not, so §7's P4/P7/P8/P9 rows stay unreconciled and `WP-040-09 → WP-130-08` stays allowlisted as "P2 → P4" when the renderer handoff is P9's | `130` §9 | **Open** — the only remaining item that §7's reconciliation waits on |
+| B | "The reference title" is named by P6 §10.1, P7 §10.1 and `T-RT-118` and defined nowhere; `examples/` (REPO §2 tree) does not exist and `fixtures/PROVENANCE.md` (`REPO-R017`) is still missing. P6 §10.3's "the whole corpus" is unbounded, while `T-SWF-009`'s "every fixture" was bounded to the in-repo corpus (§4.2) | [`registers/corpus.md`](registers/corpus.md) | **Applied 2026-10-13** — the register defines four corpus classes, bounds §10.3 as C1 + C2, and states the reference title's six admission requirements. **Extended the same day by the retried screen:** class C4 is now populated — 73 ActionScript-bearing AVM1 conformance movies from `ruffle-rs/ruffle@2372a4e1` (Apache-2.0 OR MIT, each shipped with its own `test.as`/`test.fla` source and expected trace), hash-pinned in `fixtures/open/manifest.json` and fetched into `.forge-cache/` rather than committed, because doc 020 sanctions exactly three roles for a committed binary and an external movie is none of them. That produced the project's first tier evidence over real action blocks (`audits/P5-C4-CORPUS-EXTERNAL.json`) and found five defects: `E-034` (a phantom four-byte block prefix), `E-035` (`DefineFunction*` carry `Code[CodeSize]` past the record's `Length`), and — found while fixing `E-035` — `E-036` (`With` and `Try` do the same, and doc 050's `Try` tiling rule said the opposite), `E-037` (a function body is not `End`-terminated, so a phantom block-terminator warning fired for every function) and `E-038` (an error-severity region overrun left the block claiming tier 0). All four are **fixed** under doc 050's new region rule and wired by three new obligations, and `E-039` — a `Try`'s catch and finally bodies were decoded and then dropped from the IR — was fixed the same day under a second new rule in doc 050 (each region body is entered from its region op at the stack depth the player gives it, which for a `finally` body is the join of the try and catch bodies' exits) and wired by `T-AVM1-FE-040`. Fixing it exposed two more: `E-040` (a region body's leftover stack never reaches the code after the region, so a pop directly after a `Try` was a false `SF0406` and a false tier 2) — **fixed the same day** under a third new rule in doc 050 (control flows *through* a region: the block holding a `Try`/`With` record falls into the body, a body falls into the region's `finally` and then into the record after the region, so the continuation is a join over the bodies' exits) and wired by `T-AVM1-FE-041`, whose fix also uncovered a latent stall — a predecessor that never settled blocked the join forever, so every block downstream of unreachable code was silently absent from the IR — and `E-041` (a diagnostic emitted inside a nested block carries a block-relative offset, so four distinct underflows all report `@0`), still **open**. The regenerated report reads 119 blocks, **153** functions, **T0=119 T1=130 T2=23**, error-severity diagnostics **60 → 14** (all semantic), clean exits **21 → 60 of 73**, and zero of the three framing diagnostic families the screen had found; the ten entries that moved T0 → T1 are recovered statements rather than lost fidelity (`string_coercion.swf`'s disassembly grew 119 → 654 lines). The reference title stays **OPEN** — C4 members are conformance tests, not titles — and the second reviewer is still owed |
+| C | Doc 120 §7's budget rule (R028) requires video bytes in `budgets.json`, but no video tag is decoded anywhere (`DefineVideoStream`/`VideoFrame` exist only as tag codes and switch cases) and the named supplier `WP-110-06` is P10's | `110`, `120` | **Applied 2026-10-13** — `WP-110-12` re-homes the header/extent decode to P6, `WP-120-07` depends on it, doc 120's new R031 gives R028 its P6 reading, and the §4.3 inversion is gone |
+| D | `T-MOD-030`'s second half ("the emitted bundle never reads `location`") is dispositioned to P6 in doc 040's row, but doc 120 has no requirement, WP or `T-CMP-*` obligation that receives it | `120` §7/§8 | **Applied 2026-10-13** — doc 120's new R032 states the prohibition and `T-CMP-009` owns it on `WP-120-12`'s forbidden-construct lint |
+| E | Doc 050 §5.6's target-path prefix rule (R037) — the grammar (`/abs`, `..`, relative, `""`, dot form, `:`-suffixed prefix) — is specified and implemented in `frontend/properties.ts`, consumed by `control-flow.ts`/`stack.ts`, and owned by **no test id**; `WP-130-03` (`SetTarget` resolution) carried none either, and `disassemble.ts` defines a second `formatTarget` beside the exported one | `050` §10, `130` §8/§9 | **Applied 2026-10-13 (documents)** — `T-AVM1-FE-035` (`IMPL-050` v1.11) and `T-RT-122` (`IMPL-130` v1.4) now own the two halves. **The tests themselves are not written**, and the duplicate formatter is still there |
+| F | `WP-010-11` (P0, 3 d: test writer, 10⁵ property test, allocation test) is unbuilt and is the only P0 package on P6's transitive path — `WP-070-01` depends on it, and `WP-070-06/07/08/09` are P6-owned. P3 reviewed that edge and proceeded, which §5's ordering rule allows | `010` §9 | **Open** — implementation work, not a document fix |
+
+**Closure conditions.** P0 closes when its five unevidenced obligations have evidence — `WP-010-11`
+(`T-SWF-014`/`017`), `WP-010-12`'s reader fuzz target, the `T-SWF-009` in-repo inventory, the
+`T-SWF-015`/`016` recovery/error contract strengthening, and the diagnostic-literal lint rule of §11
+criterion 5 — plus the `E-033` `UI32` decision. P5 closes when `T-AVM1-FE-034` is green (item 1 above)
+and its two external-evidence gates are satisfied: an admissible licensed open-title corpus with tier
+evidence reviewed by two people, and an oracle for `ActionStringLength`'s SWF ≤ 5 byte-versus-character
+result. Neither external gate is closable by implementation work; the 2026-10-11 GitHub screen admitted
+no candidate and three emulator cross-checks did not establish Flash Player behaviour, so both remain
+open and P5 stays **In progress** until they are met or explicitly re-scoped by a recorded decision.
+
 ## 5. Parallelisation
 
 The graph above is deliberately wide after P2. Recommended splits:
@@ -204,18 +469,30 @@ The graph above is deliberately wide after P2. Recommended splits:
 | **4+** | Add a dedicated harness/testing owner from day one (the synthetic SWF writer pays for itself by P3), and a separate owner for audio from P8. |
 
 Cross-cutting roles that must exist regardless of team size: an **owner for the conformance harness**
-(140) from P1 onward, and a **decision-register maintainer** (the design specs' decision tables) who
-ensures every measurement lands in the table it belongs to.
+(140) from P1 onward; an **owner for the P0-side test infrastructure** from P0 onward — the browser
+lane, the fixture inventory, the measurement counters, and the reader fuzz target of §4.2, all of
+which are P0 exit-gate inputs and therefore cannot be picked up later; and a **decision-register
+maintainer** (the design specs' decision tables) who ensures every measurement lands in the table it
+belongs to.
 
 ## 6. Phase exit criteria detail
 
 ### P0 — Foundations
 
+Every criterion below is owned by P0 or an earlier phase (§4.1). Where a capability used to be
+assumed to belong to P11, §4.2 names the relocation and P11's extension scope.
+
 | Criterion | Evidence |
 | --- | --- |
 | `ByteReader`/`BitReader` pass T-SWF-001…004 with hand-computed vectors | unit tests |
 | EncodedU32, FLOAT16, FB[n], RECT, MATRIX, CXFORM, RGBA/ARGB all implemented | unit tests incl. the §10 erratum case |
-| Zero-copy contract honoured (REPO/R001 equivalent for the parser) | a test that allocates a 5 MiB buffer and asserts allocation count |
+| Every §8 vector asserted row-by-row, **on Node and in a browser engine**, from one shared definition | **Partly delivered** — `packages/swf/test/support/vector-table.ts` (26 provenance-tagged rows) runs as `io-vectors.lanes.test.ts` in both lanes, tied together by a pinned cross-engine fingerprint covering signed zero, NaN/infinity, `>>> 0`, and `TextDecoder('windows-1252')`. **Open:** the §8 rows needing a paired writer (`RECT` at arbitrary `Nbits`, `MATRIX` scale/rotate, `CXFORMWITHALPHA`) are `WP-010-11`, and the §8 `UI32` row's Expected cell must be dispositioned first (§4.4 item 10) |
+| Zero-copy contract honoured (REPO/R001 equivalent for the parser) | a test that allocates a 5 MiB buffer and asserts allocation count. **Ruling (§4.2):** the input is generated in memory and never committed; the measurement may *drive* P1's completed container read paths, and may not change them |
+| Allocation and copy counts are measured by a named, deterministic counter | **Open** — P0 owns the contract (§4.2): the P4 instrumented-counter pattern (`packages/gfx/src/render/stats.ts`, `T-GFX-021`) is the normative mechanism, with counted classes enumerated separately for `T-SWF-017` and `SWF-R001`. A coarse heap delta is a secondary guard only, never the proof (`R-P0-06`) |
+| "Every fixture" in `T-SWF-009` is a checked-in inventory of the in-repo corpus | **Open** — P0 owns it (§4.2): the 21 committed `.swf` files + the 5 crasher-corpus files + an enumerated deterministic registry of generated synthetic fixtures. `TST-§3.1`'s `open`/`archive` classes are P11's corpus program, with the forward recorded |
+| The primitive-consumer register answers §10 items 3–4 without consulting a later phase | **Open** — P0 owns it (§4.1): `FLOAT16` → `DefineFontAlignZones` (tag 73, decoded by doc 080 → P3); no `SI24` exists in the encoded set; the sole 24-bit field is doc 110's `OffsetToAlpha UI24`, which **consumes** this register rather than supplying it |
+| The reader fuzz target (`WP-010-12`) lives inside the gated tree | **Open** — P0 owns it (§4.2): `packages/swf/test/fuzz/`, typechecked, linted, CI-runnable in both lanes; doc 140 hosts it in the long-run harness (§4.4 item 5) |
+| The diagnostic-literal lint rule exists (`IMPL-010` §11.5) | **Open** — P0-owned; needs its scope ruling (production only, or tests too) |
 | Diagnostic framework emits `SF` codes with scope | unit tests |
 
 ### P1 — Container & dictionary
@@ -315,6 +592,7 @@ real-time scheduling, and stream-sync behavior; P3 does not close those runtime 
 | --- | --- |
 | Video frame timing preserved; SSIM ≥ 0.98 vs source decode | T-AST-021 |
 | `fscommand`, `System.capabilities`, `ExternalInterface` mappings documented and tested | T-RT-013 |
+| The 24-bit field inventory P10 needs is already answered upstream | **Consumes** P0's primitive-consumer register (§4.1): `OffsetToAlpha UI24` is the only 24-bit field in the encoded spec set and is read by the existing unsigned `Cursor.u24()`. P10 does not supply this information to P0, and P0 does not wait for P10 |
 
 ### P11 — Release engineering
 
@@ -324,6 +602,8 @@ real-time scheduling, and stream-sync behavior; P3 does not close those runtime 
 | Security suite green (T-SEC-001…011) | CI |
 | Bundle, texture, audio, manifest budgets met | `budgets.json` |
 | Decision register: 0 un-triaged entries | `tools/decisions status` |
+| Three-engine browser matrix green with skips documented | **Extends** the P0-owned browser lane (§4.2), which already runs the shared §8 vectors in headless Chromium as CI job `browser`. P11 adds the remaining engines, `engine-skip` annotations, and `reports/engine-matrix.md` (`TST-R020/021`); it does not re-own the minimal lane |
+| The long-run harness hosts every fuzz target, including P0's reader target | doc 140 `WP-140-07`, amended per §4.4 item 5, beside the container/tag/action fuzzers |
 
 ## 7. Effort model
 
@@ -332,25 +612,38 @@ implementation + unit tests:
 
 | Phase | Content | Est. (d) | Notes |
 | --- | --- | --- | --- |
-| P0 | readers, records, diagnostics skeleton | 12–18 | Highest leverage per line of code in the project |
-| P1 | container, compression, tag index, dictionary | 15–22 | LZMA is optional; zlib is 2 d |
-| P2 | model, timeline, place/remove, sprites, buttons, control tags | 25–35 | Wide but shallow |
+| P0 | readers, records, diagnostics skeleton | 20–24 | 20 d summed from the 12 P0-owned WPs in doc 010 (its v1.6 `Phase owner` column makes every row P0); upper 4 d is integration. Highest leverage per line of code in the project. **Reconciled 2026-10-13** — was 12–18, below its own WP sum. |
+| P1 | container, compression, tag index, dictionary | 26–31 | 26 d summed from doc 020's 12 WPs; upper 5 d integration. LZMA is optional; zlib is 2 d. **Reconciled 2026-10-13** — was 15–22. |
+| P2 | model, timeline, place/remove, sprites, buttons, control tags | 82–97 | 82 d summed from the P2-owned WPs: 030 (30), 040 (26), 100 (26); upper 15 d integration. Wide but shallow. **Reconciled 2026-10-13** — was 25–35, written before the WP tables were detailed. |
 | P3 | shapes/gradients, bitmaps/morphs, font/text decode + WOFF2/atlas build, and sound decode/build assets | 146–173 | 146 d summed from P3-owned WPs: 060 (38), 070 (40 incl. asset-dump integration), 080 (36), 090 (32); upper 27 d is phase integration/conformance overhead. Video is P10; runtime audio is P8. This is gross phase scope, not remaining effort. |
-| P4 | renderer core: tessellation, batching, text, atlases | 60–90 | The largest single subsystem |
-| P5 | AVM1 decode, IR, tiers, host binding | 45–65 | Front end only; runtime semantics are P7 |
-| P6 | emitter, resources, manifest, CLI, reports, verify | 30–45 | |
-| P7 | runtime shell + AVM1 runtime + integration | 50–75 | Integration alone is typically 20–30% of this |
-| P8 | audio build pipeline + worklet mixer + sync | 35–50 | |
-| P9 | filters, blends, masks, dynamic text, hit testing | 35–55 | Tolerance-driven; expect iteration |
-| P10 | video, system/long-tail API | 15–25 | |
-| P11 | fuzz, security, budgets, docs, examples | 20–30 | |
-| **Total** | | **≈ 488–683** | One engineer: 23–33 months. Three: 10–15 months. |
+| P4 | renderer core: tessellation, batching, text, atlases | 60–90 | **Not reconciled.** Doc 130 spans P4 (§5 renderer half), P7, P8 (§7) and P9, and its *WP* table has no `Phase owner` column, so the split is not machine-derivable. P4's delivered slice is §5's `WP-130-06`/`-07` (14 d) and its exit gate is the 20-golden no-script path (§2); only `T-RT-111` of doc 130's 20 obligations is P4's. |
+| P5 | AVM1 decode, IR, tiers, host binding | 45–65 | Front end only; runtime semantics are P7. 52 d summed from doc 050's 19 WPs — `WP-050-18` (byte round trip, §5.7 contract) and `WP-050-19` (open-corpus lane) were both added 2026-10-13 — still inside this range, whose lower bound predates both. |
+| P6 | emitter, resources, manifest, CLI, reports, verify | 68–80 | **68 d summed from every `Phase owner: P6` row, which spans five documents:** 120 (48) + 070 (`WP-070-06/07/08/09`, 13) + 080 (`WP-080-11`, 3) + 090 (`WP-090-12`, 2) + 110 (`WP-110-12`, 2, re-homed 2026-10-13); upper 12 d integration. **Reconciled 2026-10-13** — was 30–45, i.e. below its own WP sum by 19 d, and it hid 18 d of P6 work inside three P3-era documents (which is why `WP-120-07`'s supplier `WP-070-07` reads as a P3 leftover when it is P6's own row). |
+| P7 | runtime shell + AVM1 runtime + integration | 50–75 | **Not reconciled** — shares doc 130 with P4/P8/P9. 19 of doc 130's 20 test obligations are P7's per its `Phase owner` column. Integration alone is typically 20–30% of this. |
+| P8 | audio build pipeline + worklet mixer + sync | 35–50 | **Not reconciled** — only 2 d of P8-owned WP rows exist today (doc 090's runtime subset); the rest is doc 130 §7 (`WP-130-13/14/15`), whose rows are not phase-attributed. |
+| P9 | filters, blends, masks, dynamic text, hit testing | 35–55 | **Not reconciled** — 6 d of P9-owned rows today, plus doc 130 §5's later-scope renderer rows (`WP-130-08`/`-09`) and doc 130's five P9 obligations (`T-RT-106/107/108/109/110`). Tolerance-driven; expect iteration. |
+| P10 | video, system/long-tail API | 34–40 | 34 d summed from doc 110's 11 P10-owned WPs (its 12th, `WP-110-12`, is P6's — the header/byte-extent decode the emitter's plan pass needs); upper 6 d integration. **Reconciled 2026-10-13** — was 15–25. |
+| P11 | fuzz, security, budgets, docs, examples | 48.5–57 | 48.5 d summed from doc 140's 11 WPs; upper 8.5 d integration. **Reconciled 2026-10-13** — was 20–30. |
+| P12 | code inspector: indexing, navigation, run view | 41–48 | 41 d summed from doc 150's 12 WPs. **Added 2026-10-13** — §7 had no P12/P13 rows, so the Total excluded 92 d of scoped, indexed work. |
+| P13 | clean engine: transforms and runtime | 51–60 | 51 d summed from doc 160's 13 WPs. **Added 2026-10-13.** |
+| **Total** | | **≈ 737.5–941** | One engineer: 35–45 months. Three: 12–15 months, at the ~21 d/month the previous Total implied. |
 
-The work-package tables in the per-area documents (indexed in §10) total **≈ 646.5 developer-days**
-for implementation plus unit tests. P3's corrected phase estimate is derived from the P3-owned WP
-slices (148 d gross) after removing P4/P8/P9/P10 work; it is not a claim about remaining effort.
-Phase ranges also include integration, conformance, and release-engineering overhead that is not
-attributed to any single package.
+The work-package tables in the per-area documents (indexed in §10) total **≈ 668.5 developer-days**
+for implementation plus unit tests; `tools/verify_docs.py` cross-checks that figure against the §10
+index, because this prose drifted 12 d behind it (646.5 vs 658.5) while the index stayed correct.
+P3's corrected phase estimate is derived from the P3-owned WP slices (148 d gross) after removing
+P4/P8/P9/P10 work; it is not a claim about remaining effort. Phase ranges also include integration,
+conformance, and release-engineering overhead that is not attributed to any single package, which is
+why the Total's lower bound (737.5) sits above the WP sum (668.5).
+
+**Reconciliation rule (2026-10-13).** A row is *reconciled* when its lower bound equals the sum of the
+`Phase owner: <phase>` WP rows for that phase (falling back to the §3 doc→phase map where a document
+carries no `Phase owner` column), following the template P3's row established. Four rows are marked
+**not reconciled** because they all draw on doc 130, which the §3 map splits P4 (§5 renderer half) /
+P7 (whole document) / P8 (§7) / P9 (fidelity) while its WP table has no `Phase owner` column: the split
+is real but not machine-derivable. Giving doc 130's 17 WP rows a `Phase owner` column is the single
+change that would reconcile all four, and it is recorded as an open item in §4.4 rather than guessed
+here.
 
 These numbers assume the harness (doc 140) is built as part of P0–P2 rather than retrofitted; retrofitting
 a corpus + oracle harness costs roughly the same as building it, but only after you have already paid
@@ -419,23 +712,25 @@ Generated from the per-area documents. Regenerate with `tools/impl-status --inde
 | [020](foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 |
 | [030](decompiler/030-display-list-and-sprites.md) | Display List, Placements, Filters, and Sprites | 12 | 30 |
 | [040](decompiler/040-control-tags-and-metadata.md) | Control Tags and Metadata | 15 | 26 |
-| [050](transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 17 | 46 |
+| [050](transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 19 | 52 |
 | [060](decompiler/060-shapes-and-gradients.md) | Shapes, Paths, and Gradients | 14 | 42 |
 | [070](decompiler/070-images-and-morphs.md) | Bitmaps, Lossless Images, and Shape Morphing | 15 | 53 |
 | [080](decompiler/080-fonts-and-text.md) | Fonts and Text | 14 | 45 |
 | [090](decompiler/090-sounds.md) | Sounds: Event, Streaming, and Codec Paths | 12 | 36 |
 | [100](decompiler/100-buttons.md) | Buttons and Hit Testing | 10 | 26 |
-| [110](decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 11 | 34 |
-| [120](transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 46 |
+| [110](decompiler/110-video.md) | Video: Embedded Codecs and Transcoded Delivery | 12 | 36 |
+| [120](transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 |
 | [130](engine-flash/130-runtime-and-renderer.md) | Runtime, Renderer, and Interpreter | 17 | 88 |
 | [140](harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 |
 | [150](code-inspector/150-code-inspector.md) | Code Inspector: Indexing, Navigation, Run View | 12 | 41 |
 | [160](engine-clean/160-engine-clean.md) | Clean Engine: Transforms and Runtime | 13 | 51 |
-| **Total** | | **211** | **≈ 658.5** |
+| **Total** | | **214** | **≈ 668.5** |
 
 These 211 work packages are the buildable units. The roadmap's phase table adds integration, conformance, and release-engineering work on top; the total remains inside the class estimate in §7. Test ids and per-document work totals are summarized in `docs/impl/registers/STATUS.md`, regenerated with `python3 tools/gen_status.py`.
 
 **Ordering rule:** a package may start when every `Depends` id is *reviewed*, not necessarily complete; the roadmap's phases (§2) already encode the cross-document ordering.
+
+**Direction rule (§4.1):** a `Depends` cell may not name a later-phase package unless the row also carries a `Phase owner` re-attribution or an explicit accepted forward (§4.3). Where a phase's gate input was found to live in a later phase, the input is re-homed in the phase that needs it and the later phase becomes its consumer (§4.2). Silent inversions and prose-only reciprocal edges are specification defects.
 <!-- WP-INDEX:END -->
 
 ## 11. Release definition
@@ -478,3 +773,14 @@ art):
 | 1.17 | 2026-10-11 | Record the byte-round-trip scope decision: retain the existing inverse criterion as a P5 gate; keep it open and require a separate lossless contract/work package before implementation. |
 | 1.18 | 2026-10-11 | Add explicit Completed/In progress/Not started phase labels, reconcile P1's audited exit readiness and accepted deferrals, keep P5/P7 ownership and open gates explicit, and mark P0 in progress because T-SWF-009/014/017 and the parser allocation acceptance lack current gate evidence. |
 | 1.19 | 2026-10-11 | Add the P0 acceptance-bottleneck audit and AI-readable resolution plan; expand the P0 in-progress basis to include partial vector/recovery tests, missing browser/fuzz/allocation evidence, and the unimplemented diagnostic-literal lint gate. |
+| 1.20 | 2026-10-13 | Resolve the phase dependency conflicts measured in [`audits/P0-PHASE-DEPENDENCY-MAP.md`](../../audits/P0-PHASE-DEPENDENCY-MAP.md): add the normative **supply-forward rule** (§4.1) — a gate input owned by a later phase is re-homed in the phase that needs it, with the P0←P10 24-bit field inventory as the worked example; relocate the four cross-cutting capabilities that blocked P0 from P11 to P0 and name each later extender (§4.2), ruling the 5 MiB `SWF-R001` measurement may drive but not change P1's completed container paths; disposition all eleven measured inversions and break the undeclared P0↔P11 harness cycle by ownership relocation (§4.3); list the ten matching per-document edits (§4.4); record the delivered browser lane and the `EncodedU32` ≥ 2³¹ spurious-`SF0009` defect it found and fixed (§4.5); extend the §6 P0/P10/P11 exit criteria and the §10 direction rule accordingly. P0 remains **In progress**. |
+| 1.21 | 2026-10-13 | All ten §4.4 follow-ups applied, so the roadmap's decisions are now matched in the documents they govern: `IMPL-010` v1.6 (a `Phase owner` column with every row P0; `WP-010-12` re-sited from the ungated `tools/fuzz/readers.ts` into `packages/swf/test/fuzz/`; the normative allocation/copy counter contract (three new rules) adopting P4's instrumented-counter precedent; the primitive-consumer register; §10 items 3–4 closed — item 3 **positively**, item 4 negatively — and §11 criteria 1 and 4 updated); `IMPL-140` v1.2 (`WP-140-07` and §1 deliverable 6 now **host** the reader fuzz target, and the reciprocal edge is declared in both documents); `IMPL-020` v1.5 (a new fixture-provenance rule replaces the fixture sentence that contradicted the 21 committed binaries, naming the three sanctioned roles and bounding `T-SWF-009` to the in-repo corpus); errata 2.7 (`E-004` re-opened under its own clause and corrected — `FLOAT16` **is** consumed by tag 73; `E-033` filed open for the §8 `UI32` row); `REPO` 1.2 and `TECH` 1.3 (the `browser` CI stage recorded as delivered in its P0-owned minimal form, and `TECH-R008`'s `test:browser` corrected to the command that actually exists); `IMPL-080` v1.3 (a false `Depends` edge removed). §4.3 gains the twelfth inversion, found by the new `dependency-direction` check in `tools/audit_dev.py`, which now enforces the disposition list on every run with ten unit tests and negative controls. No phase status changed |
+| 1.22 | 2026-10-13 | P0–P5 completion audit ([`audits/P0-P5-COMPLETION-AND-P6-READINESS.md`](../../audits/P0-P5-COMPLETION-AND-P6-READINESS.md)) applied: new §4.6 records the dependency dispositions and six open structural items with owners, plus explicit P0/P5 closure conditions; §2's P0 and P5 bullets gain their dependency position; §7 is reconciled from the phase-owned WP sums (P0 20–24, P1 26–31, P2 82–97, **P6 64–76** across four documents, P10 34–40, P11 48.5–57), gains the missing P12/P13 rows, marks the four doc-130-sharing rows **not reconciled** rather than guessing them, and its prose total moves 646.5 → 663.5 under a new `verify_docs.py` cross-check; §10 index follows `IMPL-050` v1.10 (`WP-050-18`) to 212 WPs / ≈663.5 d |
+| 1.23 | 2026-10-13 | §4.6 items B–E applied in the documents they govern, and the last P6 → P10 inversion is gone: `registers/corpus.md` v1.0 defines the four corpus classes, bounds `IMPL-120` §10.3's "whole corpus" and states the reference title's admission requirements (title still OPEN); `IMPL-110` v1.4 re-homes the video header/byte-extent decode to P6 as `WP-110-12` with `T-MOD-917`, so `IMPL-120` v1.3 points `WP-120-07` at it and gains its new R031 (R028's P6 video reading) and its new R032 + `T-CMP-009` (the `location` prohibition receiving doc 040's `T-MOD-030`); `IMPL-050` v1.11 adds `T-AVM1-FE-035` for the target-path grammar and `IMPL-130` v1.4 adds `T-RT-122` for `SetTarget` resolution. §4.3's P6 → P10 row records the removal, §7's P6 row moves to 66 d across five documents, and the index follows to 213 WPs / ≈665.5 d |
+| 1.24 | 2026-10-13 | §4.6 item B's retried corpus screen admitted class C4 and ran it: 73 licensed AVM1 conformance movies from `ruffle-rs/ruffle@2372a4e1`, hash-pinned in `fixtures/open/manifest.json` and fetched into `.forge-cache/` (never committed — doc 020 sanctions exactly three roles for a committed binary and an external movie is none of them). First real tier evidence: 119 action blocks, 93 functions, T0=191 T1=3 T2=18, zero phantom `unknown-opcode` reasons (`audits/P5-C4-CORPUS-EXTERNAL.json`). It found `E-034` — a four-byte phantom block prefix that `sliceBlock` skipped and `test-support`'s `actionBlock()` manufactured, so 750 tests passed while every real file mis-parsed — now fixed and pinned by doc 050's new block-ref rule and `T-AVM1-FE-036`, with a reverting negative control; and `E-035`, measured at 146 of 146 in-sync records placing `Code[CodeSize]` past the record's `Length`, which leaves 48 of 73 files reporting our `SF0400` and blocks doc 050 §13 criterion 3 (`T-AVM1-FE-037` unwired). `WP-050-19` (1 d) owns the lane: doc 050 → 1.12, index 19/52, Total 214 / ≈666.5 |
+| 1.25 | 2026-10-13 | `E-035` fixed and the corpus lane re-run: doc 050 gained a region rule (`frontend/extents.ts`, one parser for the four opcodes that own bytes past their record's `Length`), its `Try` tiling rule was corrected, its `End`-terminator rule was narrowed to the block kinds an `End` actually closes, and a truncated region now makes its block residual. Fixing `E-035` exposed and fixed `E-036` (`With`/`Try`), `E-037` (function bodies are not `End`-terminated) and `E-038` (an error diagnostic with no tier consequence), and exposed `E-039` (open: a `Try`'s catch/finally bodies are decoded and then dropped from the IR, so R035's "reconstruct the structure from the IR alone" does not hold). Both fixture generators — the AVM1 test harness and `tools/avm1-restart-probe.mjs` — moved to the real shape, region bytes past `Length`; the probe's artifact is byte-identical in 15 of 17 keys, `directReportSha256` unchanged. New obligations `T-AVM1-FE-038`/`039` wired with `-037` in `packages/avm1/test/region-framing.test.ts`, `T-AVM1-FE-040` left deliberately unwired for `E-039`. Corpus after: 150 functions (was 93), T1 121 (was 3), errors 15 (was 60), `SF0400`/`SF0404`/`SF0420` all at zero files (were 48/5/49). |
+| 1.26 | 2026-10-13 | `E-039` fixed and wired by `T-AVM1-FE-040` (`packages/avm1/test/try-bodies.test.ts`, six cases): a `Try`'s catch and finally bodies were decoded and then dropped from the IR, because the depth fixpoint seeded one region body per region *record* and every region body latched an unknown depth before its own region op had run. Doc 050 gained the region-entry rule (1.14) and its §13 criterion 3 was refreshed to the regenerated report — T0 123 → 124, three residual reasons down, errors 15 → 15 with `SF0406` identical file by file. §4.6 row B and the corpus register (1.3) record the two defects the same measurement exposed: `E-040` and `E-041`, both open |
+| 1.27 | 2026-10-13 | `E-040` fixed and wired by `T-AVM1-FE-041` (`packages/avm1/test/region-flow.test.ts`, five cases): doc 050 v1.15 gained a third region rule — a region op falls into its body, a body falls into the region's `finally` and then into the record after the region, so the code after a region joins the bodies' exits — plus a dead-predecessor relaxation in the stack fixpoint, which had been dropping every block downstream of unreachable code from the IR. `T-AVM1-FE-032`'s golden and `T-AVM1-FE-008`'s dynamic-`With` fixture were re-pointed at the corrected CFG; the negative control fails 6 tests in 3 files. C4-c re-run: T0 124 → 119, T1 120 → 130, T2 25 → **23**, errors 15 → **14**, functions 150 → **153**, clean exits 59 → **60 of 73**, `SF0406` 13 items → 12, both files the errata entry named clear. Corpus register v1.4, errata v2.11 |
+| 1.28 | 2026-10-14 | **P6 started**: §2's P6 row is **In progress** and the P6–P10 bullet is split. `WP-120-01` delivered as `@swf-forge/compile` — the pipeline runner (stage spine, pass spine, run context, threaded cancellation, cache seam, `--dry-run`), stage adapters for `read`/`model`/`analyze` over the delivered suppliers with the AVM2 refusal, and `SF0500` so an unimplemented stage is reported rather than skipped; 24 tests, all gates green. Doc 120 v1.4 records the stage-spine mapping to the design spec's S0–S10 and registers the code. Two defects found by starting the phase: `E-042` (the design spec's §13 and doc 120 §8 gave six `T-CMP-*` ids different meanings — the design spec no longer mints them, and its unowned build-time criterion is recorded) and `E-043` (no `risk` severity and no `requirement` field in the diagnostic model, so `--fail-on=risk` is unimplementable; P6 rejects the value and the model extension is dispositioned to P0). CMP is now Draft 1.2, errata v2.12 |
+| 1.29 | 2026-10-14 | P6's second work package: `WP-120-02` (stage cache + structural codec) delivered, `T-CMP-005` wired — P6's first cited obligation — and the shared snapshot refreshed. The cache was proven by cold-versus-warm byte equivalence over the 73-title corpus and negative-controlled by deliberately losing data; the control is what showed `--verify-cache` cannot see a consistently lossy format, and `IMPL-120` v1.5 §2.2 records both mechanisms and that division. `RELEVANT_CONFIG_KEYS.analyze` was over-declared in v1.28 and is corrected to what the stage reads (nothing); `.gitignore` gains `CMP` §12's `.forge/` |
+| 1.30 | 2026-10-14 | P6's third and fourth work packages: `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as the first passes on the runner's pass spine, `T-CMP-001` wired and `T-CMP-010`/`T-CMP-011` added for doc 120's two new rules `R033`/`R034`, each negative-controlled by injecting the defect it forbids. `IMPL-120` → 1.6: §3.1 records the five decisions those passes had to make, and its `WP-120-02` row is aligned to the roadmap's 5 days — the drift `verify_docs.py`'s §7↔§10 cross-check caught when this document moved. The index follows to ≈ 668.5 d and §7's P6 row to 68 d |

@@ -97,9 +97,17 @@ export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
 
   // The encoding is longer than necessary when the value fits in fewer group bits
   // (e.g. `80 00` for zero, or `81 00` for one).
-  if (count > 1 && value < 2 ** (7 * (count - 1))) {
+  //
+  // Compare the *unsigned* result. `|=` yields a signed int32, so a 5th group with bit 31 set
+  // (`ff ff ff ff 0f`, the maximal `0xFFFFFFFF`) makes `value` negative here and would be
+  // misreported as overlong — emitting `SF0009` on an encoding that is minimal
+  // (`IMPL-010` §5.1, and the §8 `EncodedU32` `0xFFFFFFFF` row expects the value with no
+  // diagnostic). Regression covered by `packages/swf/test/io.test.ts` and the cross-lane
+  // `packages/swf/test/support/vector-table.ts` row `encoded-u32-max`.
+  const unsigned = value >>> 0;
+  if (count > 1 && unsigned < 2 ** (7 * (count - 1))) {
     overlong = true;
   }
 
-  return { value: value >>> 0, bytesRead: count, overlong, overflow, danglingContinuation };
+  return { value: unsigned, bytesRead: count, overlong, overflow, danglingContinuation };
 }

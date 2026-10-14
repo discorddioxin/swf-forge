@@ -434,40 +434,40 @@ AVM2 content ever moves from "refuse" to "report".
 
 ## 7. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-013` | background default vs tag, and mid-timeline changes | F2 |
-| `T-MOD-014` | frame label association, duplicates, named anchors (byte present/absent/≠1) | F2 |
-| `T-MOD-015` | scene collapse: `nextScene` frame targets correct for a 3-scene fixture | F2 |
-| `T-MOD-016` | export map: duplicate ids, duplicate names, empty names, unknown ids | F1 |
-| `T-MOD-017` | import resolution against a 2-movie input set; unresolved → placeholder + `SF0150` | F2 |
-| `T-MOD-018` | alias cycle detection | F1 |
-| `T-MOD-019` | `ScriptLimits` overrides interpreter budget, hard ceiling still enforced | F2 |
-| `T-MOD-020` | scaling grid attach/validate + rotation/skew and shrink-below-original reversion | F1 |
-| `T-MOD-021` | AVM2 detection via either signal; `FileAttributes` flag masks round-trip a table of known-good bodies | F1 |
-| `T-MOD-022` | `DefineBinaryData` shipped as bytes, never as a string in emitted code | F1 |
-| `T-MOD-023` | metadata (XMP) stored verbatim, whitespace preserved, biconditional reported | F1 |
-| `T-MOD-024` | `End` required at file end and inside a sprite; a missing terminator is a warning, not a decode stop | F1 |
-| `T-MOD-025` | `SetTabIndex` becomes a `SetTabIndexOp`, lands in `FrameModel.ops` in file order, and no-ops at an empty depth | F1 |
-| `T-MOD-026` | an `ImportAssets` tag in a SWF 8+ file has **no effect** (characters stay missing) while the same tag in a SWF 7 file resolves | F1 |
-| `T-MOD-027` | `SymbolClass` Tag 0 → `rootClassName`; other tags → export names; no AVM2 instantiation attempted | F1 |
-| `T-MOD-028` | `Metadata` at most once; `HasMetadata`/tag biconditional both directions | F1 |
-| `T-MOD-029` | control-label sequences preserve FrameLabel file order (including same-frame `z`,`a`), then append scene-data labels; timeline name map remains first-wins | F2 |
-| `T-MOD-030` | `NamedAnchor` navigation data reaches the shell; the emitted bundle never reads `location` | F1 |
-| `T-MOD-031` | `Protect` password recorded as present/absent only; never reproduced in report or bundle | F1 |
-| `T-MOD-032` | reserved bits of `FileAttributes` and `EnableDebugger2` are recorded verbatim and never mask behaviour | F1 |
-| `T-MOD-033` | version windows: `EnableDebugger` (58) only in SWF 5, `ImportAssets` (57) max SWF 7, `FileAttributes` (69) required in SWF 8+ | F1 |
-| `T-MOD-034` | `FileAttributes` bit-naming divergences (`E-022`): legacy `0x04`, `UseDirectBlit`/`UseGPU` bits, root-only occurrence | F1 |
-| `T-MOD-035` | `EnableTelemetry`: 2-byte and 34-byte bodies; hash redaction; reserved non-zero recorded | F1 |
-| `T-MOD-036` | `DefineBinaryData` layout: character id, reserved `UI32`, zero-length and large payloads, `ArrayBuffer` access | F1 |
-| `T-MOD-037` | model dump JSON: field order is the documented order, maps are sorted arrays, and 100 runs are byte-identical (`IMPL-040-R045`/`R046`) | F1 |
-| `T-MOD-038` | `dump --out <dir>` writes exactly `<dir>/model.json`, creates the directory, and its bytes equal `--json`'s stdout (`IMPL-040-R048`) | F1 |
-| `T-MOD-039` | dump of `fixtures/appendix-a.swf`: dictionary, one frame, the stroke character, `SetTabIndex` in both places, empty diagnostics (`IMPL-040-R047`) | F2 |
-| `T-MOD-040` | exit codes for the verb: unreadable input → `2`, error diagnostics → `1`, AVM2 content → `3`, clean file → `0` | F1 |
-| `T-MOD-041` | version-2 dump includes decoded sound metadata and a payload digest without inlining the payload bytes | F1 |
-| `T-MOD-042` | version-3 dump includes StartSound scheduling records and exact stream-block sample offsets with stable ordered JSON | F1 |
-| `T-MOD-043` | version-3 bitmap dictionary entry carries header metadata and payload/alpha digests without inlining media bytes | F1 |
-| `T-MOD-044` | version-4 font/static-text/edit-text dictionary entries expose typed summaries without embedding glyph or payload buffers | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-013` | background default vs tag, and mid-timeline changes | F2 | P2 |
+| `T-MOD-014` | frame label association, duplicates, named anchors (byte present/absent/≠1) | F2 | P2 |
+| `T-MOD-015` | scene collapse: `nextScene` frame targets correct for a 3-scene fixture | F2 | P2 |
+| `T-MOD-016` | export map: duplicate ids, duplicate names, empty names, unknown ids | F1 | P2 |
+| `T-MOD-017` | import resolution against a 2-movie input set; unresolved → placeholder + `SF0150` | F2 | P2 |
+| `T-MOD-018` | alias cycle detection | F1 | P2 |
+| `T-MOD-019` | `ScriptLimits` overrides interpreter budget, hard ceiling still enforced | F2 | P2 |
+| `T-MOD-020` | scaling grid attach/validate + rotation/skew and shrink-below-original reversion | F1 | P2 |
+| `T-MOD-021` | AVM2 detection via either signal; `FileAttributes` flag masks round-trip a table of known-good bodies | F1 | P2 |
+| `T-MOD-022` | `DefineBinaryData` shipped as bytes, never as a string in emitted code | F1 | P2 |
+| `T-MOD-023` | metadata (XMP) stored verbatim, whitespace preserved, biconditional reported | F1 | P2 |
+| `T-MOD-024` | `End` required at file end and inside a sprite; a missing terminator is a warning, not a decode stop | F1 | P2 |
+| `T-MOD-025` | `SetTabIndex` becomes a `SetTabIndexOp`, lands in `FrameModel.ops` in file order, and no-ops at an empty depth | F1 | P2 |
+| `T-MOD-026` | an `ImportAssets` tag in a SWF 8+ file has **no effect** (characters stay missing) while the same tag in a SWF 7 file resolves | F1 | P2 |
+| `T-MOD-027` | `SymbolClass` Tag 0 → `rootClassName`; other tags → export names; no AVM2 instantiation attempted | F1 | P2 |
+| `T-MOD-028` | `Metadata` at most once; `HasMetadata`/tag biconditional both directions | F1 | P2 |
+| `T-MOD-029` | control-label sequences preserve FrameLabel file order (including same-frame `z`,`a`), then append scene-data labels; timeline name map remains first-wins | F2 | P2 |
+| `T-MOD-030` | `NamedAnchor` navigation data reaches the shell; the emitted bundle never reads `location` | F1 | P2 decode; P6 emitted-bundle prohibition; P7 shell navigation |
+| `T-MOD-031` | `Protect` password recorded as present/absent only; never reproduced in report or bundle | F1 | P2 |
+| `T-MOD-032` | reserved bits of `FileAttributes` and `EnableDebugger2` are recorded verbatim and never mask behaviour | F1 | P2 |
+| `T-MOD-033` | version windows: `EnableDebugger` (58) only in SWF 5, `ImportAssets` (57) max SWF 7, `FileAttributes` (69) required in SWF 8+ | F1 | P2 |
+| `T-MOD-034` | `FileAttributes` bit-naming divergences (`E-022`): legacy `0x04`, `UseDirectBlit`/`UseGPU` bits, root-only occurrence | F1 | P2 |
+| `T-MOD-035` | `EnableTelemetry`: 2-byte and 34-byte bodies; hash redaction; reserved non-zero recorded | F1 | P2 |
+| `T-MOD-036` | `DefineBinaryData` layout: character id, reserved `UI32`, zero-length and large payloads, `ArrayBuffer` access | F1 | P2 |
+| `T-MOD-037` | model dump JSON: field order is the documented order, maps are sorted arrays, and 100 runs are byte-identical (`IMPL-040-R045`/`R046`) | F1 | P2 |
+| `T-MOD-038` | `dump --out <dir>` writes exactly `<dir>/model.json`, creates the directory, and its bytes equal `--json`'s stdout (`IMPL-040-R048`) | F1 | P2 |
+| `T-MOD-039` | dump of `fixtures/appendix-a.swf`: dictionary, one frame, the stroke character, `SetTabIndex` in both places, empty diagnostics (`IMPL-040-R047`) | F2 | P2 |
+| `T-MOD-040` | exit codes for the verb: unreadable input → `2`, error diagnostics → `1`, AVM2 content → `3`, clean file → `0` | F1 | P2 |
+| `T-MOD-041` | version-2 dump includes decoded sound metadata and a payload digest without inlining the payload bytes | F1 | P2 |
+| `T-MOD-042` | version-3 dump includes StartSound scheduling records and exact stream-block sample offsets with stable ordered JSON | F1 | P2 |
+| `T-MOD-043` | version-3 bitmap dictionary entry carries header metadata and payload/alpha digests without inlining media bytes | F1 | P2 |
+| `T-MOD-044` | version-4 font/static-text/edit-text dictionary entries expose typed summaries without embedding glyph or payload buffers | F1 | P2 |
 
 ## 8. Work packages
 

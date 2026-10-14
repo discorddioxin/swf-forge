@@ -10,6 +10,7 @@
 import { Codes } from '@swf-forge/swf';
 import type { Severity } from '@swf-forge/swf';
 
+import { regionExtent } from './extents.js';
 import { isDefinedCode, opcode } from './opcodes.js';
 
 export type Emit = (code: string, severity: Severity, message: string, offset: number, context?: string) => void;
@@ -25,6 +26,13 @@ export interface ActionRecord {
   readonly length: number;
   /** Block-relative offset just past the record. */
   readonly end: number;
+  /**
+   * Block-relative offset just past everything this record owns, *including* a region that lies past
+   * `Length` (R071: `DefineFunction*`, `With`, `Try`). Equals `end` for every other record, and for a
+   * region-bearing record whose header could not be read. The walker continues here, so a region is
+   * never re-decoded as sibling records (`E-035`, `E-036`).
+   */
+  readonly regionEnd: number;
   /** `true` when the record's declared payload overruns the block (R004). */
   readonly overrun: boolean;
   /** `true` when the length field itself could not be read (R000/SF0400). */
@@ -102,6 +110,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
           hasLength: true,
           length: 0,
           end: length,
+          regionEnd: length,
           overrun: false,
           truncated: true,
           observed: false,
@@ -127,6 +136,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
           hasLength: true,
           length: declared,
           end: length,
+          regionEnd: length,
           overrun: true,
           truncated: false,
           observed: spec?.observed === true,
@@ -135,6 +145,12 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
         break;
       }
       const spec = opcode(code);
+      // R071: four opcodes own a region past `Length`. The walker must continue past it, or the
+      // region's records are attributed to the enclosing block and that block's `End` is claimed by
+      // the wrong stream (`E-035`, `E-036`). A header that does not parse inside the payload yields
+      // no region at all, and the operand decoders report the truncation.
+      const extent = regionExtent(bytes, code, pos, end, length);
+      const regionEnd = extent === null ? end : extent.consumedEnd;
       records.push({
         offset,
         code,
@@ -142,11 +158,12 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
         hasLength: true,
         length: declared,
         end,
+        regionEnd,
         overrun: false,
         truncated: false,
         observed: spec?.observed === true,
       });
-      pos = end;
+      pos = regionEnd;
     } else {
       if (code === 0x00) {
         terminated = true;
@@ -157,6 +174,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
           hasLength: false,
           length: 0,
           end: pos,
+          regionEnd: pos,
           overrun: false,
           truncated: false,
           observed: false,
@@ -184,6 +202,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
           hasLength: false,
           length: 0,
           end: pos,
+          regionEnd: pos,
           overrun: false,
           truncated: false,
           observed: false,
@@ -205,6 +224,7 @@ export function scanRecords(bytes: Uint8Array, emit: Emit, options: ScanOptions 
         hasLength: false,
         length: 0,
         end: pos,
+        regionEnd: pos,
         overrun: false,
         truncated: false,
         observed: spec.observed === true,

@@ -87,8 +87,14 @@ export interface DecodeFunctionOptions {
   readonly bytes: Uint8Array;
   /** Block-relative start of the payload (after ActionCode + Length). */
   readonly from: number;
-  /** Block-relative end of the record. */
+  /** Block-relative end of the record: `Length` covers the header only, never the body (R071). */
   readonly to: number;
+  /**
+   * Block-relative end of the enclosing scan range — the bound `Code[CodeSize]` must fit inside. The
+   * body lies *past* `to` in real content (`E-035`), so bounding it by `to` modelled every function as
+   * empty-bodied and reported a phantom truncation for each one.
+   */
+  readonly limit: number;
   readonly ctx: ReadContext;
 }
 
@@ -186,7 +192,7 @@ function decodePreloads(flags: number, ctx: ReadContext): { preloads: PreloadFla
 
 /** `DefineFunction` (0x9B): name, params, CodeSize, body. */
 export function decodeDefineFunction(opts: DecodeFunctionOptions): FunctionDefShell {
-  const { bytes, from, to, ctx } = opts;
+  const { bytes, from, to, limit, ctx } = opts;
   let pos = from;
   const nameResult = readStringField(bytes, pos, to, ctx);
   pos = nameResult.pos;
@@ -249,12 +255,12 @@ export function decodeDefineFunction(opts: DecodeFunctionOptions): FunctionDefSh
   }
   const codeSize = (bytes[pos] ?? 0) | ((bytes[pos + 1] ?? 0) << 8);
   pos += 2;
-  const bodyEnd = Math.min(to, pos + codeSize);
-  if (pos + codeSize > to) {
+  const bodyEnd = Math.min(limit, pos + codeSize);
+  if (pos + codeSize > limit) {
     ctx.emit(
       Codes.ACTION_STREAM_TRUNCATED,
       'error',
-      `DefineFunction body of ${codeSize} byte(s) overruns the record (R008)`,
+      `DefineFunction body of ${codeSize} byte(s) overruns the enclosing block (R071)`,
       ctx.offset,
     );
     ctx.markTruncated?.();
@@ -278,7 +284,7 @@ export function decodeDefineFunction(opts: DecodeFunctionOptions): FunctionDefSh
 
 /** `DefineFunction2` (0x8E): name, params, RegisterCount, Flags, REGISTERPARAM, CodeSize, body. */
 export function decodeDefineFunction2(opts: DecodeFunctionOptions): FunctionDefShell {
-  const { bytes, from, to, ctx } = opts;
+  const { bytes, from, to, limit, ctx } = opts;
   let pos = from;
   const nameResult = readStringField(bytes, pos, to, ctx);
   pos = nameResult.pos;
@@ -398,12 +404,12 @@ export function decodeDefineFunction2(opts: DecodeFunctionOptions): FunctionDefS
   }
   const codeSize = (bytes[pos] ?? 0) | ((bytes[pos + 1] ?? 0) << 8);
   pos += 2;
-  const bodyEnd = Math.min(to, pos + codeSize);
-  if (pos + codeSize > to) {
+  const bodyEnd = Math.min(limit, pos + codeSize);
+  if (pos + codeSize > limit) {
     ctx.emit(
       Codes.ACTION_STREAM_TRUNCATED,
       'error',
-      `DefineFunction2 body of ${codeSize} byte(s) overruns the record (R008)`,
+      `DefineFunction2 body of ${codeSize} byte(s) overruns the enclosing block (R071)`,
       ctx.offset,
     );
     ctx.markTruncated?.();

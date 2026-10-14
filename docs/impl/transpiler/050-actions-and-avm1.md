@@ -91,8 +91,14 @@ else:                  payload length comes from the opcode table (0 for every A
   (`SF0420`): some authoring tools omit the terminator, and refusing them helps nobody. A block-level
   scan MUST include the first `End` record and stop immediately after it; any remaining bytes in the
   enclosing byte slice are ignored, not decoded or tiered (`stoppedAt` is the first byte after `End`).
-  Length-delimited `With`/`Try` bodies are not block-level scans: they scan to their declared bound
-  with `stopAtEnd: false`, and R008 forbids `End` in those bodies.
+  Length-delimited regions are not block-level scans: `With`/`Try` bodies **and `DefineFunction*`
+  bodies** scan to their declared bound with `requireEnd: false, stopAtEnd: false`, and R008 forbids
+  `End` in those bodies. Per §3.2's terminator column an `End` closes a **frame script or an init
+  script only** — a function body is delimited by its `CodeSize`, and a clip-event or button handler by
+  its record size — so requiring `End` in those kinds reports a phantom `SF0420` for every one of them
+  (`E-037`). Measured over the C4-c corpus: **0 of 66** function bodies end with `End`, and 64 of the 66
+  contain interior zero bytes (operand and string payload, which a record-framed scan never mistakes
+  for a terminator — and the reason a size-delimited body must not stop at one either).
 - **IMPL-050-R007** Sub-0x80 opcodes other than `0x00` (`End`) carry **no** payload. If the table has
   no entry for a sub-0x80 code, it is an unknown opcode (R005), not a length field (the SWF 3-era
   actions 0x04–0x09 and 0x81+ are the only defined ones below/around the boundary; see §4).
@@ -110,7 +116,37 @@ else:                  payload length comes from the opcode table (0 for every A
 **IMPL-050-R008** A block's byte range MUST be closed by the *declared* structure (tag length, record
 size, `codeSize`, `Size`, or `TrySize/CatchSize/FinallySize`), not by scanning for a zero byte: `End`
 is a legitimate value only where the chapter makes it the terminator, and `Try`/`With` bodies contain
-records that are not terminated by `End` at all.
+records that are not terminated by `End` at all. For the four region-bearing opcodes the declared region
+lies **past** the record's `Length`, so the bytes a such a record closes are the region's, not
+`Length`'s (R071).
+
+**IMPL-050-R070** An `ActionBlockRef` from the container points at the **first `ACTIONRECORD` byte**
+of the block, for every block kind: `DoAction`'s payload *is* the record stream, and `DoInitAction`'s
+decoder has already consumed its `UI16 SpriteID` (`IMPL-030-R029`). The front end MUST slice from
+`ref.offset` for `ref.length` bytes — no skipped prefix and no minimum length, since a block may
+legally be a single `End`. This format has no block-level length field: R003's `Length` is *per
+record*, and the only `UI32` size in the neighbourhood is `CLIPACTIONRECORD.ActionRecordSize`, which
+belongs to clip actions (`E-034`).
+
+**IMPL-050-R071** Four opcodes own bytes **past** their record's `Length`: `DefineFunction` (0x9B) and
+`DefineFunction2` (0x8E) carry `Code[CodeSize]`, `With` (0x94) carries `Body[Size]`, and `Try` (0x8F)
+carries `TryBody[TrySize]`, `CatchBody[CatchSize]`, `FinallyBody[FinallySize]`. In each case `Length`
+covers the header alone, so the bytes a record consumes are `max(record end, header end + region size)`
+and the framing walker MUST continue past them. A walker that stops at `Length` re-decodes the region as
+*sibling* records: the region's ops are attributed to the enclosing block, the function or region is
+modelled empty, and — a region carrying no `End` of its own (R008) — the enclosing block's terminator is
+claimed by the wrong stream. The region is bounded by the **enclosing scan range** (the block, or the
+`With`/`Try` body being scanned), never by the record: only a region that runs past that range is a
+defect (`SF0400`; `SF0404` for `Try`'s three bodies). The `max` is deliberate: an encoder that *does*
+place the region inside `Length` still parses — this repository's own fixtures did exactly that until
+`E-035` was fixed, which is why 750 green tests never noticed. Measured over the C4-c corpus
+(`audits/P5-C4-CORPUS-EXTERNAL.json`): **64 of 64** `DefineFunction*` headers end exactly at `Length`,
+**3 of 3** `With` records declare `Length == 2`, **3 of 3** `Try` headers end exactly at `Length`, and no
+record carried its region inside `Length`. Ruffle's reader states the rule outright — "`length` is an
+in-out parameter … The `length` passed in should be the length excluding any sub-blocks",
+`*action_length += code_length`, `*length += try_size + catch_size + finally_size`
+(`ruffle-rs/ruffle` `swf/src/avm1/read.rs`, Apache-2.0 OR MIT). One parser serves both the walker and the
+operand decoders (`frontend/extents.ts`), so the two readings cannot drift apart (`E-035`, `E-036`).
 
 ### 3.3 `DoAction` and frame-script scheduling
 
@@ -397,7 +433,9 @@ are:
 
 ### 5.5 `With` (0x94) and `Try` (0x8F)
 
-- **IMPL-050-R032** `With`'s `Size UI16` delimits the body; the object comes off the stack. The
+- **IMPL-050-R032** `With`'s `Size UI16` delimits the body, which lies **past** the record: `Length` is
+  2, the `Size` field alone (R071), so bounding the body by the record models every `With` as empty
+  (`E-036`). The object comes off the stack. The
   dynamic-scope depth cap is **8 in SWF 5 and 16 in SWF 6+**; when exceeded, the player *skips the
   next `Size` bytes* rather than executing them — the IR must express this as a guarded region
   (`withDepth`, and a `skipBody` flag), not as a jump, so the interpreter behaves identically
@@ -407,13 +445,40 @@ are:
   even when the corresponding flag is 0**), then either `CatchName STRING` (flag = 0) or
   `CatchRegister UI8` (flag = 1), then the three bodies. There is **no** "finally register"; the
   catch target is a name or a register, never both.
-- **IMPL-050-R034** The three bodies tile the record: `TrySize + CatchSize + FinallySize` plus the
-  header must equal the record's payload length. Gaps or overlaps are `SF0404` (error) and make the
-  function residual. Bodies have no `End` terminator (they are length-delimited).
+- **IMPL-050-R034** The three bodies tile the **region past the header**, not the record's payload:
+  `Length` covers `Flags`, the three sizes and the catch name or register alone (R071), and
+  `TrySize + CatchSize + FinallySize` bytes follow it. Two disagreements are `SF0404` (error) and make
+  the function residual: a region that runs past the enclosing block, and a `Length` that covers bytes
+  past the header *and* the bodies, since those bytes belong to no region (R003 — the table, not the
+  stream, decides the layout). The original wording of this rule ("the three bodies tile the record")
+  was the `Try` half of `E-036`: it made every real `Try` in the C4-c corpus malformed. Bodies have no
+  `End` terminator (they are length-delimited).
 - **IMPL-050-R035** Structured regions: `try`/`catch`/`finally` become explicit nested regions in the
   IR after CFG construction (design AVM1-R011), with `Throw` unwinding to the nearest enclosing catch
   and running every intervening `finally`. Emitters must be able to reconstruct the structure from the
   IR alone.
+- **IMPL-050-R072** Every region-body scope is entered from its region op, at the stack depth the player
+  gives it: a `Try`'s try and catch bodies start at the depth recorded at the `Try` record, a `With` body
+  starts after the op's own pop, and a `Try`'s finally body starts at the join of the try and catch
+  bodies' exit depths — the player truncates the stack back to the `Try` entry before the catch body and
+  binds the thrown value to the catch variable or register instead of pushing it, then runs the finally
+  body with no truncation at all (`ruffle-rs/ruffle` `core/src/avm1/activation.rs`, `action_try` and
+  `action_with`). Where the try and catch bodies leave different depths the finally depth is dynamic (T1
+  `dynamic-stack`), never an `SF0406` mismatch: the same finally body runs after both paths. A body whose
+  depth is still pending stays unsettled rather than latching `unknown`, so region bodies carry verified
+  depths (R054) and their decoded records reach the IR (R035).
+- **IMPL-050-R073** Control flows *through* a region, not past it. The block holding a `Try` or `With`
+  record ends at that record and falls into the region body's first record; a body's fallthrough goes to
+  the region's `finally` body when it has one, and otherwise to the record after the region op. The code
+  after a region is therefore a join over the bodies' exit depths, exactly as R072 makes a `finally` body
+  a join over the try and catch exits — the player runs a body on the same stack and then continues after
+  the region (`ruffle-rs/ruffle` `core/src/avm1/activation.rs`: `action_try` runs the try body, the catch
+  body on a throw and the finally body in sequence, `action_with` runs its body the same way). Where the
+  paths leave different depths the continuation is dynamic (T1 `dynamic-stack`); where they agree, a pop
+  after the region consumes what the body pushed and is not an `SF0406` underflow. A predecessor that
+  never settled — an unreachable tail inside a body, or dead code after a `Return` anywhere — is ignored
+  once a fixpoint pass makes no progress, and a block whose predecessors are *all* dead stays unsettled:
+  dead code must never remove live code from the IR.
 
 ### 5.6 Target, property, and timeline operands
 
@@ -440,6 +505,35 @@ are:
   instruction** — it is a frame call, not a subroutine call. `GotoFrame`/`NextFrame`/`PreviousFrame`/
   `Play`/`Stop`/`GotoLabel` and the `GotoFrame2` forms are timeline *state* changes (doc 130's state
   machine), while `Call` is the one that executes another frame's script inline.
+
+### 5.7 Canonical action bytes and the byte-identity contract
+
+§13's criterion 2 requires a *lossless inverse*. The inverse format is **not** the human-readable
+disassembly (`WP-050-16`, `T-AVM1-FE-032`): that surface is lossy by design and stays lossy. The inverse
+format is `ActionIR` plus the canonical encoding rules below, and the round trip that carries the
+byte-identity acceptance is **bytes → IR → bytes**. This subsection is the "lossless inverse format" that
+§12 item 7 and §13 criterion 2 required before implementation could be scoped.
+
+- **IMPL-050-R065** An action record is *canonical* when: its header carries the declared `Length` with no
+  trailing padding; every `EncodedU32` operand uses the shortest encoding `encodedU32()` accepts (an
+  overlong form is `SF0009`); every string operand is terminated by exactly one NUL in the encoding the
+  file declares; branch operands carry the offset §5.4's PC rule computes for their target; `ActionPush`
+  uses the type tag §5.1 assigns to the value's type; and no bytes follow `End` inside the record's
+  declared length.
+- **IMPL-050-R066** For canonical input, `decode → IR → serialize` MUST reproduce the input bytes exactly.
+  Byte identity — not semantic equivalence — is the acceptance. The gate MUST cover every defined opcode in
+  §4 at least once, and at least one case per operand schema in §5.
+- **IMPL-050-R067** Non-canonical input MUST NOT be silently normalized. The serializer reports the defect
+  through the diagnostic that already names it (`SF0009` for an overlong `EncodedU32`; the framing
+  diagnostics of `IMPL-010` for padding and length defects), and the round-trip claim for that record
+  weakens to a second-generation fixed point: `serialize(decode(bytes))` re-serializes to itself.
+- **IMPL-050-R068** Reserved and undefined codes (§4.5) are never re-serialized. They travel the residual
+  path as raw bytes (`WP-050-08` here, `WP-120-09` at P6); the serializer MUST refuse them and the gate
+  asserts the refusal rather than a best-effort encoding.
+- **IMPL-050-R069** Serialization is a pure function of the IR: no map or object iteration order, no
+  locale-dependent number formatting, no timestamps or run identifiers. Two runs over one IR are
+  byte-identical. This is the front-end twin of the emitter's determinism gate (`WP-120-14`), and it is
+  what lets P6 cache serialized residual blobs by content hash.
 
 ## 6. Stack-machine semantics the front end must model
 
@@ -628,41 +722,49 @@ basic block so the interpreter can execute them without re-deriving structure.
 
 ## 10. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-AVM1-FE-001` | framing: every opcode's payload length matches the table (table-driven over all defined codes and the undefined ranges) | F1 |
-| `T-AVM1-FE-002` | `Push` types 0–9 decode, including multi-pair records and preservation of type 7's bit pattern | F1 |
-| `T-AVM1-FE-003` | branch offsets relative to the *next* record (constructed jumps, both signs) | F1 |
-| `T-AVM1-FE-004` | `SetTarget` block splitting and **region extent**: a target region ends only at the closing `SetTarget ""`, and regions nest correctly | F1 |
-| `T-AVM1-FE-005` | constant-pool semantics: replacement, and a pool used only from inside a function → dynamic (`SF0410`) | F1 |
-| `T-AVM1-FE-006` | `Try` field order, all three sizes present, catch name vs register, body tiling | F1 |
-| `T-AVM1-FE-007` | stack mismatch → residual with reason; no crash | F1 |
-| `T-AVM1-FE-008` | tier assignment table: one fixture per reason | F2 |
-| `T-AVM1-FE-009` | out-of-bounds branch (obfuscated case) → residual, reported | F1 |
-| `T-AVM1-FE-010` | `DoABC` / `ActionScript3` → `SF1000`, exit code 3, offset named | F1 |
-| `T-AVM1-FE-011` | requirement extraction matches a hand-written expectation per fixture | F2 |
-| `T-AVM1-FE-012` | name recovery determinism: 100 shuffles of dictionary order yield identical names | F1 |
-| `T-AVM1-FE-013` | `DefineFunction2` mask table: each of the nine flags alone sets exactly its mask | F1 |
-| `T-AVM1-FE-014` | register allocation: the chapter's NumParams/RegisterCount example (this=1, _root=2, params 3–4, locals 5–6) | F1 |
-| `T-AVM1-FE-015` | `REGISTERPARAM` register 0 vs non-zero: activation variable created or not | F1 |
-| `T-AVM1-FE-016` | `With` depth caps 8 (SWF 5) and 16 (SWF 6+), and the skip-body behaviour over the cap | F1 |
-| `T-AVM1-FE-017` | `WaitForFrame` (frame-then-skip, length 3) and `WaitForFrame2` (length 1) decode | F1 |
-| `T-AVM1-FE-018` | `GetURL2` flag quadrants ×2 (method × target/variables) | F1 |
-| `T-AVM1-FE-019` | `GotoFrame2` play flag + scene bias resolution | F2 |
-| `T-AVM1-FE-020` | reverse-push convention for all six call/init actions | F1 |
-| `T-AVM1-FE-021` | property ids 0–21 and the ≥22 policy | F1 |
-| `T-AVM1-FE-022` | SWF 4 vs SWF 5 result types for `Equals`/`Less`/`And`/`Or`/`Not`/`Divide`/`If` | F1 |
-| `T-AVM1-FE-023` | `Enumerate`/`Enumerate2`: `null` terminator, deterministic compiler order, marker in the report | F1 |
-| `T-AVM1-FE-024` | `Call` executes a frame script and resumes; `GotoFrame2` does not | F2 |
-| `T-AVM1-FE-025` | `Try`/`Throw`/`finally` unwinding through nested functions | F2 |
-| `T-AVM1-FE-026` | `Extends`/`ImplementsOp` stack effects (no result pushed) and `CastOp` null result | F1 |
-| `T-AVM1-FE-027` | `DoInitAction` ordering: once, sprite-scoped, before the frame's `DoAction`, before sprite creation | F2 |
-| `T-AVM1-FE-028` | `DoAction` executes at the `ShowFrame` boundary regardless of tag position | F2 |
-| `T-AVM1-FE-029` | observed-but-undocumented opcodes (0x89, 0x2D) decode with inert semantics + diagnostics | F1 |
-| `T-AVM1-FE-030` | SWF-5 raw Shift-JIS DBCS fixture: decode under explicit encoding; pin `MBStringLength`'s character fold and leave `StringLength` dynamic until its byte/character result is oracle-pinned | F1 |
-| `T-AVM1-FE-031` | `Add`/`Add2`/`StringAdd` literal-fold matrix; preserve opcode-specific coercion and leave AVM1 number-to-string formatting dynamic | F1 |
-| `T-AVM1-FE-032` | Synthetic `bytes→IR→disassembly` conformance: stable, escaped text for operands and structured regions; this is not a byte round-trip | F1 |
-| `T-AVM1-FE-033` | Seeded 10⁶ action-stream mutations/truncations; zero uncaught exceptions and safe residual fallback for unknown or malformed records | F1 (dedicated gate) |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-AVM1-FE-001` | framing: every opcode's payload length matches the table (table-driven over all defined codes and the undefined ranges) | F1 | P5 |
+| `T-AVM1-FE-002` | `Push` types 0–9 decode, including multi-pair records and preservation of type 7's bit pattern | F1 | P5 |
+| `T-AVM1-FE-003` | branch offsets relative to the *next* record (constructed jumps, both signs) | F1 | P5 |
+| `T-AVM1-FE-004` | `SetTarget` block splitting and **region extent**: a target region ends only at the closing `SetTarget ""`, and regions nest correctly | F1 | P5 |
+| `T-AVM1-FE-005` | constant-pool semantics: replacement, and a pool used only from inside a function → dynamic (`SF0410`) | F1 | P5 |
+| `T-AVM1-FE-006` | `Try` field order, all three sizes present, catch name vs register, body tiling | F1 | P5 |
+| `T-AVM1-FE-007` | stack mismatch → residual with reason; no crash | F1 | P5 |
+| `T-AVM1-FE-008` | tier assignment table: one fixture per reason | F2 | P5 |
+| `T-AVM1-FE-009` | out-of-bounds branch (obfuscated case) → residual, reported | F1 | P5 |
+| `T-AVM1-FE-010` | `DoABC` / `ActionScript3` → `SF1000`, exit code 3, offset named | F1 | P5 |
+| `T-AVM1-FE-011` | requirement extraction matches a hand-written expectation per fixture | F2 | P5 |
+| `T-AVM1-FE-012` | name recovery determinism: 100 shuffles of dictionary order yield identical names | F1 | P5 |
+| `T-AVM1-FE-013` | `DefineFunction2` mask table: each of the nine flags alone sets exactly its mask | F1 | P5 |
+| `T-AVM1-FE-014` | register allocation: the chapter's NumParams/RegisterCount example (this=1, _root=2, params 3–4, locals 5–6) | F1 | P5 |
+| `T-AVM1-FE-015` | `REGISTERPARAM` register 0 vs non-zero: activation variable created or not | F1 | P5 |
+| `T-AVM1-FE-016` | `With` depth caps 8 (SWF 5) and 16 (SWF 6+), and the skip-body behaviour over the cap | F1 | P5 |
+| `T-AVM1-FE-017` | `WaitForFrame` (frame-then-skip, length 3) and `WaitForFrame2` (length 1) decode | F1 | P5 |
+| `T-AVM1-FE-018` | `GetURL2` flag quadrants ×2 (method × target/variables) | F1 | P5 |
+| `T-AVM1-FE-019` | `GotoFrame2` play flag + scene bias resolution | F2 | P5 |
+| `T-AVM1-FE-020` | reverse-push convention for all six call/init actions | F1 | P5 |
+| `T-AVM1-FE-021` | property ids 0–21 and the ≥22 policy | F1 | P5 |
+| `T-AVM1-FE-022` | SWF 4 vs SWF 5 result types for `Equals`/`Less`/`And`/`Or`/`Not`/`Divide`/`If` | F1 | P5 |
+| `T-AVM1-FE-023` | `Enumerate`/`Enumerate2`: `null` terminator, deterministic compiler order, marker in the report | F1 | P5 |
+| `T-AVM1-FE-024` | `Call` executes a frame script and resumes; `GotoFrame2` does not | F2 | P7 runtime execution |
+| `T-AVM1-FE-025` | `Try`/`Throw`/`finally` unwinding through nested functions | F2 | P5 IR; P7 runtime unwinding |
+| `T-AVM1-FE-026` | `Extends`/`ImplementsOp` stack effects (no result pushed) and `CastOp` null result | F1 | P5 |
+| `T-AVM1-FE-027` | `DoInitAction` ordering: once, sprite-scoped, before the frame's `DoAction`, before sprite creation | F2 | P5 schedule metadata; P7 runtime scheduling |
+| `T-AVM1-FE-028` | `DoAction` executes at the `ShowFrame` boundary regardless of tag position | F2 | P5 schedule metadata; P7 runtime scheduling |
+| `T-AVM1-FE-029` | observed-but-undocumented opcodes (0x89, 0x2D) decode with inert semantics + diagnostics | F1 | P5 |
+| `T-AVM1-FE-030` | SWF-5 raw Shift-JIS DBCS fixture: decode under explicit encoding; pin `MBStringLength`'s character fold and leave `StringLength` dynamic until its byte/character result is oracle-pinned | F1 | P5 front end; oracle open (§12 item 4) |
+| `T-AVM1-FE-031` | `Add`/`Add2`/`StringAdd` literal-fold matrix; preserve opcode-specific coercion and leave AVM1 number-to-string formatting dynamic | F1 | P5 |
+| `T-AVM1-FE-032` | Synthetic `bytes→IR→disassembly` conformance: stable, escaped text for operands and structured regions; this is not a byte round-trip | F1 | P5 text conformance — not byte round trip (§5.7) |
+| `T-AVM1-FE-033` | Seeded 10⁶ action-stream mutations/truncations; zero uncaught exceptions and safe residual fallback for unknown or malformed records | F1 (dedicated gate) | P5 |
+| `T-AVM1-FE-034` | Byte round trip (§5.7): `decode → IR → serialize` reproduces canonical input bytes exactly, every defined opcode in §4 at least once and one case per §5 operand schema; non-canonical input is diagnosed, not silently normalized, and is a second-generation fixed point; reserved/undefined codes refuse serialization and stay residual | F1 (dedicated gate) | P5 |
+| `T-AVM1-FE-035` | Target-path prefix grammar (`IMPL-050-R037`): `/abs`, `..`, bare relative, `""`, the dot form, and a `:`-suffixed variable prefix all parse to the `TargetRef` that the canonical formatter reproduces verbatim; `disassemble.ts` delegates instead of redefining it | F1 | P5 |
+| `T-AVM1-FE-036` | Block-ref slicing (`IMPL-050-R070`, `E-034`): the test-support generator emits `ACTIONRECORD` bytes with no prefix; a `DoAction` and a `DoInitAction` block are sliced from `ref.offset` for exactly `ref.length` bytes, the pushed string survives verbatim, no `unknown` op appears, and a one-byte `End`-only block is still reported | F1 | P5 |
+| `T-AVM1-FE-037` | `DefineFunction`/`DefineFunction2` carry `Code[CodeSize]` **past** the record's `Length` (`E-035`, R071): the body is bounded by the enclosing block, decoded exactly once, skipped by the record walker, and only a body that overruns the *block* is `SF0400` — which makes the block residual (`E-038`); an encoder that places the body inside `Length` still parses | F1 | P5 |
+| `T-AVM1-FE-038` | `With` and `Try` own their bodies past `Length` too (`E-036`, R071/R032/R034): `Length` is 2 for `With` and header-only for `Try`, the bodies are scoped inside their region rather than attributed to the enclosing block, and `SF0404` fires only for a region that overruns the block or a `Length` that over-covers | F1 | P5 |
+| `T-AVM1-FE-039` | An `End` closes a frame or init script only (`E-037`, R006): `SF0420` fires for a `timeline`/`init` block with no terminator and for no other kind, and a function body neither requires nor stops at an interior `End` byte | F1 | P5 |
+| `T-AVM1-FE-040` | A `Try`'s three bodies reach the IR at the depths the player gives them (`E-039`, R035/R072): `catchBlocks`/`finallyBlocks` carry their decoded records, the try and catch bodies enter at the region op's depth and the finally body at the join of their exits — dynamic, not `SF0406`, when those disagree — and the same holds for a `Try` nested in a catch body and for one inside a function body | F1 | P5 |
+| `T-AVM1-FE-041` | Control flows through a region (`E-040`, R035/R072/R073): a `Pop` after a `Try` consumes what the try body pushed (tier 0, no `SF0406`), a `With` body's leftover reaches the record after the region, the continuation is entered from the `finally` body's depth rather than the `Try` record's, try and catch exits that disagree are still `SF0406` (R054 reports a mismatch, it never fixes one), and an unreachable tail inside a region body does not drop the code after it | F1 | P5 |
 
 **Cross-phase acceptance note.** FE-024/025/027/028 include runtime behavior in their obligation text. P5 evidence may establish front-end IR or schedule metadata only; it does not prove frame-call execution/resumption, exception unwinding, or runtime scheduling. Those observable runtime behaviors are accepted under P7/IMPL-130. The FE IDs and normative language-spec requirements are retained; no obligation is waived or claimed passed by this ownership split.
 
@@ -670,24 +772,26 @@ basic block so the interpreter can execute them without re-deriving structure.
 
 | WP | Title | Depends | Est | Deliverable |
 | --- | --- | --- | --- | --- |
-| WP-050-01 | Action record framing + bounds + `End`-flag policy | WP-020-05 | 2 | `frontend/record.ts`, T-AVM1-FE-001 |
+| WP-050-01 | Action record framing + bounds + `End`-flag policy | WP-020-05 | 2 | `frontend/record.ts`, `frontend/extents.ts`, T-AVM1-FE-001/038/039 |
 | WP-050-02 | Opcode table (data) + operand schemas + stack effects | WP-050-01 | 5 | `frontend/opcodes.ts`, T-AVM1-FE-029 |
 | WP-050-03 | Operand readers (push types, pools, registers, branches, strings) | WP-050-02 | 3 | `frontend/operands.ts`, T-AVM1-FE-002/003 |
-| WP-050-04 | `DefineFunction`/`DefineFunction2`: registers, preloads, masks | WP-050-03 | 3 | `frontend/functions.ts`, T-AVM1-FE-013/014/015 |
+| WP-050-04 | `DefineFunction`/`DefineFunction2`: registers, preloads, masks | WP-050-03 | 3 | `frontend/functions.ts`, T-AVM1-FE-013/014/015/037 |
 | WP-050-05 | CFG + basic blocks + `SetTarget` splitting | WP-050-04 | 4 | `frontend/control-flow.ts`, `targets.ts`, T-AVM1-FE-004 |
-| WP-050-06 | `Try`/`With` region structuring, caps and skip-body | WP-050-05 | 3 | T-AVM1-FE-006/016/025 |
+| WP-050-06 | `Try`/`With` region structuring, caps and skip-body | WP-050-05 | 3 | T-AVM1-FE-006/016/025/040/041 |
 | WP-050-07 | Stack simulation + partial evaluation → IR ops | WP-050-06 | 5 | `frontend/stack.ts`, `ir.ts`, T-AVM1-FE-007/031 |
 | WP-050-08 | Tier assignment + reasons + residual extraction | WP-050-07 | 3 | `frontend/tier.ts`, `residual.ts`, T-AVM1-FE-008/009 |
 | WP-050-09 | Version semantics matrix (SWF 4 vs 5 result types, `If`) | WP-050-07 | 2 | T-AVM1-FE-022 |
 | WP-050-10 | Call/init conventions + determinism pass (`Enumerate`) | WP-050-07 | 2 | T-AVM1-FE-020/023 |
-| WP-050-11 | Property ids + target-path operands + timeline actions | WP-050-03 | 2 | `frontend/properties.ts`, T-AVM1-FE-019/021/024 |
-| WP-050-12 | Block scheduling contract for doc 130 (`DoAction`/`DoInitAction`) | WP-050-05 | 1 | `frontend/blocks.ts`, T-AVM1-FE-027/028 |
+| WP-050-11 | Property ids + target-path operands + timeline actions | WP-050-03 | 2 | `frontend/properties.ts`, T-AVM1-FE-019/021/024/035 |
+| WP-050-12 | Block scheduling contract for doc 130 (`DoAction`/`DoInitAction`) | WP-050-05 | 1 | `frontend/blocks.ts`, block-ref slicing per R070, T-AVM1-FE-027/028/036 |
 | WP-050-13 | Requirements extraction | WP-050-08 | 2 | `frontend/requirements.ts` |
 | WP-050-14 | Name/class recovery pass (incl. `Extends`) | WP-050-08, WP-020-07 | 4 | `frontend/names.ts`, T-AVM1-FE-012/026 |
 | WP-050-15 | AVM2 detection (`DoABC` + flag) + hard error path | WP-020-04 | 1 | `frontend/avm2.ts`, T-AVM1-FE-010 |
 | WP-050-16 | `inspect --actions` disassembler + synthetic conformance | WP-050-03 | 2 | user-visible disassembly; no parser/assembler is implied |
 | WP-050-17 | Seeded action-stream mutation/truncation gate | WP-050-01 | 2 | T-AVM1-FE-033; 10⁶ cases with residual invariants |
-| | **Total** | | **46** | |
+| WP-050-18 | Action-byte serializer: canonical encoding (§5.7), byte-identity gate, residual refusal | WP-050-02, WP-050-03 | 5 | `frontend/serialize.ts`, T-AVM1-FE-034 |
+| WP-050-19 | Open-corpus lane (class C4): hash-pinned manifest, cached fetch, tier and diagnostic report | WP-050-08 | 1 | `tools/open-corpus.mjs`, `fixtures/open/manifest.json`, `audits/P5-C4-CORPUS-EXTERNAL.json` |
+| | **Total** | | **52** | |
 
 ## 12. Open items
 
@@ -699,7 +803,7 @@ basic block so the interpreter can execute them without re-deriving structure.
 | 4 | SWF ≤5 string encoding is locale-selected ANSI/Shift-JIS with no in-file selector; `ActionStringLength`'s exact DBCS result is not specified in Ch. 5 and needs a runtime oracle | medium (FE-030; do not infer encoding from font flags/`LanguageCode`) |
 | 5 | `ActionEnumerate` ordering *at run time* in Flash Player (the compiler is deterministic by decision, R044) | low |
 | 6 | `RandomNumber`'s behaviour for `max ≤ 0` (undocumented) | low (runtime RNG policy) |
-| 7 | **Retained P5 gate:** define the lossless inverse/disassembly grammar and byte-identity contract for every defined opcode; add a separately scoped/estimated P5 work package before implementation (WP-050-16 explicitly does not include a parser/assembler) | high — blocks P5 closeout (§13.2) |
+| 7 | **Retained P5 gate — contract now specified, evidence still open.** The lossless inverse format and byte-identity contract are defined in §5.7 (`IMPL-050-R065`–`R069`): the inverse is `ActionIR` + canonical encoding, the round trip is bytes → IR → bytes, and the disassembly surface stays lossy. The separately scoped/estimated work package is `WP-050-18` (5 d, `frontend/serialize.ts`, `T-AVM1-FE-034`). What remains open is the implementation and its gate evidence — no serializer, no byte-identity test, and no `T-AVM1-FE-034` citation exists yet | high — blocks P5 closeout (§13.2) |
 
 The v1.0 open items (complete operand layouts, the per-version action-model differences, the `Push`
 type table, the flag encodings, `StackSwap`'s corrected order, `StringExtract` argument order,
@@ -714,14 +818,40 @@ post-ship correction is confirmed by the chapter text: the action exchanges the 
 
 1. Every code in §4 is in `opcodes.ts` with operand schema, version window, and stack-effect
    classification; R016's exact reserved ranges are pinned against the table and all 256 byte values.
-2. **Open — retained as a P5 exit criterion; not deferred.** The synthetic corpus must round-trip
-   bytes → IR → disassembly → bytes for every defined opcode. The current AVM1 surface has a decoder,
-   `ActionIR`, and a human-readable disassembler, but no disassembly parser or action-byte serializer.
-   `T-AVM1-FE-032` therefore proves only bytes→IR→text conformance and MUST NOT be cited as byte
-   round-trip evidence. Before implementation, specify the lossless inverse format and byte-identity
-   coverage, then add a separately scoped and estimated P5 work package. Keep this criterion open; no
-   parser, serializer, or round-trip test is implemented by this scope decision.
+2. **Open — retained as a P5 exit criterion; not deferred. Contract specified 2026-10-13; evidence not
+   yet produced.** The synthetic corpus must round-trip **bytes → IR → bytes** for every defined opcode.
+   The inverse format and the byte-identity acceptance are now normative in §5.7
+   (`IMPL-050-R065`–`R069`), and `WP-050-18` (5 d, `frontend/serialize.ts`, `T-AVM1-FE-034`) is the
+   separately scoped and estimated package that delivers them. **Scope decision recorded with the
+   contract:** the `→ disassembly →` leg of the earlier wording is *removed* from the byte-identity path.
+   The disassembly surface is human-readable and lossy by design; requiring a text parser as well would
+   add a second inverse for no additional losslessness, so `T-AVM1-FE-032` remains text conformance only
+   and MUST NOT be cited as byte round-trip evidence. This criterion closes when `T-AVM1-FE-034` is green:
+   canonical input reproduces its bytes exactly, non-canonical input is diagnosed rather than silently
+   normalized, and reserved/undefined codes refuse serialization and stay residual.
 3. Every tier reason has a fixture; the tier report on the open corpus is reviewed by two people.
+   **Partly closed 2026-10-13; the machine side is now current.** The open corpus exists as class C4 of
+   [`registers/corpus.md`](../registers/corpus.md): 73 ActionScript-bearing AVM1 conformance movies from
+   `ruffle-rs/ruffle@2372a4e1` (Apache-2.0 OR MIT), hash-pinned in `fixtures/open/manifest.json`, fetched
+   into `.forge-cache/` rather than committed (`IMPL-020-R038` sanctions three committed-binary roles and
+   an external movie is none of them). `WP-050-19` owns the lane and
+   `audits/P5-C4-CORPUS-EXTERNAL.json` is its report. Running the lane found `E-034`–`E-040` (all fixed)
+   and `E-041` (open), and the report was regenerated after each fix. The current one measures
+   272 entries — 119 action blocks and 153 functions — at T0=119, T1=130, T2=23, with 319 diagnostics
+   (14 errors, 190 warnings, 115 infos), exit codes `{0: 60, 1: 13}`, `unknownOpcodeReasons: 0`, and
+   every framing diagnostic at zero files (`SF0400`, `SF0404`, `SF0415`, `SF0420`). The ten T2 reason
+   kinds are all semantic: `dynamic-pool` 37, `stack-mismatch` 20, `dynamic-stack` 12, `dynamic-args` 5,
+   `call-dynamic-target` 4, `target-in-branch` 3, `branch-out-of-bounds` 3, `dynamic-with` 2,
+   `frame-call-target-unresolved` 1, `register-out-of-range` 1. **Still open:** the second reviewer — the
+   report is machine-generated and one person has read it; a per-reason fixture for each of those ten
+   reasons, which the committed corpus cannot supply because it contains no action block at all; and
+   `E-041`, which makes a diagnostic emitted inside a nested block carry a block-relative offset, so four
+   distinct underflows report `@0` and collapse into one count. `stack-mismatch` is no longer inflated by
+   `E-040` (fixed, R073): `SF0406` fell from 13 items to 12 and both files the entry named are clean
+   (`try_catch_finally.swf` T2 2 → 0, `try_finally_simple.swf` T2 1 → 0). T1 rose at the same time because
+   code that had been *dropped* from the IR is now analysed — a predecessor that never settled used to
+   stall the join downstream of it — and `string_coercion.swf`'s disassembly grew from 119 lines to 654 as
+   a result. Those entries are genuinely dynamic (`Enumerate` and `With` results), which is what T1 says.
 4. Fuzzing: 10⁶ seeded action-stream mutations/truncations, zero uncaught exceptions, and safe
    residual fallback for malformed or unknown records.
 5. Requirement extraction and name recovery are deterministic across process restarts.
@@ -741,3 +871,9 @@ post-ship correction is confirmed by the chapter text: the action exchanges the 
 | 1.7 | 2026-10-11 | Ground the SWF ≤5 ANSI/Shift-JIS locale rule and DBCS `MBStringLength` behavior in Adobe SWF v19; correct the unsupported `StringLength` byte claim; add explicit analyzer encoding selection and scope FE-030 to the established behavior while leaving the runtime `StringLength` result open |
 | 1.8 | 2026-10-11 | Record the P5/P7 acceptance boundary: frontend metadata/IR stays in P5; runtime execution of frame calls, exception unwinding, and scheduling is P7/IMPL-130. Preserve FE test IDs and normative AVM1 semantics; clarify §13 exit criteria without claiming any runtime gate passed. |
 | 1.9 | 2026-10-11 | Record the byte-round-trip scope decision: retain the existing inverse criterion as a P5 exit gate, leave it open, and require a lossless contract plus a separately scoped/estimated work package before implementation. |
+| 1.10 | 2026-10-13 | P5 closeout structure: §5.7 defines the lossless inverse format and the byte-identity contract (`IMPL-050-R065`–`R069`) that §12 item 7 and §13 criterion 2 required before the work could be scoped; `WP-050-18` (5 d, `frontend/serialize.ts`) and `T-AVM1-FE-034` are added, so the retained round-trip gate is schedulable and estimated; §13 criterion 2 records the decision to drop the disassembly leg from the byte-identity path (text stays lossy, `T-AVM1-FE-032` is not round-trip evidence); §10's test table gains a `Phase owner` column so the Route A forwards — `T-AVM1-FE-024` runtime execution to P7, the split FE-025/027/028 front-end/runtime halves, FE-030's open oracle — are live in this document rather than only in `audits/P5-AUDIT-RESOLUTION.md` |
+| 1.11 | 2026-10-13 | P0–P5 completion audit (roadmap §4.6 item E): `T-AVM1-FE-035` gives `IMPL-050-R037`'s target-path grammar an owning obligation. The rule was specified and `frontend/properties.ts` implements it — `parseTarget`/`formatTarget`, consumed by `control-flow.ts` and `stack.ts` — but no test id owned the grammar: `T-AVM1-FE-004` covers block splitting and region extent, `-019` `GotoFrame2` scene bias, `-021` property ids, and the only exercised forms were `/a`, `/a/b` and `""`. Added to `WP-050-11`, which already delivers the module |
+| 1.12 | 2026-10-13 | Open-corpus screen (§13 criterion 3; roadmap §4.6 item B) run over 73 licensed AVM1 conformance movies from `ruffle-rs/ruffle@2372a4e1` — the first action blocks this front end has seen from outside the repository, whose 26 committed inputs contain none. Two defects. `E-034` (fixed): `sliceBlock` skipped a phantom four-byte block prefix that `test-support`'s `actionBlock()` manufactured, so generator and consumer agreed with each other and 750 tests passed while every real file mis-parsed; `IMPL-050-R070` now states the ref contract and `T-AVM1-FE-036` pins it with a reverting negative control. `E-035` (open, `T-AVM1-FE-037` unwired): measured at 146 of 146 in-sync records, `DefineFunction`/`DefineFunction2` place `Code[CodeSize]` past the record's `Length`, so R008 needs correcting and 48 of 73 files currently report `SF0400`. `WP-050-19` (1 d) owns the lane. Total 51 → 52 |
+| 1.13 | 2026-10-13 | `E-035`/`E-036`/`E-037`/`E-038` fixed: new `IMPL-050-R071` (four opcodes own a region past `Length`, bounded by the enclosing scan range, one shared parser in `frontend/extents.ts`), R006 narrowed to the kinds an `End` actually closes, R008/R032 cross-referenced, R034 corrected (its old wording made every real `Try` malformed), and `flags.truncated`/`overrun` no longer gated on a desynchronised walk. Obligations `T-AVM1-FE-038`/`039` added and wired with `-037` in `test/region-framing.test.ts`; `T-AVM1-FE-040` added for `E-039` (open: `catch`/`finally` bodies are decoded and then dropped from the IR). The harness and `tools/avm1-restart-probe.mjs` now place regions past `Length`, as real content does. |
+| 1.14 | 2026-10-13 | `E-039` fixed: new `IMPL-050-R072` (each region body is entered from its region op at the depth the player gives it — the `Try` entry for the try and catch bodies, after the pop for a `With` body, the join of the try and catch exits for a finally body, dynamic rather than `SF0406` where those disagree), `T-AVM1-FE-040` wired as `test/try-bodies.test.ts` (six cases, with a negative control that fails 7 tests in 3 files), and `T-AVM1-FE-032`'s disassembly golden corrected — it had baked the dropped catch and finally records in. C4-c re-run: T0 123 → 124, errors 15 → 15, `SF0406` identical file by file. `E-040` and `E-041` filed from the same measurement |
+| 1.15 | 2026-10-13 | `E-040` fixed: new `IMPL-050-R073` (control flows *through* a region — the block holding a `Try`/`With` record falls into the body, a body falls into the region's `finally` and then into the record after the region, so the continuation is a join over the bodies' exits; and a predecessor that never settled no longer blocks a join forever, which had been dropping every block downstream of dead code from the IR), `T-AVM1-FE-041` wired as `test/region-flow.test.ts` (five cases; the negative control fails 6 tests in 3 files), `T-AVM1-FE-032`'s golden and `T-AVM1-FE-008`'s dynamic-`With` fixture re-stated for the region CFG, and §13 criterion 3 refreshed: T0 124 → 119, T1 120 → 130, T2 25 → **23**, errors 15 → **14**, functions 150 → **153**, clean exits 59 → **60 of 73** |

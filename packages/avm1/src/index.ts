@@ -19,6 +19,10 @@ export type { OpcodeSpec, PayloadSchema, VersionSensitive } from './frontend/opc
 
 // ---- framing (WP-050-01) ----------------------------------------------------------------------------
 export { scanRecords } from './frontend/record.js';
+
+// ---- region extents (WP-050-01, IMPL-050-R071) ------------------------------------------------------------------
+export { REGION_CODES, isRegionCode, regionExtent } from './frontend/extents.js';
+export type { RegionExtent } from './frontend/extents.js';
 export type { ActionRecord, Emit, ScanResult } from './frontend/record.js';
 
 // ---- operands (WP-050-03) -----------------------------------------------------------------------------

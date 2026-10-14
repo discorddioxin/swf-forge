@@ -120,6 +120,9 @@ interface ScopeRecords {
   readonly indices: number[];
 }
 
+/** `true` for the two ops that own a region body: control flows *through* the body (errata E-040). */
+const isRegionOp = (op: DecodedOp): boolean => op.kind === 'try' || op.kind === 'with';
+
 const isTerminating = (op: DecodedOp): boolean => {
   switch (op.kind) {
     case 'jump':
@@ -194,6 +197,38 @@ export function buildBlockFrames(
   let nextId = 0;
   const frames: BlockFrame[] = [];
 
+  // Control flow through a region (errata E-040). A region op hands control to its own body, the body
+  // hands it to the region's `finally` body when there is one, and the last body hands it back to the
+  // record after the region op — so the code after a `Try` or `With` sees the stack the bodies left
+  // instead of the stack the region op had. An empty body owns no records and is skipped.
+  const firstBodyStartFor = new Map<number, number>();
+  const finallyStartFor = new Map<number, number>();
+  for (const range of bodyRanges) {
+    if (range.end <= range.start) continue;
+    if (range.kind === 'finally') finallyStartFor.set(range.recordIndex, range.start);
+    else if (range.kind === 'try' || range.kind === 'with') firstBodyStartFor.set(range.recordIndex, range.start);
+  }
+  const continuationAfter = new Map<number, number | null>();
+  for (const scope of scopes.values()) {
+    for (let k = 0; k < scope.indices.length; k += 1) {
+      const i = scope.indices[k];
+      if (i === undefined) continue;
+      const op = decoded[i];
+      if (op === undefined || !isRegionOp(op)) continue;
+      const next = k + 1 < scope.indices.length ? scope.indices[k + 1] : undefined;
+      const nextRecord = next !== undefined ? records[next] : undefined;
+      continuationAfter.set(i, nextRecord === undefined ? null : nextRecord.offset);
+    }
+  }
+  /** Where a region op's own frame goes: its body, else its `finally`, else the continuation. */
+  const regionEntryOffset = (recordIndex: number): number | null => {
+    const body = firstBodyStartFor.get(recordIndex);
+    if (body !== undefined) return body;
+    const fin = finallyStartFor.get(recordIndex);
+    if (fin !== undefined) return fin;
+    return continuationAfter.get(recordIndex) ?? null;
+  };
+
   const nextRecordStart = (scope: ScopeRecords, lastIndex: number): number | null => {
     const position = scope.indices.indexOf(lastIndex);
     const next = position + 1 < scope.indices.length ? scope.indices[position + 1] : undefined;
@@ -204,6 +239,20 @@ export function buildBlockFrames(
 
   const buildScope = (scope: ScopeRecords, scopeIndex: number): void => {
     const targets = targetsByScope.get(scope.key) ?? new Set<number>();
+    const scopeKind = scope.key.slice(0, scope.key.indexOf(':'));
+
+    /** Where control goes when a frame runs off the end of this scope. */
+    const fallthroughFrom = (last: number): number | null => {
+      const inside = nextRecordStart(scope, last);
+      if (inside !== null) return inside;
+      const regionRecord = scope.regionRecord;
+      if (regionRecord === null) return null;
+      if (scopeKind !== 'finally') {
+        const fin = finallyStartFor.get(regionRecord);
+        if (fin !== undefined) return fin;
+      }
+      return continuationAfter.get(regionRecord) ?? null;
+    };
 
     // The target in force at each record (R036): a SetTarget/SetTarget2 changes it for the
     // records that follow.
@@ -229,7 +278,10 @@ export function buildBlockFrames(
       const previous = k > 0 ? scope.indices[k - 1] : undefined;
       const previousOp = previous !== undefined ? decoded[previous] : undefined;
       const previousTerminates = previousOp !== undefined && isTerminating(previousOp);
-      if (k === 0 || targets.has(record.offset) || previousTerminates) {
+      // A region op also ends its block: the records after it are entered from the region's bodies,
+      // not from the region op, so they need a block of their own to carry that depth (errata E-040).
+      const previousOpensRegion = previousOp !== undefined && isRegionOp(previousOp);
+      if (k === 0 || targets.has(record.offset) || previousTerminates || previousOpensRegion) {
         if (current.length > 0) blockIndices.push(current);
         current = [];
       }
@@ -280,7 +332,7 @@ export function buildBlockFrames(
           terminator = {
             kind: 'branch',
             targetOffset: valid ? lastOp.target : null,
-            nextOffset: nextRecordStart(scope, last),
+            nextOffset: fallthroughFrom(last),
             valid,
             target: null,
           };
@@ -296,7 +348,7 @@ export function buildBlockFrames(
           terminator = {
             kind: 'target',
             targetOffset: null,
-            nextOffset: nextRecordStart(scope, last),
+            nextOffset: fallthroughFrom(last),
             valid: true,
             target: parseTarget(lastOp.target),
           };
@@ -305,19 +357,22 @@ export function buildBlockFrames(
           terminator = {
             kind: 'target',
             targetOffset: null,
-            nextOffset: nextRecordStart(scope, last),
+            nextOffset: fallthroughFrom(last),
             valid: true,
             target: { kind: 'dynamic', value: { kind: 'stack' } },
           };
           break;
-        default:
+        default: {
+          // A region op's successor is its body, not the record after it (errata E-040).
+          const body = isRegionOp(lastOp) ? regionEntryOffset(last) : null;
           terminator = {
             kind: 'fallthrough',
             targetOffset: null,
-            nextOffset: nextRecordStart(scope, last),
+            nextOffset: body ?? fallthroughFrom(last),
             valid: true,
             target: null,
           };
+        }
       }
 
       frames.push({

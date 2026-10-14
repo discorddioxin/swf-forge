@@ -108,6 +108,13 @@ def main():
         mt = re.search(r"^\| \*\*Total\*\* \| \| \*\*(\d+)\*\* \| \*\*≈ ([\d.]+)\*\* \|", rm, re.M)
         if not mt or int(mt.group(1)) != tn or abs(float(mt.group(2)) - td) > 1e-9:
             iss(f"roadmap total mismatch: {mt.groups() if mt else None} vs {tn}/{td}")
+        # §7's effort model is prose the index check cannot see, and it drifted 12 d behind §10
+        # (646.5 vs 658.5) before this check existed. One figure, one source.
+        prose = re.search(r"total \*\*≈ ([\d.]+) developer-days\*\*", rm)
+        if not prose:
+            iss("roadmap §7: no 'total **≈ N developer-days**' figure to cross-check against §10")
+        elif abs(float(prose.group(1)) - td) > 1e-9:
+            iss(f"roadmap §7 prose total {prose.group(1)} != §10 index total {td}")
 
     # --------------------------------------------------- 4. diagnostics have one owner
     owner = collections.defaultdict(set)

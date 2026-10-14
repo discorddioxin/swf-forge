@@ -46,6 +46,58 @@ verify      → structural re-checks on the emitted output        (this doc + do
 - **IMPL-120-R004** `--dry-run` MUST run through `plan` and print the expected outputs, sizes, and
   budgets without writing files or invoking external tools.
 
+`IMPL-120` §2's seven stage names are the build spine; `CMP` §2's S0–S10 are the same spine at a finer
+grain, and the two are not one-to-one. `read` is S0 **and** S1, because the delivered `SwfFile` facade
+(`WP-020-10`) builds the tag index and the dictionary in the same pass. `decode` is S3 **and** S4, which
+`CMP-R001` permits to interleave per asset as long as the observable output is as if they were ordered.
+`analyze` is S5 **and** S6, because the delivered `analyzeMovie` produces the IR and the tier verdicts in
+one pass. `report` is S9. S10 `verify` is **not** a build stage: §6 makes it a command over an emitted
+project (`WP-120-12`), runnable against output this process did not produce. The five §3 passes are not
+stages either — they are pure functions over the model and the IR, run on their own spine between
+`analyze` and `plan`, in the order dead code → requirement shake → tier finalise → names → frames.
+
+### 2.1 Pipeline diagnostics
+
+| Code | Severity | Meaning |
+| --- | --- | --- |
+| `SF0500` | info | a pipeline stage has no implementation in this build; the run report names every such stage |
+| `SF0503` | warning | `--verify-cache` recomputed a cached stage and the bytes differed; the entry is evicted and the recomputed output is used |
+
+A stage with no registered implementation is reported, never skipped silently — the same principle
+`IMPL-120-R013` applies to pruning. The code exists so that a partially built compiler says what it
+cannot do instead of reporting success over an empty output directory. §7.1's `SF0501`/`SF0502` are the
+rest of the `SF05xx` compile range.
+
+### 2.2 The stage cache
+
+R002's cache is one JSON file per key under `.forge/cache/` (`CMP` §12; gitignored, never committed). The
+key is `CMP` §12's `sha256(stageId ‖ stageInputHash ‖ toolVersion ‖ relevantConfigHash)` and the entry
+stores the full stage output **plus** the metadata that makes it falsifiable: the declared effect set, the
+tool version, the input hash and the relevant-config hash (`CMP-R038`).
+
+- **The effect set is not in the key, and that is the point.** A stage that starts writing an extra file
+  keeps the key it always had, so comparing the recorded effects is what detects the entry as stale; the
+  run report names the reason (`cacheEvicted`) and the stage re-runs.
+- **A stage's own options are inputs.** A cacheable stage folds them into its input hash: `analyze` is keyed
+  on the movie's hash *and* its `legacyEncoding`, because a key that ignored the option would serve an
+  analysis decoded with the wrong string semantics. `RELEVANT_CONFIG_KEYS` covers only what a stage reads
+  from the config; `analyze` reads none, and `--verify-cache` is what catches an under-declared path (the
+  recomputation under the new config would no longer match the entry the old key still points at).
+- **A corrupt or unreadable entry is a miss, never a failure**, and it is evicted. The cache is an
+  optimisation and a build must not break because of it. Writes go to a temp name in the same directory and
+  are renamed, so a cancelled run leaves no partial entry (the same property R023 requires of asset writes).
+- **Serialisation is structural, not per-stage.** A hand-written codec per stage would drop whatever field
+  the IR grows next, and the drop would be silent because the reconstructed value still type-checks.
+  `Map`, `Set` and `Uint8Array` are tagged (entries, not objects, so `schedule.initBySprite`'s number keys
+  keep their type) and every object key is sorted, so identical content always writes identical bytes
+  (`CMP-R040`). A stage whose output is a live object — `read`, `model` — declares no codec and is not
+  cached; `analyze` is the first cacheable stage and also the most expensive one a porting loop repeats.
+- **`--verify-cache` does not prove the codec lossless.** It compares the *serialised* recomputation with
+  the stored payload, so a codec that loses information in both directions matches itself. The property
+  that catches that is cold-versus-warm **output** equivalence (`T-CMP-005`) — measured against a
+  projection that does not go through the codec. Both are required, for different failures: one detects a
+  stale or tampered entry, the other detects a lossy cache format.
+
 ## 3. Post-model passes
 
 | Pass | Job | Rules |
@@ -64,6 +116,60 @@ verify      → structural re-checks on the emitted output        (this doc + do
   name table is closed *before* emission so that two passes cannot disagree.
 - **IMPL-120-R013** Dead-code pruning MUST be reported per character and per action block, with
   reasons; pruning is never silent (design `CMP-D07`).
+- **IMPL-120-R033** A synthetic identifier MUST NOT embed a byte offset or any other source position.
+  Offsets shift under editing, under a re-ordered dictionary, and under any change to an unrelated tag, so
+  a name that contains one is unstable across runs and defeats `IMPL-120-R011` at its root: the sort order
+  can be stable while the *name* is not. The default form is `<kind><CharacterId>_<n>` (R008), and
+  `IMPL-050-R062` step 3 is read the same way — the base is `<kind>_<blockId>`, never a hex offset
+  (recorded defect: errata `E-044`).
+- **IMPL-120-R034** A hoist candidate MUST be identified by a projection that is position-independent but
+  content-complete: offsets are rebased relative to the block start, never dropped, and a block carrying a
+  T2 residual blob is never hoisted at all, because such a block is emitted as its own bytes and two blobs
+  of equal extent can hold different code. `T-CMP-010` and `T-CMP-011` are the obligations, and they exist
+  as a pair on purpose: a "same code, different position" test alone passes for a projection that throws
+  the targets away, which would merge blocks that branch differently.
+
+### 3.1 Name assignment and frame-script grouping (as delivered by `WP-120-05`/`WP-120-06`)
+
+The two passes live in `packages/compile/src/passes/{names,frames}.ts` and register as `namesPass()` and
+`framesPass()` on the `runPipeline` spine, which orders them per `IMPL-120-R013` (after `tier-finalise`,
+`shake` and `dead-code`, all still unregistered and reported as such). Five decisions the pass table left
+open:
+
+- **`CMP-D-CMP-N1`** — *the base name*: export name → declared name (the front end's recovered map) →
+  synthetic `<kind><CharacterId>_<n>` (R008), **with the export name consulted here rather than inside the
+  front-end pass**. `IMPL-050-R062` requires `WP-050-10`'s pass to run over "the IR plus the dictionary's
+  export map" and it does not: `recoverNames` takes `exportMap` and discards it, `T-AVM1-FE-012` shuffles
+  the candidate list with an *empty* map, and on the licensed corpus 0 of 20 exported character names appear
+  among 149 recovered function names (`E-044`). Step (1) of `AVM1-R036` is therefore unimplemented at P5, so
+  this pass resolves the whole three-step order itself; when P5's fix lands, the consulted name arrives
+  through `recoveredName` instead and the result is identical.
+- **`CMP-D-CMP-N2`** — *ownership*: the rule speaks of "the character or frame that owns the construct"
+  without saying where that fact comes from, and `ActionIR` carries no owning-character field, so the pass
+  derives it from `TagRef.inSprite` over `read.file.tags` — `null` is the timeline, a number is the owning
+  `DefineSprite`'s character id — matching blocks to tags by byte range. A frame script inside a sprite is
+  named for that sprite's id, not for the frame.
+- **`CMP-D-CMP-N3`** — *sanitisation*: characters outside `[A-Za-z0-9_$]` (and a digit at the head) become
+  `_`, runs of separators inside a name collapse, and leading or trailing separators are trimmed **only when
+  they are not underscores**, so the legitimate `_root`-shaped names survive while `"1st prize"` →
+  `_1st_prize`; an empty result falls back to the kind default; the reserved set `vm`, `target`, `frame`
+  comes from `IMPL-120-R017`, which gives every frame script those three parameters. Collisions advance
+  `_2`, `_3`, … over the sorted candidate list (R011), and a candidate whose name was taken as another
+  symbol's **base** counts as a collision too — otherwise a name recovered from `ExportAssets` would be
+  handed to a second symbol while the first still claims it, and two exports naming one function is common.
+  Ordering is by source range first and owner second, exactly as R011 words it; the two disagree in
+  practice, and `names.test.ts` pins a case where owner-first would assign the opposite names.
+- **`CMP-D-CMP-N4`** — *the table is closed once*: `assignNames` throws when two candidates share a subject
+  id rather than merging them, because merging would silently drop one symbol's name; the frames pass needs
+  to add one entry per shared unit after grouping, which it does through `extendNameTable` — a re-run over
+  the combined candidate list, never a second allocator — so `IMPL-120-R012`'s "closed before emission"
+  property stays true and a shared unit's name still respects the reserved set.
+- **`CMP-D-CMP-N5`** — *grouping*: only `timeline`-kind blocks enter a frame group, because R009's
+  signature (`frame<N>`, no parameters) describes a timeline frame; clip-event, button and sprite-init
+  blocks are reported as not grouped with that reason. A shared unit takes the name of the earliest frame it
+  serves and the per-frame functions (`IMPL-120-R017`) still call into it, so the shared body is a genuine
+  dedupe rather than a rename. Tier verdicts and their reasons are part of the identity, because
+  "identical" has to mean "identical for the same reason", not "identical once the reason is discarded".
 
 ## 4. Emitter: output layout
 
@@ -158,6 +264,19 @@ swfforge report <out-dir> [--json]
   budgets are targets from GFX-§16/AST-§4, and a real title may exceed them with a documented reason.
 - **IMPL-120-R030** A budget overrun MUST name the top contributors (per-asset and per-module), not just
   the total — the report is a work list, not a verdict.
+- **IMPL-120-R031** R028's *video bytes* are **source extents** at P6: the plan pass sums the
+  `DefineVideoStream` header and the `VideoFrame` payload lengths supplied by `WP-110-12` (doc 110,
+  P6-owned) and reports no re-encode delta. Whether a stream is alpha-paired — which doubles the emitted
+  assets — is knowable only from packet headers, so at P6 it is a labelled worst-case estimate carried
+  with an info-severity diagnostic that names it as an estimate; `WP-110-06` (P10) replaces the estimate
+  with the measured figure. R028 is satisfied by the extent at P6 and by the alpha-resolved measurement
+  from P10 onward, and `budgets.json` MUST record which of the two it holds.
+- **IMPL-120-R032** Emitted code MUST NOT read `location`, or any URL/fragment-derived navigation state,
+  to resolve a frame, scene, or named anchor. Navigation comes from the decoded `NamedAnchor` and scene
+  data carried in the manifest, so frame addressing is identical whether the project is served from a
+  path, a fragment, or a `file:` URL. `WP-120-12`'s forbidden-construct lint fails the build on a
+  `location` read in emitted output. This receives the emitter half of doc 040's `T-MOD-030`, whose
+  decode half P2 delivered and whose forward was previously recorded only in an archived audit.
 
 ### 7.1 Budget diagnostics
 
@@ -171,43 +290,51 @@ because the report is produced by the plan pass (`budgets.json`).
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-CMP-001` | name assignment stability across 100 shuffled dictionary orders | F1 |
-| `T-CMP-002` | forbidden-construct lint over emitted output (one fixture per rule) | F1 |
-| `T-CMP-003` | double build → `diff -r` is empty (incl. assets) | F1 |
-| `T-CMP-004` | exit codes per failure class (5 fixtures) | F1 |
-| `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs | F1 |
-| `T-CMP-006` | cancellation: SIGINT during an asset encode returns within 2 s, no partial files left | F1 |
-| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash | F1 |
-| `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-CMP-001` | name assignment stability across 100 shuffled dictionary orders | F1 | P6 |
+| `T-CMP-002` | forbidden-construct lint over emitted output (one fixture per rule) | F1 | P6 |
+| `T-CMP-003` | double build → `diff -r` is empty (incl. assets) | F1 | P6 |
+| `T-CMP-004` | exit codes per failure class (5 fixtures) | F1 | P6 |
+| `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs | F1 | P6 |
+| `T-CMP-006` | cancellation: SIGINT during an asset encode returns within 2 s, no partial files left | F1 | P6 |
+| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash | F1 | P6 |
+| `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 | P6 |
+| `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one | F1 | P6 |
+| `T-CMP-010` | name assignment is a pure function of content and order: the serialised table is identical under 100 permutations of the `ExportAssets` dictionary **dealt into slots interleaved between the control tags**, so the claim cannot be satisfied by absolute offsets that happen not to move — the test asserts those offsets take several distinct tuples — plus the sanitisation table, the base-claim and `_2`/`_3` collisions, and `IMPL-120-R033`'s ban on offset-bearing names | F1 | P6 |
+| `T-CMP-011` | hoisting is sound: blocks differing only in position canonicalise equal, blocks differing only in a rebased jump or branch target do not (`IMPL-120-R034`), a T2 block is never hoisted, and every ungrouped or unhoisted block carries a reason | F1 | P6 |
 
 ## 9. Work packages
 
 | WP | Title | Depends | Est | Deliverable |
 | --- | --- | --- | --- | --- |
 | WP-120-01 | Pipeline runner: stages, context, cancellation | WP-020-10 | 4 | `packages/compile/src/pipeline.ts` |
-| WP-120-02 | Cache: content-keyed stage cache + `--verify-cache` | WP-120-01 | 3 | T-CMP-005 |
+| WP-120-02 | Cache: content-keyed stage cache + `--verify-cache` | WP-120-01 | 5 | `codec.ts`, `cache.ts`, cacheable `analyze`; T-CMP-005 — **Done**, evidence in §2.2 |
 | WP-120-03 | Dead-code pass + reporting | WP-120-01, WP-050-08 | 3 | `passes/dead-code.ts` |
 | WP-120-04 | Requirement tree-shaking + module grouping | WP-120-01, WP-050-09 | 3 | `passes/shake.ts` |
-| WP-120-05 | Name assignment pass | WP-120-01, WP-050-10 | 2 | `passes/names.ts`, T-CMP-001 |
-| WP-120-06 | Frame-script grouping/hoisting | WP-120-01, WP-030-09 | 3 | `passes/frames.ts` |
-| WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-06 | 4 | `passes/assets.ts` |
+| WP-120-05 | Name assignment pass | WP-120-01, WP-050-10 | 2 | `passes/names.ts`, §3.1 — **Done**, T-CMP-001/010 wired; the P5-side obligations stay open under `E-044` |
+| WP-120-06 | Frame-script grouping/hoisting | WP-120-01, WP-030-09 | 3 | `passes/frames.ts`, §3.1 — **Done**, T-CMP-011 wired |
+| WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-12 | 4 | `passes/assets.ts` |
 | WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/*.ts` |
 | WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` |
 | WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | T-CMP-007 |
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | report writers |
-| WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007 |
+| WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007/009 |
 | WP-120-13 | CLI: build/plan/inspect/verify/report + exit codes | WP-120-12 | 4 | `packages/cli`, T-CMP-004 |
 | WP-120-14 | Determinism hardening + double-build CI job | WP-120-13 | 2 | T-CMP-003 |
-| | **Total** | | **46** | |
+| | **Total** | | **48** | |
 
 ## 10. Done criteria
 
-1. `swfforge build` on the reference title produces a project that type-checks, passes `verify`, and
-   rebuilds byte-identically.
+1. `swfforge build` on **the reference title** — the single title named in
+   [`docs/impl/registers/corpus.md`](../registers/corpus.md), which records its provenance and
+   licence — produces a project that type-checks, passes `verify`, and rebuilds
+   byte-identically.
 2. Every CLI command works on a partial/failing input without crashing, with the documented exit code.
-3. Cache warm/cold equivalence holds over the whole corpus.
+3. Cache warm/cold equivalence holds over **the whole corpus**, bounded the same way `T-SWF-009`'s
+   "every fixture" is (roadmap §4.2, [`registers/corpus.md`](../registers/corpus.md)): every
+   committed `.swf`, the fuzz crasher corpus, the enumerated deterministic synthetic set, and
+   the reference title. It is not the open-title corpus, which is P11's programme.
 4. Every emitted symbol is either referenced or listed; no orphaned code paths in the manifest.
 5. `porting-notes.json` names every diagnostic, every `[verify]` item, and every gate and its state.
 
@@ -218,3 +345,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.0 | initial | Full pipeline/emitter/CLI specification derived from CMP/REPO/MS design specs |
 | 1.1 | 2026-10-04 | §7.1 added: budget diagnostics `SF0501`/`SF0502` in the emitter range, matching the design spec's budget table (which previously cited font codes `SF0230`/`SF0231`); errata `E-016` |
 | 1.2 | 2026-10-04 | Citation fix: `REPO-D09` -> `REPO-D06`, a decision that now exists (`specs/010` §11; errata `E-024`) |
+| 1.3 | 2026-10-13 | Roadmap §4.6 items B, C, D applied. `IMPL-120-R031` gives R028's video bytes a P6-scoped reading (source extents from the re-homed `WP-110-12`; alpha pairing a labelled estimate until P10's `WP-110-06`), and `WP-120-07` now depends on `WP-110-12` instead of P10's packet-header validation, which removes the P6 → P10 inversion. `IMPL-120-R032` receives the emitter half of doc 040's `T-MOD-030` — emitted code must not read `location` — with `T-CMP-009` as its obligation on `WP-120-12`'s forbidden-construct lint. §10 criteria 1 and 3 now name their subjects: the reference title and the bounded in-repo corpus both live in `docs/impl/registers/corpus.md` |
+| 1.4 | 2026-10-14 | P6 started: `WP-120-01` delivered as `@swf-forge/compile` (`packages/compile/src/pipeline.ts`, `cancel.ts`, `config.ts`, `stages/*`). §2 gains the stage-spine mapping between this doc's seven stage names and `CMP` §2's S0–S10 (`read` = S0+S1, `decode` = S3+S4, `analyze` = S5+S6, `report` = S9, S10 `verify` is a command and not a stage), and states that the five §3 passes run on their own spine between `analyze` and `plan`. New §2.1 registers `SF0500` (info: a stage has no implementation in this build), the first code in the `SF05xx` compile range, added to the `IMPL-010` §7 registry |
+| 1.5 | 2026-10-14 | `WP-120-02` delivered (`packages/compile/src/cache.ts`, `codec.ts`; `pipeline.ts`'s cache path), wiring `T-CMP-005` in `packages/compile/test/cache.test.ts`. New §2.2 records the entry format and the rules a reader needs to apply them (effects outside the key, stage options inside the input hash, corrupt-entry-is-a-miss, structural serialisation) and states that `--verify-cache` cannot prove the codec lossless while cold-vs-warm output equivalence can. `SF0503` (warning: a cached output did not match its recomputation) joins §2.1; `analyze` becomes the first cacheable real stage |
+| 1.6 | 2026-10-14 | `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as pass objects on the runner spine, with §3.1 recording the five decisions the pass table left open. Two new rules: `IMPL-120-R033` (a synthetic name never embeds a source position) and `IMPL-120-R034` (a hoist candidate is position-independent but content-complete, and a T2 block is never hoisted), with obligations `T-CMP-010`/`T-CMP-011`. `T-CMP-001`'s dictionary permutation is what makes the first one measurable, and it is a test P5's `T-AVM1-FE-012` cannot be: shuffling a candidate array with an empty export map never moves a byte offset. The `WP-120-02` row here is corrected to 5 days with its deliverables, matching the roadmap. |

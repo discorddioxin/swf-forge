@@ -42,9 +42,15 @@ function constantPool(value) {
   return actionRecord(0x88, [1, 0, ...Buffer.from(value, 'ascii'), 0]);
 }
 
+/**
+ * `DefineFunction` (0x9B). `Length` covers the header alone — `FunctionName`, `NumParams`,
+ * `CodeSize` — and `Code[CodeSize]` follows **past** the record, as real content does and as
+ * `IMPL-050-R071` requires (`E-035`). This helper originally put the body inside `Length`, which
+ * matched the decoders' then-wrong reading and so proved nothing about real files.
+ */
 function defineFunction(name, body) {
   const nameBytes = [...Buffer.from(name, 'ascii'), 0];
-  return actionRecord(0x9b, [...nameBytes, ...u16(0), ...u16(body.length), ...body]);
+  return [...actionRecord(0x9b, [...nameBytes, ...u16(0), ...u16(body.length)]), ...body];
 }
 
 function syntheticMovie() {

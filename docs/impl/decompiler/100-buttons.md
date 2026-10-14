@@ -332,27 +332,27 @@ shared with doc 030.
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-801` | hit-area union from `up` geometry, scaled and semi-transparent children | F1 |
-| `T-MOD-802` | explicit `hitTest` records override; multi-state records render in both states | F1 |
-| `T-MOD-803` | every condition bit fires exactly one handler on its mapped transition | F1 |
-| `T-MOD-804` | `keyPress`: documented special keys + ASCII 32–126 retained; focus-independent data contract (modifier routing is runtime work) | F1 |
-| `T-MOD-805` | `DefineButton` v1: records, `CharacterEndFlag`, action array, `ActionEndFlag` | F1 |
-| `T-MOD-806` | button sounds: all four transitions, truncated record, non-sound id | F1 |
-| `T-MOD-807` | nested-button transformed bounds resolve through child records without flattening; handler bubbling is runtime work | F2 |
-| `T-MOD-808` | `TrackAsMenu` selects menu-only versus push-only transition data; pointer-sequence execution is runtime work | F2 |
-| `T-MOD-809` | singular matrix does not crash hit testing | F1 |
-| `T-MOD-810` | `BUTTONCONDACTION` bit layout incl. the ninth bit after the key code and `CondActionSize` chaining | F1 |
-| `T-MOD-811` | `DefineButton2` `ActionOffset` base (field start), zero-offset buttons, AS3-flag violation | F1 |
-| `T-MOD-812` | `DefineButtonCxform` RGB transform applies to v1 button characters and is absent for v2 | F1 |
-| `T-MOD-813` | blend mode/filter list in v2 records match `PlaceObject3` decoding for the same payload | F1 |
-| `T-MOD-814` | push/menu transition-table membership and order; full press/drag/release simulation is runtime work | F2 |
-| `T-MOD-815` | button sound transition order (0 roll-out, 1 roll-over, 2 press, 3 release) | F1 |
-| `T-MOD-816` | empty-state record and empty-condition action produce the documented info codes only | F2 |
-| `T-MOD-817` | handler grouping: one symbol per CONDACTION, key code preserved | F1 |
-| `T-MOD-841` | self-cyclic button hit-area reference raises `SF0111` and leaves `hitArea` null (P2 audit regression) | F1 |
-| `T-MOD-842` | button whose every hit-area record resolves to a non-usable rect raises `SF0111` (P2 audit regression) | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-801` | hit-area union from `up` geometry, scaled and semi-transparent children | F1 | P2 |
+| `T-MOD-802` | explicit `hitTest` records override; multi-state records render in both states | F1 | P2 |
+| `T-MOD-803` | every condition bit fires exactly one handler on its mapped transition | F1 | P2 |
+| `T-MOD-804` | `keyPress`: documented special keys + ASCII 32–126 retained; focus-independent data contract (modifier routing is runtime work) | F1 | P2 |
+| `T-MOD-805` | `DefineButton` v1: records, `CharacterEndFlag`, action array, `ActionEndFlag` | F1 | P2 |
+| `T-MOD-806` | button sounds: all four transitions, truncated record, non-sound id | F1 | P2 |
+| `T-MOD-807` | nested-button transformed bounds resolve through child records without flattening; handler bubbling is runtime work | F2 | P2 |
+| `T-MOD-808` | `TrackAsMenu` selects menu-only versus push-only transition data; pointer-sequence execution is runtime work | F2 | P2 |
+| `T-MOD-809` | singular matrix does not crash hit testing | F1 | P2 |
+| `T-MOD-810` | `BUTTONCONDACTION` bit layout incl. the ninth bit after the key code and `CondActionSize` chaining | F1 | P2 |
+| `T-MOD-811` | `DefineButton2` `ActionOffset` base (field start), zero-offset buttons, AS3-flag violation | F1 | P2 |
+| `T-MOD-812` | `DefineButtonCxform` RGB transform applies to v1 button characters and is absent for v2 | F1 | P2 |
+| `T-MOD-813` | blend mode/filter list in v2 records match `PlaceObject3` decoding for the same payload | F1 | P2 |
+| `T-MOD-814` | push/menu transition-table membership and order; full press/drag/release simulation is runtime work | F2 | P2 |
+| `T-MOD-815` | button sound transition order (0 roll-out, 1 roll-over, 2 press, 3 release) | F1 | P2 |
+| `T-MOD-816` | empty-state record and empty-condition action produce the documented info codes only | F2 | P2 |
+| `T-MOD-817` | handler grouping: one symbol per CONDACTION, key code preserved | F1 | P2 |
+| `T-MOD-841` | self-cyclic button hit-area reference raises `SF0111` and leaves `hitArea` null (P2 audit regression) | F1 | P2 |
+| `T-MOD-842` | button whose every hit-area record resolves to a non-usable rect raises `SF0111` (P2 audit regression) | F1 | P2 |
 
 ## 9. Work packages
 

@@ -50,6 +50,12 @@ export interface OperandContext {
   /** Decodes a `DefineFunction*` body into its own IR (supplied by the pipeline; keeps this module acyclic). */
   readonly decodeFunctionBody: (shell: FunctionDefShell) => ActionIR | null;
   readonly flags: ResidualFlags;
+  /**
+   * End of the enclosing scan range, in the same coordinates as the record offsets: the block length
+   * for a block scan, the region end for a record inside a `With`/`Try` body. Bounds the region a
+   * region-bearing record owns past its `Length` (R071); defaults to `bytes.length`.
+   */
+  readonly limit?: number;
 }
 
 export type PushValue =
@@ -433,6 +439,8 @@ function decodeTry(bytes: Uint8Array, from: number, to: number, ctx: OperandCont
  * the caller passes `record.offset + (record.hasLength ? 3 : 1)` and `record.end`.
  */
 export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: OperandContext): DecodedOp {
+  // R071: a region-bearing record's body is bounded by the enclosing scan range, not by the record.
+  const limit = ctx.limit ?? bytes.length;
   const from = record.offset + (record.hasLength ? 3 : 1);
   const to = record.end;
   const offset = record.offset;
@@ -533,14 +541,16 @@ export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: Opera
       return { kind: 'constantPool', count: pool.count, strings: pool.strings };
     }
     case 0x94: {
+      // R032/R071: `Length` is 2 — `Size` only — and the body lies past the record, bounded by the
+      // enclosing scan range. Bounding it by `to` modelled every `With` as empty (`E-036`).
       const size = readU16(from);
       const bodyStart = from + 2;
-      const bodyEnd = Math.min(to, bodyStart + size);
-      if (bodyStart + size > to) {
+      const bodyEnd = Math.min(limit, bodyStart + size);
+      if (bodyStart + size > limit) {
         ctx.emit(
           Codes.ACTION_STREAM_TRUNCATED,
           'error',
-          `With body of ${size} byte(s) extends past the record (R032)`,
+          `With body of ${size} byte(s) overruns the enclosing block (R032/R071)`,
           offset,
         );
         ctx.flags.truncated = true;
@@ -550,15 +560,22 @@ export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: Opera
     case 0x8f: {
       const header = decodeTry(bytes, from, to, ctx);
       if (header === null) return { kind: 'malformed', code: record.code, reason: 'try-header' };
-      // R034 tiling: header + three bodies must consume exactly the record's payload.
+      // R034/R071: the three bodies tile the *region* past the header, not the record's payload —
+      // `Length` covers the header alone. Only a region that runs past the enclosing scan range is a
+      // defect here; `checkTryTiling` reports the other disagreement (a `Length` that over-covers).
       const total = header.trySize + header.catchSize + header.finallySize;
-      if (header.headerEnd + total !== to) {
+      const regionEnd = header.headerEnd + total;
+      if (regionEnd > limit) {
         ctx.emit(
           Codes.TRY_BODIES_DONT_TILE,
           'error',
-          `Try bodies (header ${header.headerEnd - from} + sizes ${header.trySize}/${header.catchSize}/${header.finallySize}) do not tile the ${to - from}-byte payload (R034)`,
+          `Try bodies (${header.trySize}/${header.catchSize}/${header.finallySize} = ${total} byte(s)) overrun the ${Math.max(0, limit - header.headerEnd)} byte(s) left in the enclosing block (R034)`,
           offset,
         );
+        ctx.flags.tryMalformed = true;
+      } else if (to > regionEnd) {
+        // The declared `Length` covers bytes past the header and the three bodies: those bytes belong
+        // to no region (R003/R034). `checkTryTiling` emits `SF0404` for it once per block.
         ctx.flags.tryMalformed = true;
       }
       return { kind: 'try', header };
@@ -571,7 +588,7 @@ export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: Opera
           ctx.flags.truncated = true;
         },
       };
-      const shell = decodeDefineFunction({ bytes, from, to, ctx: fnCtx });
+      const shell = decodeDefineFunction({ bytes, from, to, limit, ctx: fnCtx });
       const ir = ctx.decodeFunctionBody(shell);
       return { kind: 'defineFunction', fn: { ...shell, ir } as FunctionDef };
     }
@@ -583,7 +600,7 @@ export function decodeRecord(record: ActionRecord, bytes: Uint8Array, ctx: Opera
           ctx.flags.truncated = true;
         },
       };
-      const shell = decodeDefineFunction2({ bytes, from, to, ctx: fnCtx });
+      const shell = decodeDefineFunction2({ bytes, from, to, limit, ctx: fnCtx });
       const ir = ctx.decodeFunctionBody(shell);
       return { kind: 'defineFunction', fn: { ...shell, ir } as FunctionDef };
     }

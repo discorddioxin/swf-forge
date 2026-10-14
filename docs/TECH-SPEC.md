@@ -1,6 +1,6 @@
 # TECH — Technical and File Specification
 
-**Doc ID:** TECH · **Status:** Draft 1.2 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
+**Doc ID:** TECH · **Status:** Draft 1.3 · **Normative:** yes (product decomposition, repository and file layout, toolchain, cross-component rules)
 **Audience:** everyone who builds or extends swf-forge.
 **Companions:** `docs/specs/` (normative behaviour) · `docs/impl/` (build plans, work packages) · this document (how the parts fit, where files live, what runs them).
 
@@ -292,7 +292,9 @@ paths, host names, or machine identifiers (REPO-R015).
   "scripts": {
     "build":        "tsc -b && pnpm -r --filter './apps/**' build",
     "test":         "vitest run",
-    "test:browser": "vitest run --browser && playwright test",
+    "test:browser":  "vitest run --config vitest.browser.config.ts",  // §4.3 `browser` stage
+    "browser:probe": "node tools/browser-lane.mjs probe",              // which engine would it use?
+    "browser:install": "node tools/browser-lane.mjs install",          // restricted-network fallback
     "lint":         "eslint . && prettier --check .",
     "typecheck":    "tsc -b --force",
     "spec:verify":  "node tools/spec-verify/index.js",      // §8.2
@@ -309,7 +311,7 @@ paths, host names, or machine identifiers (REPO-R015).
 | --- | --- | --- |
 | Library bundling | `tsup` (esbuild) → ESM + `.d.ts` | browser packages ESM-only; CLIs ship a Node build with a `bin` shim |
 | Inspector app bundling | Vite | static output; no server-side rendering |
-| Unit tests | `vitest` (node, jsdom, browser mode) | colocated `*.test.ts`; coverage thresholds: compiler ≥ 90 %, gfx/audio ≥ 80 %, others ≥ 85 % |
+| Unit tests | `vitest` (node, jsdom, browser mode) | colocated `*.test.ts`; coverage thresholds: compiler ≥ 90 %, gfx/audio ≥ 80 %, others ≥ 85 %. `*.browser.test.ts` is browser-only (§3.3); **`*.lanes.test.ts` runs in both lanes** from one definition, so a Node/browser equality claim is measured rather than assumed |
 | Visual/audio tests | Playwright + image diff, `OfflineAudioContext` | TST-§6/§7 gates |
 | Lint/format | ESLint (flat config, `typescript-eslint`) + Prettier | import boundaries (REPO-R002), no-`any` (REPO-R009), unused exports |
 | API surface | API Extractor (`etc/*.api.md` committed) | any change to a published type is a review event |
@@ -322,7 +324,7 @@ paths, host names, or machine identifiers (REPO-R015).
 | --- | --- | --- |
 | `lint` | eslint + prettier + `tsc -b --force` | yes |
 | `unit` | `vitest run` (node + jsdom) | yes |
-| `browser` | vitest browser mode + Playwright suites (gfx, audio, runtime, inspector smoke) | yes |
+| `browser` | vitest browser mode + Playwright suites (gfx, audio, runtime, inspector smoke), **plus the cross-lane `*.lanes.test.ts` suites** | yes. **Exists as of 2026-10-13** in its P0-owned minimal form: CI job `browser` runs `IMPL-010` §8's shared vector table in headless Chromium (`vitest.browser.config.ts`, engine resolved by `tools/browser-lane.mjs`). The three-engine matrix with documented skips (`TST-§8`) remains P11's extension of this stage, not a replacement for it |
 | `fixtures` | synthetic writer round-trips; Appendix A byte-exact check | yes |
 | `conformance` | full external corpus, C0/C1/C2 gates (TST-§9) | yes on `main`, per-title on PRs |
 | `budgets` | bundle/texture/audio/manifest budgets, clean vs flash comparison | yes |
@@ -572,3 +574,4 @@ blocking pattern (TECH-D08).
 | 1.0 | 2026-10-04 | Initial technical and file specification: the five components (`decompiler`, `transpiler`, `code-inspector`, `engine-flash`, `engine-clean`), repository and file layout (apps/packages/tools, generated artifact trees, `forge.project.json`), toolset (Node 20+, pnpm, tsup/Vite, vitest/Playwright, ESLint/Prettier, API Extractor, CI stages), cross-component rules (`TECH-R001`–`R030`), abilities matrix, interfaces (CLIs, engine contracts, inspector surfaces), governance and the ripple checklist, build order with the reserved P12/P13 phases, and the `TECH-D01`–`D12` register |
 | 1.2 | 2026-10-04 | Bootstrap tooling extended with the code-side integrity ledger (`tools/audit_dev.py`, `pnpm audit:dev`, baseline `audits/dev/baseline.json`, results `audits/dev/03-mechanical-checks.md`): registry/severity agreement, emission coverage, rule and test citation coverage, comment-stripped import restrictions, output determinism, version-gated diagnostics, the model-dump contract and behavioural pins, with a no-new-findings gate for commits under `packages/`/`apps/` |
 | 1.1 | 2026-10-04 | Document layout reorganised (`docs/specs/<domain>/`, `docs/impl/<component>/`, registers in `docs/impl/registers/`); the tree in §3.1 and the tool note in §8.2 record the bootstrap Python gates `tools/verify_docs.py` and `tools/gen_status.py` that implement the §8.2 checks until `tools/spec-verify`/`tools/impl-status` exist |
+| 1.3 | 2026-10-13 | Roadmap §4.4 item 9 (D-P0-DEP-06): the §4.3 `browser` stage now exists, in its P0-owned minimal form — CI job `browser` runs `IMPL-010` §8's shared vector table in headless Chromium, with P11's three-engine matrix recorded as an extension of the stage rather than a precondition of it. `TECH-R008`'s `test:browser` is corrected to the implemented command (`vitest run --config vitest.browser.config.ts`; the documented `--browser && playwright test` form implies a separate Playwright suite that does not exist — the lane runs inside vitest via `@vitest/browser`) and gains `browser:probe`/`browser:install`. §4.2 names the `*.lanes.test.ts` cross-lane convention beside the browser-only `*.browser.test.ts` |

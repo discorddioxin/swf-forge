@@ -220,6 +220,7 @@ export const Codes = {
   // ---- compile pipeline (120) -----------------------------------------------------------------
   STAGE_UNIMPLEMENTED: 'SF0500',
   CACHE_DRIFT: 'SF0503',
+  SOURCEMAP_WITHHELD: 'SF0504',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -707,6 +708,11 @@ const REGISTRY: Record<string, CodeInfo> = {
     code: 'SF0503',
     severity: 'warning',
     meaning: 'a cached stage output did not match a recomputation (--verify-cache); the entry was evicted',
+  },
+  SF0504: {
+    code: 'SF0504',
+    severity: 'warning',
+    meaning: 'an emitted-output artifact a switch asked for was not written; the run report names which and why',
   },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };

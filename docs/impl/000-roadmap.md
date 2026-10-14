@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.31 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.32 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -87,7 +87,7 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   records the five decisions those passes had to make, including the reading of doc 050's `R062` and
   `AVM1-R036` step 1 the phase had to adopt because P5's pass discards the export map — a measured gap (0 of 20 exported
   names appear among 149 recovered ones, `E-044`), not a stylistic preference; the P5-side fix is `WP-050-10`
-  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 8 work packages. `decode` waits on P6's own asset chain
+  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 7 work packages. `decode` waits on P6's own asset chain
   (`WP-070-06`…`-09`, `WP-080-10`'s KTX2 half, `WP-080-11`, `WP-090-12`, `WP-110-12`), `emit` waits on P5's
   `WP-050-18` serializer for the losslessness claim it has to prove, and `WP-120-07` transitively on P0's
   unbuilt `WP-010-11` (§4.6 item F). P6's exit gate — a project that compiles with zero suppressions — is
@@ -101,7 +101,24 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   may be *omitted*, so every input either cannot read becomes a blocker rather than a gap in a table.
   `dead-code` proves reachability by closure over placements, removals, button records and sound ids, shape and
   morph fill/line bitmaps (clip fills included) and text font ids, with exports as roots; `shake` selects the
-  emitted runtime modules as the union of host-API requirement groups over the kept blocks. 33 tests, all over
+  emitted runtime modules as the union of host-API requirement groups over the kept blocks. **`WP-120-08`**
+  (the emitter) is the seventh package delivered and the first that produces output: `emit/source.ts` prints,
+  `emit/surface.ts` publishes the closed set of runtime identifiers emitted code may name, `emit/lower.ts`
+  lowers `ActionIR` to statements, `emit/files.ts` assembles the modules in `REPO-R016`'s order, and
+  `emit/scaffold.ts` generates the emitted project's own `tsconfig.json`/`eslint.config.mjs`/`package.json`, so
+  the bans doc 120 puts on emitted code are enforceable *in the output* instead of promised about it. Both of its findings are
+  refusals rather than workarounds. Emitted code is SSA-only, because `pushValueOperand` (`stack.ts:924`) inlines
+  every pushed constant and a `pop` of a value nobody binds is simply nothing: a block carrying a `stack` operand
+  cannot be printed at all (1 block of 93 corpus T0 root blocks, 5 of 7 T1, 19 of 19 T2) and goes to
+  `WP-120-09`'s residual blob; and 17 of those 93 T0 blocks read a temp no op records a `result` for, so the
+  emitter reconciles implicit pushes against unbound ids and refuses when the counts do not match, with
+  `Enumerate` refused outright because its iteration cursor is interpreter state. Statement-level source maps are
+  the second: `ActionIR` has byte ranges per block and none per op, so `emit` writes no `.map` and reports the
+  new `SF0504` warning rather than a file that would attribute a line to an offset it did not come from (`E-047`).
+  Net coverage on the corpus is 99 of 163 blocks (root and nested) lowerable, the largest single deferral being
+  the 37 nested bodies whose constant pool is replaced at run time. 24 tests read the output as text, including
+  that every frame-script call names a function the module declares and that no emitted file mentions an
+  identifier off the surface. 33 tests, all over
   *decoded* fixtures, and the fixtures are what found the three things worth reading before `WP-120-08`: a
   `DoInitAction` block's owner is its schedule entry's sprite and not the tag's `inSprite`, which is null at
   movie level; `HostApiGroup` names a 14th group, `timeline`, that AVM1 §8.1's 13-row table cannot — reached by
@@ -116,8 +133,8 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
 - **P12–P13 — Not started:** the design specs exist, but inspector and clean-engine phase acceptance has not begun.
 
 **Shared verification snapshot (2026-10-14):** `corepack pnpm build`, `typecheck` (now including
-`packages/compile/tsconfig.test.json`), `test` (**73 files / 898 tests**), `audit:dev`
-(**190 codes**, **597 rules**, **456 test ids — 239 cited / 215 unwired / 2 source-only**, `new=0`), `corpus:verify`
+`packages/compile/tsconfig.test.json`), `test` (**74 files / 922 tests**), `audit:dev`
+(**191 codes**, **597 rules**, **456 test ids — 239 cited / 215 unwired / 2 source-only**, `new=0`), `corpus:verify`
 (73/73 against the pinned manifest), `test:avm1-restart` (both reports identical), `test:browser` (**31 cases in headless Chromium 153.0.8010.0**, the same 26 vectors and the same pinned fingerprint as the Node lane), and `lint` pass. Carried forward from the 2026-10-11 snapshot: `python3 tools/verify_docs.py` (`ISSUES: 0`) and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations). These shared checks do not supersede the phase-specific open criteria above.
 
 Each phase's document-level detail lives in the per-area implementation specs; this document owns
@@ -799,3 +816,4 @@ art):
 | 1.29 | 2026-10-14 | P6's second work package: `WP-120-02` (stage cache + structural codec) delivered, `T-CMP-005` wired — P6's first cited obligation — and the shared snapshot refreshed. The cache was proven by cold-versus-warm byte equivalence over the 73-title corpus and negative-controlled by deliberately losing data; the control is what showed `--verify-cache` cannot see a consistently lossy format, and `IMPL-120` v1.5 §2.2 records both mechanisms and that division. `RELEVANT_CONFIG_KEYS.analyze` was over-declared in v1.28 and is corrected to what the stage reads (nothing); `.gitignore` gains `CMP` §12's `.forge/` |
 | 1.30 | 2026-10-14 | P6's third and fourth work packages: `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as the first passes on the runner's pass spine, `T-CMP-001` wired and `T-CMP-010`/`T-CMP-011` added for doc 120's two new rules `R033`/`R034`, each negative-controlled by injecting the defect it forbids. `IMPL-120` → 1.6: §3.1 records the five decisions those passes had to make, and its `WP-120-02` row is aligned to the roadmap's 5 days — the drift `verify_docs.py`'s §7↔§10 cross-check caught when this document moved. The index follows to ≈ 668.5 d and §7's P6 row to 68 d |
 | 1.31 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as the next two objects on the pass spine, wiring `T-CMP-012`/`T-CMP-013`; `packages/compile` is at 117 tests across six files and the suite at 73/898. `IMPL-120` → 1.7: `R005` gains the three clauses the fixtures forced, `R006` gains the fold rule, and one new rule (`IMPL-120`'s `R035`: a pass takes its inputs from stage artifacts, never the live diagnostic sink — a cache hit re-emits nothing, so a sink-reading pass would prune on a warm build what it refused on a cold one). Two errata filed, both owned by P2 and neither patched from P6: `E-045` (the IR's `timeline` group has no §8.1 row; 17 of 119 corpus blocks in 11 of 73 movies) and `E-046` (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and an over-read that leaves `quarantined` unset while `SF0013` reports a *warning* at an offset inside the *next* tag — so no consumer can tell a partial payload from a complete one and no offset rule can attribute it). `errata.md` → 2.14, §2's P6 bullet now carries 6 of 14 work packages, and the shared snapshot is re-measured. |
+| 1.32 | 2026-10-14 | `WP-120-08` (the emitter) delivered as `packages/compile/src/emit/` — printer, runtime-surface contract, lowering, module assembly, generated scaffolding — and `emit` is registered on the spine, so a build returns files instead of reporting `SF0500`. Doc 120 → 1.8: `SF0504` joins §2.1 for the withheld source maps, §4's output tree gains the three generated project files the emitter must ship, §4.1 states the surface contract, and the §9 row records what the phase owns versus what `WP-120-09` and `WP-120-14` still owe. `E-047` filed (open, owned by P5's stack model and doc 020's map decision): the IR binds some pushed values without recording a `result`, and has no per-op offsets. `E-048` filed (open, owned by docs 020/120 jointly and `WP-120-10`): `CMP-R018`'s worked example contradicts the output tree, the frame-script signature and the contract module, and its import line does not resolve against the package it names — doc 120's new §4.1 records which way the emitter went and why. `errata.md` → 2.16. Shared snapshot re-measured: 922 tests in 74 files, 191 codes, `new=0`, `ISSUES: 0`, corpus 73/73. |

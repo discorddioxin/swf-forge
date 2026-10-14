@@ -1567,4 +1567,70 @@ side on purpose so the suite fails when the reader starts marking partial payloa
 | 2.11 | 2026-10-13 | `E-040` fixed (`IMPL-050-R073`, `frontend/control-flow.ts` + `frontend/stack.ts`, `T-AVM1-FE-041`): a region op now falls into its body, a body falls into the region's `finally` and then into the record after the region, so the continuation is a real join over the bodies' exits; and a predecessor that never settled no longer blocks a join forever, which had been dropping every block downstream of unreachable code from the IR. Corpus: T0 124 → 119, T1 120 → 130, T2 25 → **23**, errors 15 → **14**, functions 150 → **153**, clean exits 59 → **60 of 73**, with `string_coercion`'s disassembly growing 119 → 654 lines of recovered IR. `E-041` stays open |
 | 2.12 | 2026-10-14 | P6 started (`WP-120-01`, `@swf-forge/compile`) and the first two documents it had to read disagreed with each other or with the code: `E-042` (CMP §13's acceptance table and doc 120 §8 give six `T-CMP-*` ids different meanings — the impl doc owns the band, CMP §13 stops minting ids, and two of its criteria are recorded as gaps, one with no owner anywhere) and `E-043` (the implemented diagnostic model has three severities and no `requirement` field, while CMP §9 specifies four and one, so `--fail-on=risk`, `risk.json` and `CMP-D05` are unimplementable; P6 now rejects `failOn: 'risk'` loudly, and the model extension is dispositioned to P0) |
 | 2.13 | 2026-10-14 | `E-044` recorded while implementing `WP-120-05` (doc 120's name-assignment pass): P5's `recoverNames` discards the export map its own rule requires (`void exportMap;` under a comment claiming the opposite), 96 of 149 corpus function names embed a byte offset, and `detectClasses` has no production caller so class recovery reports zero everywhere by construction. Measured across all 73 licensed titles and pinned from both sides; dispositioned to `WP-050-10`/`WP-050-11` rather than patched from P6, which builds its own closed table under the new `IMPL-120-R033` |
+## E-047 — `ActionIR` records no def site for some values it binds, and no offsets for the ops inside a block, so a statement-level emitter cannot be total (open)
+
+**Found in:** implementing `WP-120-08`. The emitter's contract is that every statement it prints is attributable
+to something the IR actually says, and two places the IR stops short of that.
+
+1. **A pushed value with no `result`.** Handlers record the temp they bind under a field named `result` —
+   `binop`, `call` (`stack.ts:901`), and the rest — but `GetTime` (`stack.ts:1166-1169`), `PushDuplicate` and
+   `Enumerate` push an id without recording it anywhere. Measured across the 73 licensed titles: **17 of 93
+   T0 root blocks read a temp that no op in the movie binds** (28 distinct ids). An emitter that prints
+   `t = <expr>` per op therefore has a use with no declaration for those blocks, and the emitted project's own
+   `strict` build — the one the emitter writes — would reject it. The `enumerate` case is the one a reader can
+   see coming: the enumeration cursor is *iteration state*, and `Enumerate`'s `1→k+1` stack effect means the
+   number of temps pushed is a property of the runtime value, not of the bytes (37 occurrences across root and
+   nested IRs in the corpus).
+2. **No per-op offsets.** `BasicBlock` carries `firstOffset`/`endOffset`; the ops inside it carry nothing. So
+   `CMP-R014`'s statement-level source maps cannot be built: the finest mapping available is
+   *statement → the whole block's byte range*, which is a map that attributes a line to an offset it did not
+   come from. That is worse than no map, because a debugger using it lies with confidence.
+
+**P6's resolution (in code, this phase).** A block is lowered only when its temp uses and def sites reconcile:
+`lower.ts`'s `bindImplicitDefs`/`unboundDiagnosis` walk the ops in order, hand each op with a declared push but
+no recorded `result` the next unbound id, and **refuse the block when the counts do not match** — more unbound
+ids than implicit pushes, or an id read before the push that would have bound it. A refused block is reported
+per block with its reason and deferred to `WP-120-09`'s residual-blob path, so no movie silently loses a
+statement. `Enumerate`/`Enumerate2` are refused outright rather than lowered into an invented `avm1.nextKey()`
+loop, because the cursor belongs to the interpreter. For the maps, the stage emits **no** `.map` file and
+reports `SF0504` (warning) naming what is missing and why, rather than writing a file whose granularity is a
+lie. `lower.ts`'s header states the rule so a reader of the emitter finds it there too.
+
+**Asked of P5 (owner: `WP-050-*`, the stack model).** Record a `result` for every value a handler pushes, so
+"which temp does this op bind" is a question `ActionIR` answers without reconstruction; the three handlers above
+are the whole gap. Adding per-op offsets is *not* asked for here — `CMP-R014` needs a decision about map
+granularity first, and it is doc 020's to make, not P6's to assume.
+
 | 2.14 | 2026-10-14 | `E-045` and `E-046`, both from `WP-120-03`/`WP-120-04`: `E-045` (open) — `HostApiGroup` carries a 14th value `timeline` that AVM1-§8.1's 13-row table cannot name, reaching 17 of 119 corpus blocks in 11 of 73 movies, so `requirements` cannot be read as a module list; P6 folds it and reports it, and §8.1 owns the durable fix. `E-046` (open) — three reference sites the model cannot answer (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and a reader that over-ran its tag: `SF0013` is a warning at an offset inside the *next* tag, `quarantined` unset, so a partial payload is indistinguishable from a complete one and no offset rule can attribute it); P6 fails closed on all three and moves the derived signal onto the stage artifact under the new `IMPL-120-R035` |
+## E-048 — `CMP-R018`'s worked example contradicts doc 120 §4's tree, `IMPL-120-R017`'s signature, and doc 130's contract module (open)
+
+**Found in:** implementing `WP-120-08`, which has to write the very file the example shows. Four lines of
+`// src/movies/Main.actions.ts (generated)`, and each disagrees with a normative rule:
+
+| The example says | The rule says | What P6 emitted |
+| --- | --- | --- |
+| path `src/movies/Main.actions.ts` | doc 120 §4's tree: `src/frames/movie.ts`, one module per timeline | the tree's path |
+| `frame12Actions(self, root, _global)` | `IMPL-120-R017`: `frame<N>(vm, target, frame)`-shaped functions | `(vm: Vm, target: Clip, frame: FrameCtx)` |
+| `import type { Clip } from '@swf-forge/avm1'` | doc 130 owns the runtime contract module; `@swf-forge/avm1` is the front end | `@swf-forge/runtime/contract` |
+| `$.getTimer()` | `AVM1-R035` names a script's four inputs and no timer accessor; `GetTime` is the op that needs one | `avm1.getTime()`, recorded as a proposal in `emit/surface.ts` |
+
+**Why the example cannot simply be followed.** Two of the four disagreements are not stylistic. `AVM1-R035`'s
+three extra parameters are redundant state: the runtime owns the scope chain, the root and `_global` per
+activation, so passing them alongside `vm` lets a caller hand a script a root from another movie — a
+miscompilation the generated project should be unable to express. And the import line does not resolve: `Clip`
+is not in `@swf-forge/avm1`'s public surface (`grep -rn "export type Clip\b|export interface Clip\b"
+packages/avm1/src` returns nothing), so copying the example emits a project that fails its own `tsc`.
+
+**Resolution for P6 (in code, this phase).** The normative rules win, and the reasoning is written where a
+reader of the emitter will find it — doc 120's new §4.1 — including the mapping from `AVM1-R035`'s four inputs
+onto the delivered parameter set (`frame.scope`, `frame.root`, `frame.global`, `target` as self). `$.getTimer`
+is the one place the emitter needed a name the specs do not carry, so it became a labelled proposal in the
+surface contract rather than an invented runtime method.
+
+**Asked of the spec owners.** `CMP` §5's example restated against the tree and signature doc 120 owns (or the
+two rules changed to match the example) — a joint decision for doc 020 and doc 120, not P6's. The runtime half
+(`Clip`'s home, the timer accessor, whether `$` reaches globals) belongs to `WP-120-10`'s contract review,
+which is where the surface list gets either ratified or corrected.
+
+| 2.15 | 2026-10-14 | `E-047`, from `WP-120-08`: the IR binds some pushed values without recording a `result` (`GetTime`, `PushDuplicate`, `Enumerate`), leaving 17 of 93 corpus T0 root blocks reading a temp nothing defines, and it carries no per-op offsets, so statement-level source maps are unavailable. P6 reconciles the def sites and refuses a block it cannot account for (`WP-120-09` takes the blob), refuses `Enumerate` rather than invent an iteration cursor, and reports `SF0504` for the withheld maps instead of writing a block-granular one |
+| 2.16 | 2026-10-14 | `E-048`, from `WP-120-08`: `CMP-R018`'s worked example contradicts doc 120 §4's output tree, `IMPL-120-R017`'s frame-script signature, and doc 130's contract module — and it imports `Clip` from `@swf-forge/avm1`, which publishes no such type, so copying the example emits a project that fails its own build. P6 follows the normative rules, records the resolution in doc 120's new §4.1, and leaves the example to the spec owners; the timer accessor the example assumes became a labelled proposal in `emit/surface.ts` |

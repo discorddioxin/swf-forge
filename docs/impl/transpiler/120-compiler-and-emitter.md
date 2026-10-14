@@ -62,6 +62,7 @@ stages either — they are pure functions over the model and the IR, run on thei
 | --- | --- | --- |
 | `SF0500` | info | a pipeline stage has no implementation in this build; the run report names every such stage |
 | `SF0503` | warning | `--verify-cache` recomputed a cached stage and the bytes differed; the entry is evicted and the recomputed output is used |
+| `SF0504` | warning | an artifact the run asked for on the emitted side was not written. So far only `--sourcemap`: `CMP-R014` defaults to writing maps, but `ActionIR` records byte ranges per action block and not per statement, so statement-level mappings would attribute lines to offsets they did not come from (`E-047`). The report names the artifact and the reason; a build that treats warnings as failures fails |
 
 A stage with no registered implementation is reported, never skipped silently — the same principle
 `IMPL-120-R013` applies to pruning. The code exists so that a partially built compiler says what it
@@ -260,11 +261,39 @@ open:
     assets/
       index.ts             asset registry (typed)
   assets/                  ktx2/png/webp/ogg/mp4/... (content-hashed filenames)
+  tsconfig.json            strictness the emitted code is compiled under (R014; generated)
+  eslint.config.mjs        the ban list as errors (R015; generated, never template-copied)
+  package.json             runtime dependency pins and the build/lint scripts (generated)
   forge.manifest.json      full manifest (runtime + tooling)
   build-info.json          tool versions, chapter-pin status, gate states, budgets
   porting-notes.json       every diagnostic, decision, and [verify] item
   divergence.json          expected-divergence declarations for the harness
 ```
+
+### 4.1 The surface emitted code may name
+
+Nothing under `src/` may reference a runtime identifier that a spec section has not published, and the
+enforcement is structural rather than a lint: `emit/surface.ts` holds the one list — the types and values
+imported from the runtime contract module, the `avm1.*` helper names, and the members the contract's
+`Clip`/`Scope`/`Vm` types must expose — and every entry cites the rule that requires it (`AVM1-R032`'s
+explicit forms, `R033`'s registers, `R034`'s target scope, `IMPL-050`'s coercion rules) or marks itself a
+proposal for `WP-120-10`'s contract review. A helper the emitter needs and no rule names is therefore visible
+as a proposal in one file, instead of inlined as AVM1 semantics across a hundred generated ones.
+
+`emit/files.ts` derives each module's import list from that module's own rendered body. A template import list
+is wrong for every module except the one it was written for, and an unused import is a build error under the
+`noUnusedLocals` the emitted project ships with, so deriving the list is the only spelling that compiles. Two
+tests hold the line: emitted output names nothing off the list, and every import in an emitted module is
+referenced by that module.
+
+The frame-script signature is the one place the specs disagree with each other, and the emitter resolves it in
+favour of `IMPL-120-R017`: `(vm: Vm, target: Clip, frame: FrameCtx)`, with `AVM1-R035`'s four inputs reached
+through that single parameter set — `frame.scope`, `frame.root`, `frame.global`, and `target` as the script's
+own object. A signature taking the scope, the root and `_global` beside `vm` duplicates state the runtime
+already owns and lets a caller hand a script a root from another movie, which is the class of bug a generated
+project should be unable to express. `CMP-R018`'s worked example carries the other signature, a different
+path, and `Clip` imported from `@swf-forge/avm1`; that conflict is `E-048` rather than a silent divergence, and
+the file the example shows is not the file this document's tree names.
 
 - **IMPL-120-R014** Emitted TypeScript MUST compile under the project's `tsconfig` with `strict`,
   `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and **no `any`** (ESLint-enforced,
@@ -387,7 +416,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-05 | Name assignment pass | WP-120-01, WP-050-10 | 2 | `passes/names.ts`, §3.1 — **Done**, T-CMP-001/010 wired; the P5-side obligations stay open under `E-044` |
 | WP-120-06 | Frame-script grouping/hoisting | WP-120-01, WP-030-09 | 3 | `passes/frames.ts`, §3.1 — **Done**, T-CMP-011 wired |
 | WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-12 | 4 | `passes/assets.ts` |
-| WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/*.ts` |
+| WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/source.ts`, `emit/surface.ts`, `emit/lower.ts`, `emit/files.ts`, `emit/scaffold.ts`, `emit/index.ts` — **Done**; statement-level source maps are withheld and reported (`SF0504`, `E-047`), blocks this phase cannot lower go to `WP-120-09`'s residual path, and the double-build CI proof stays `WP-120-14` |
 | WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` |
 | WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | T-CMP-007 |
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | report writers |
@@ -422,3 +451,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.5 | 2026-10-14 | `WP-120-02` delivered (`packages/compile/src/cache.ts`, `codec.ts`; `pipeline.ts`'s cache path), wiring `T-CMP-005` in `packages/compile/test/cache.test.ts`. New §2.2 records the entry format and the rules a reader needs to apply them (effects outside the key, stage options inside the input hash, corrupt-entry-is-a-miss, structural serialisation) and states that `--verify-cache` cannot prove the codec lossless while cold-vs-warm output equivalence can. `SF0503` (warning: a cached output did not match its recomputation) joins §2.1; `analyze` becomes the first cacheable real stage |
 | 1.6 | 2026-10-14 | `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as pass objects on the runner spine, with §3.1 recording the five decisions the pass table left open. Two new rules: `IMPL-120-R033` (a synthetic name never embeds a source position) and `IMPL-120-R034` (a hoist candidate is position-independent but content-complete, and a T2 block is never hoisted), with obligations `T-CMP-010`/`T-CMP-011`. `T-CMP-001`'s dictionary permutation is what makes the first one measurable, and it is a test P5's `T-AVM1-FE-012` cannot be: shuffling a candidate array with an empty export map never moves a byte offset. The `WP-120-02` row here is corrected to 5 days with its deliverables, matching the roadmap. |
 | 1.7 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as pass objects on the spine, with `packages/compile/src/passes/{dead-code,shake}.ts` and 33 tests over real decoded fixtures. `R005` grows three clauses the fixtures forced — model blind spots count as unparsed referencers (`E-046`), an unresolvable reference is never an absence of references, and a `DoInitAction` block's owner is its schedule entry's sprite, not the tag's `inSprite` — and `R006` gains the fold rule for `timeline`, the group 040's §8.1 table cannot name (`E-045`). One new rule: `IMPL-120-R035` (a pass reads stage artifacts, never the live diagnostic sink — a warm build would otherwise prune what a cold one refused), which is the shape `ModelArtifact.readInterruptions` exists to give. `T-CMP-012`/`T-CMP-013` are wired to the two test files. |
+| 1.8 | 2026-10-14 | `WP-120-08` (the emitter) lands in four files under `src/emit/`. `source.ts` is the deterministic printer: number, string and table spelling (`REPO-R015`) and `CMP-R017`-shaped placement data. `surface.ts` is the closed contract of runtime identifiers emitted code may reference (§4.1), each entry citing the spec rule or marking itself a proposal, and a test fails if emitted output names anything off it. `lower.ts` lowers `ActionIR` to statements and refuses what it cannot lower. `files.ts` assembles the module set plus the generated `tsconfig.json`/`eslint.config.mjs`/`package.json` (`R014` bans, `R015` generated-not-copied). `emitStage` registers `emit` on the spine and returns files only: writing stays `WP-120-13`. A block that cannot be lowered is refused with a reason and deferred to `WP-120-09` residual-blob path rather than half-emitted, and `enumerate` plus `stack` operands are the two big deferrals. `SF0504` joins 2.1 for the withheld source maps |

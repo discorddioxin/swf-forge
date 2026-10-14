@@ -43,6 +43,7 @@ import type { FramePlan } from './passes/frames.js';
 import type { NameTable } from './passes/names.js';
 import type { DeadCodePlan } from './passes/dead-code.js';
 import type { ShakePlan } from './passes/shake.js';
+import type { EmitArtifact } from './emit/index.js';
 import { PipelineCancelled, createCancellationToken, type CancellationToken } from './cancel.js';
 import { stableForm } from './codec.js';
 import { configHash, type ForgeConfig, type RunSwitches, DEFAULT_RUN_SWITCHES } from './config.js';
@@ -148,6 +149,12 @@ export interface PipelineState {
   readonly deadCode?: DeadCodePlan;
   /** The runtime-module selection (`WP-120-04`); reads `deadCode` when that pass ran. */
   readonly shake?: ShakePlan;
+  /**
+   * The emitter's accounting (`WP-120-08`). The files travel on `StageOutcome.files`, so this artifact carries
+   * only what the report needs to say afterwards: which blocks were emitted into which module, which were
+   * deferred to `WP-120-09`, and why — so the report never re-derives a verdict from bytes.
+   */
+  readonly emit?: EmitArtifact;
   readonly passes?: readonly PassReport[];
 }
 

@@ -115,3 +115,34 @@ export { modelStage } from './stages/model.js';
 export type { ModelStageOptions } from './stages/model.js';
 export { analyzeStage, nestedIrs } from './stages/analyze.js';
 export type { AnalyzeStageOptions } from './stages/analyze.js';
+
+export { emitStage } from './emit/index.js';
+export type { EmitArtifact, EmitStageOptions } from './emit/index.js';
+export { emitFiles, residualBytesLiteral } from './emit/files.js';
+export type { EmitHeader, EmitInput, EmitPlan, EmittedText, RefusedBlock } from './emit/files.js';
+export { EMITTED_BANS, scaffoldFiles } from './emit/scaffold.js';
+export {
+  assessBlock,
+  binopForm,
+  defineParams,
+  definePrelude,
+  hasArithForm,
+  lowerFunction,
+  unopForm,
+} from './emit/lower.js';
+export type { Lowerability, LoweredFunction, Refusal, RefusalReason } from './emit/lower.js';
+export {
+  emittedFunction,
+  emittedPath,
+  formatBytes,
+  formatNumber,
+  formatString,
+  generatedHeader,
+  objectLiteral,
+  objectLiteralInline,
+  propertyKey,
+  render,
+  sortedTable,
+} from './emit/source.js';
+export type { Chunk } from './emit/source.js';
+export { AVM1_HELPERS, RECEIVER_MEMBERS, SURFACE_MODULES, surfaceImports, surfaceNames } from './emit/surface.js';

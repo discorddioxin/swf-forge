@@ -25,8 +25,8 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 19 | 52 | 7 | 41 | 26 | ✅ |
-| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 15 | 7 | ✅ |
-| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **298** | **260** | |
+| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 15 | 9 | ✅ |
+| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **298** | **262** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -50,7 +50,7 @@ count, because `010` restates the container codes it owns jointly with `020`.
 | 010 | `SF0001`, `SF0002`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0008`, `SF0009`, `SF0010`, `SF0011`, `SF0012`, `SF0013`, `SF0014`, `SF0015`, `SF0016`, `SF0020`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033` | SF0001–SF0033 |
 | 020 | `SF0001`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033`, `SF0101`, `SF0102`, `SF0103`, `SF0104`, `SF0107`, `SF0109` | SF0001–SF0109 |
 | 050 | `SF0400`, `SF0401`, `SF0402`, `SF0403`, `SF0404`, `SF0405`, `SF0406`, `SF0407`, `SF0408`, `SF0409`, `SF0410`, `SF0411`, `SF0412`, `SF0413`, `SF0414`, `SF0415`, `SF0416`, `SF0417`, `SF0418`, `SF0419`, `SF0420`, `SF0421`, `SF0422`, `SF0423`, `SF0424`, `SF1000` | SF0400–SF1000 |
-| 120 | `SF0500`, `SF0501`, `SF0502`, `SF0503`, `SF0504`, `SF0505`, `SF0506` | SF0500–SF0506 |
+| 120 | `SF0500`, `SF0501`, `SF0502`, `SF0503`, `SF0504`, `SF0505`, `SF0506`, `SF0507`, `SF0508` | SF0500–SF0508 |
 
 The authoritative range allocation (which document may define which codes) is `010` §7; `SF1000+`
 is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g. `SF1000` in 040/050/120,

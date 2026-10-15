@@ -223,6 +223,8 @@ export const Codes = {
   SOURCEMAP_WITHHELD: 'SF0504',
   RESIDUAL_DESCRIPTOR_INVALID: 'SF0505',
   RESIDUAL_FORBIDDEN: 'SF0506',
+  MANIFEST_SECTIONS_WITHHELD: 'SF0507',
+  MANIFEST_UNSERIALIZABLE: 'SF0508',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -726,6 +728,17 @@ const REGISTRY: Record<string, CodeInfo> = {
     code: 'SF0506',
     severity: 'error',
     meaning: '--vm.residual=forbid and the movie has a tier-2 function; the build fails and every one is listed',
+  },
+  SF0507: {
+    code: 'SF0507',
+    severity: 'warning',
+    meaning:
+      'the manifest was written without the sections whose inputs this phase does not have; the report names them',
+  },
+  SF0508: {
+    code: 'SF0508',
+    severity: 'error',
+    meaning: 'no manifest was written, because a value it would have carried has no JSON spelling',
   },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };

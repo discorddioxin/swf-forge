@@ -62,6 +62,8 @@ stages either — they are pure functions over the model and the IR, run on thei
 | --- | --- | --- |
 | `SF0500` | info | a pipeline stage has no implementation in this build; the run report names every such stage |
 | `SF0503` | warning | `--verify-cache` recomputed a cached stage and the bytes differed; the entry is evicted and the recomputed output is used |
+| `SF0507` | warning | the manifest was written, but without the `AST` §6 sections whose inputs this phase does not have (`WP-120-07`'s asset planner): the report names the sections, because an omitted key says something different from an empty map |
+| `SF0508` | error | no manifest was written at all, because a value it would have carried has no JSON spelling — a non-finite number, which `JSON.stringify` would have turned into `null` and a reader would have taken for a missing asset rather than a broken build |
 | `SF0505` | warning | a residual entry descriptor did not validate against its own blob (a slice outside it, or a front-end `residual` list that disagrees with the CFG), so no blob was written and the block stays deferred with the reason in its decision row. A rejected descriptor is a front-end bug, and this is where it surfaces rather than at load time (`IMPL-130-R025`) |
 | `SF0506` | error | `--vm.residual=forbid` and the movie has a tier-2 function: no blob is written, so the build fails and every such function is listed with its original byte count and its tier reason (`IMPL-050-R060`, `CMP-R026`) |
 | `SF0504` | warning | an artifact the run asked for on the emitted side was not written. So far only `--sourcemap`: `CMP-R014` defaults to writing maps, but `ActionIR` records byte ranges per action block and not per statement, so statement-level mappings would attribute lines to offsets they did not come from (`E-047`). The report names the artifact and the reason; a build that treats warnings as failures fails |
@@ -279,8 +281,12 @@ enforcement is structural rather than a lint: `emit/surface.ts` holds the one li
 imported from the runtime contract module, the `avm1.*` helper names, and the members the contract's
 `Clip`/`Scope`/`Vm` types must expose — and every entry cites the rule that requires it (`AVM1-R032`'s
 explicit forms, `R033`'s registers, `R034`'s target scope, `IMPL-050`'s coercion rules) or marks itself a
-proposal for `WP-120-10`'s contract review. A helper the emitter needs and no rule names is therefore visible
-as a proposal in one file, instead of inlined as AVM1 semantics across a hundred generated ones.
+proposal awaiting the runtime's review. The reviewers are named rather than implied: `WP-130-12`'s interpreter is
+what calls an `avm1.*` helper and `WP-130-01`'s object model is what makes a `Clip`/`Scope`/`Vm` member exist, so
+a proposal is ratified by P7 adopting it and by nothing P6 can do — the emitter ships the entry as a proposal,
+with the review recorded as open, rather than widening the list silently. A helper the emitter needs and no rule
+names is therefore visible as a proposal in one file, instead of inlined as AVM1 semantics across a hundred
+generated ones.
 
 `emit/files.ts` derives each module's import list from that module's own rendered body. A template import list
 is wrong for every module except the one it was written for, and an unused import is a build error under the
@@ -338,6 +344,44 @@ descriptor's field names are the emitter's proposal: `Entry` is in §4.1's surfa
 contract review that ratifies or renames it. Every boolean in a descriptor is written out, `false` included,
 because a field the runtime defaults is a field the two execution paths can disagree about; the drop-nulls
 convention that keeps the placement rows short does not cross into descriptors for that reason.
+
+### 4.3 The manifest pair
+
+`IMPL-120-R019` asks for the manifest twice — a typed `src/manifest.ts` for the runtime and `forge.manifest.json`
+for tooling — from one in-memory object, with `verify` diffing them. `emit/manifest.ts` therefore serializes
+**once** and splices the same text into both files, which is the only construction in which the rule's "same
+object" cannot rot: a future field added on one side appears on the other in the same commit or the pair's test
+fails. The drift check (`diffManifestTexts`) parses both payloads and compares them structurally, so a formatter
+that re-indents one file is not drift and a value that changed is reported as a path (`$.movie.frameCount: 1 in
+the TS manifest, 240 in the JSON`) — the shape `-12`'s `verify --deep` needs, since that command reports to a
+human who has to know which file to look at.
+
+Three formatting decisions come from who reads the files. The JSON artifact carries **no generated header**: `CMP`
+§5's app-shell example imports it with a `type: 'json'` attribute, so a `//` line is a parse error, and its
+provenance lives in `tool` instead; `tsconfig.json` is the only JSON-family artifact allowed to keep the header,
+because `tsc` reads its own config as JSONC; and `package.json`, which npm parses strictly, now states its
+provenance in a `"//"` field rather than a comment (`emit/scaffold.ts`, found while writing this pair — the
+emitter had been heading its JSON artifacts the way it heads sources, which is valid for exactly one of them).
+Keys are sorted at every depth by the emitter's own serializer rather than by `JSON.stringify`'s
+insertion-order behaviour (`AST-R043`, `REPO-R016`), and the serializer refuses a value it cannot write: a
+non-finite number would reach JSON as `null`, so `SF0508` refuses the artifact instead, while `-0` is written as
+`0` because JSON has no negative zero — the opposite of `REPO-R015`'s rule for emitted *source*, where `-0` is a
+value the movie stored. `stage.frameRate` reaches the manifest divided by 256, since the model keeps the header's
+raw FIXED8 and `AST` §6's example value is frames per second; the division is exact because 256 is a power of two,
+and rounding to two decimals would silently retime the movie.
+
+The manifest states only what this phase can prove: `$schema`, `schemaVersion`, `tool` (with the **emit stage's**
+config hash, because the manifest describes the emitted project), and `movie`. The asset sections — `textures`,
+`atlases`, `gradients`, `fonts`, `sounds`, `videos`, `binary`, `streams`, `budgets` — are **absent**, not empty,
+and `SF0507` names them: an empty `textures` map is a claim that the movie has no textures, which is exactly the
+kind of statement a runtime caches. `movie.scaleMode` and `movie.align` are absent for a different reason — no
+input carries them (`E-050`) — and `movie.metadata` follows `AST` §6's "if any". `checkManifestAssets` implements
+`CMP` §4.7's two verification rows as a pure function over the manifest and a file list, so `WP-120-12`'s command
+reads a directory and calls it rather than re-deriving the rules; a reference is verified where the manifest
+states `bytes` or `sha256` beside it and merely counted where it does not, which is what keeps a font-atlas entry
+from reading as a passed hash check. `T-CMP-007` is wired at that library boundary: the drift, missing-asset and
+tampered-hash cases are proven here, and the `verify --deep` *command*, its exit code and its disk walk stay with
+`WP-120-12`.
 
 - **IMPL-120-R014** Emitted TypeScript MUST compile under the project's `tsconfig` with `strict`,
   `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and **no `any`** (ESLint-enforced,
@@ -441,7 +485,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | `T-CMP-004` | exit codes per failure class (5 fixtures) | F1 | P6 |
 | `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs | F1 | P6 |
 | `T-CMP-006` | cancellation: SIGINT during an asset encode returns within 2 s, no partial files left | F1 | P6 |
-| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash | F1 | P6 |
+| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash — the three cases are proven against `diffManifestTexts` and `checkManifestAssets` as pure functions (`WP-120-10`); the command, its exit code and its disk walk stay with `WP-120-12` | F1 | P6 |
 | `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 | P6 |
 | `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one | F1 | P6 |
 | `T-CMP-010` | name assignment is a pure function of content and order: the serialised table is identical under 100 permutations of the `ExportAssets` dictionary **dealt into slots interleaved between the control tags**, so the claim cannot be satisfied by absolute offsets that happen not to move — the test asserts those offsets take several distinct tuples — plus the sanitisation table, the base-claim and `_2`/`_3` collisions, and `IMPL-120-R033`'s ban on offset-bearing names | F1 | P6 |
@@ -464,7 +508,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-12 | 4 | `passes/assets.ts` |
 | WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/source.ts`, `emit/surface.ts`, `emit/lower.ts`, `emit/files.ts`, `emit/scaffold.ts`, `emit/index.ts` — **Done**; statement-level source maps are withheld and reported (`SF0504`, `E-047`), blocks this phase cannot lower go to `WP-120-09`'s residual path, and the double-build CI proof stays `WP-120-14` |
 | WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` — **Done**, `T-CMP-014`/`T-CMP-015` wired: blobs are copied out of the tag stream and never re-encoded, a descriptor that would lie is refused with `SF0505`, all three `vm.residual` modes are honoured by the stage, and a frame carrying a residual block now runs interpreted instead of being dropped. Clip-event routing, the mixed frame form and the content-hash blob cache stay open, as §4.2 names |
-| WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | T-CMP-007 |
+| WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | `emit/manifest.ts` — **Done**, `T-CMP-007` wired at the library boundary: one serialization spliced into `src/manifest.ts` and `forge.manifest.json`, `diffManifestTexts` and `checkManifestAssets` as pure functions for `WP-120-12`'s `verify --deep`, `AST` §6's asset sections omitted and reported (`SF0507`), and an unspeakable value refusing the pair (`SF0508`). §4.3 records the header, key-order, number and fixed-point rules the pair forced, and `emit/scaffold.ts` now writes `package.json` as strict JSON |
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | report writers |
 | WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007/009 |
 | WP-120-13 | CLI: build/plan/inspect/verify/report + exit codes | WP-120-12 | 4 | `packages/cli`, T-CMP-004 |
@@ -499,3 +543,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.7 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as pass objects on the spine, with `packages/compile/src/passes/{dead-code,shake}.ts` and 33 tests over real decoded fixtures. `R005` grows three clauses the fixtures forced — model blind spots count as unparsed referencers (`E-046`), an unresolvable reference is never an absence of references, and a `DoInitAction` block's owner is its schedule entry's sprite, not the tag's `inSprite` — and `R006` gains the fold rule for `timeline`, the group 040's §8.1 table cannot name (`E-045`). One new rule: `IMPL-120-R035` (a pass reads stage artifacts, never the live diagnostic sink — a warm build would otherwise prune what a cold one refused), which is the shape `ModelArtifact.readInterruptions` exists to give. `T-CMP-012`/`T-CMP-013` are wired to the two test files. |
 | 1.8 | 2026-10-14 | `WP-120-08` (the emitter) lands in four files under `src/emit/`. `source.ts` is the deterministic printer: number, string and table spelling (`REPO-R015`) and `CMP-R017`-shaped placement data. `surface.ts` is the closed contract of runtime identifiers emitted code may reference (§4.1), each entry citing the spec rule or marking itself a proposal, and a test fails if emitted output names anything off it. `lower.ts` lowers `ActionIR` to statements and refuses what it cannot lower. `files.ts` assembles the module set plus the generated `tsconfig.json`/`eslint.config.mjs`/`package.json` (`R014` bans, `R015` generated-not-copied). `emitStage` registers `emit` on the spine and returns files only: writing stays `WP-120-13`. A block that cannot be lowered is refused with a reason and deferred to `WP-120-09` residual-blob path rather than half-emitted, and `enumerate` plus `stack` operands are the two big deferrals. `SF0504` joins 2.1 for the withheld source maps |
 | 1.9 | 2026-10-14 | `WP-120-09` (residual blobs and entry descriptors) lands as `emit/residual.ts` plus routing in `emit/files.ts` and policy in `emit/index.ts`. A block the emitter cannot lower now ships its original bytes as a `Uint8Array` literal and an `entry` descriptor — parameters, registers, preloads, constants, the CFG's slices, the source range — so the interpreter parses nothing (`IMPL-120-R018`); the bytes are copied from the decompressed tag stream, which is what keeps `IMPL-050-R068`'s ban on re-serializing reserved codes unreachable by construction. A frame carrying a residual block moves to `residualEntries` and runs interpreted instead of being dropped, which shrinks the deferred set to blocks with no residual path either; sprite frame scripts are routed by the front end's frame associations, so an exported sprite function is no longer unreachable. Two codes join §2.1 — `SF0505` for a descriptor that failed to validate, `SF0506` for `--vm.residual=forbid` — and §4.2 records the four things this package deliberately leaves open. `T-CMP-014`/`T-CMP-015` are wired to the 10 new tests (34 in `emit.test.ts`). The residual set the emitter uses is wider than the tier-2 set `IMPL-050-R057` names, which is `E-049` |
+| 1.10 | 2026-10-14 | `WP-120-10` (manifest emission) lands as `emit/manifest.ts`: `buildManifest` composes the sections this phase can state, `serializeManifest` is the one writer (sorted keys, checked numbers, no header in the JSON), and `diffManifestTexts` plus `checkManifestAssets` give `WP-120-12`'s `verify --deep` its rules as pure functions. `IMPL-120-R019`'s "same in-memory object" is satisfied by splicing one serialized text into both artifacts, so the pair cannot drift by construction and the diff is about later edits. Two codes join §2.1 (`SF0507` for the sections withheld pending `WP-120-07`, `SF0508` for a value with no JSON spelling), `emit/scaffold.ts` stops writing a comment header into `package.json` (npm parses it strictly; `tsconfig.json` is the only JSON artifact whose reader allows comments), the manifest divides the raw FIXED8 frame rate by 256 because `AST` §6 wants frames per second, and `T-CMP-007` is wired to 11 new tests (44 in `emit.test.ts`). `E-050` filed: `CMP-R013`'s mandated header opens with `/* eslint-disable */`, a suppression the emitted project may not carry, and `AST` §6 asks for `movie.scaleMode`/`movie.align` that no input provides |

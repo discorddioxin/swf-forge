@@ -23,6 +23,7 @@ import type { FramePlan } from '../passes/frames.js';
 import type { ShakePlan } from '../passes/shake.js';
 import { ownerCharacterOf } from '../passes/names.js';
 
+import { buildManifest } from './manifest.js';
 import { scaffoldFiles } from './scaffold.js';
 import { assessBlock, defineParams, definePrelude, lowerFunction, type Refusal } from './lower.js';
 import {
@@ -72,6 +73,10 @@ export interface EmitInput {
    * gives none and the stage reports the failure. Default `on-demand`.
    */
   readonly residualPolicy?: ResidualPolicy;
+  /** `configHash(config, 'emit')`, for the manifest's `tool` section (`IMPL-120-R019`). */
+  readonly toolConfigHash?: string;
+  /** `AST-R043`'s `--manifest=compact`. Default: pretty, 2-space indent, because a diffable manifest is the point. */
+  readonly manifestCompact?: boolean;
 }
 
 export interface EmittedText {
@@ -108,6 +113,12 @@ export interface EmitPlan {
   readonly residual: readonly ResidualBlob[];
   /** Blocks whose descriptor would have lied (`SF0505`): no blob was written, so the block stays deferred. */
   readonly invalidResidual: readonly { readonly subjectId: string; readonly error: string }[];
+  /**
+   * The manifest pair (`IMPL-120-R019`), or `null` when it was not written; `manifestError` then says why. The
+   * two artifacts are not described twice — they are in `files`, and this is the metadata the report needs.
+   */
+  readonly manifest: { readonly withheld: readonly string[]; readonly json: string } | null;
+  readonly manifestError: string | null;
   /** Per-block decisions in `IMPL-120-R013`'s shape, assembled from `emitted`/`refused`. */
   readonly decisions: readonly { readonly subject: string; readonly action: string; readonly reason: string }[];
   readonly counts: {
@@ -685,6 +696,24 @@ export function emitFiles(input: EmitInput): EmitPlan {
     }
   }
 
+  // ---- the manifest pair (`IMPL-120-R019`) ---------------------------------------------------------------
+  //
+  // `src/manifest.ts` goes through the module pipeline so it carries the generated header like every source file;
+  // `forge.manifest.json` is appended as a root artifact with no header at all, because the app shell imports it
+  // as strict JSON (`CMP` §5's example) and a comment would break that reader. Both splice the *same* serialized
+  // text, so the drift `verify` looks for can only come from something editing one of the files afterwards.
+  const manifest = buildManifest({
+    header: input.header,
+    model: input.model,
+    ...(input.toolConfigHash === undefined ? {} : { toolConfigHash: input.toolConfigHash }),
+    compact: input.manifestCompact === true,
+  });
+  const rootFiles: EmittedText[] = [];
+  if (manifest.ok) {
+    add('src/manifest.ts', [manifest.ts.trimEnd()]);
+    rootFiles.push({ path: 'forge.manifest.json', text: `${manifest.json}\n` });
+  }
+
   const all: EmittedText[] = [
     ...[...files.entries()]
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
@@ -692,6 +721,7 @@ export function emitFiles(input: EmitInput): EmitPlan {
         path,
         text: moduleText(input.header, path, chunks, [...(imports.get(path) ?? [])].sort()),
       })),
+    ...rootFiles,
     ...scaffoldFiles(input.header),
   ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
@@ -737,6 +767,8 @@ export function emitFiles(input: EmitInput): EmitPlan {
     refused,
     residual: built.blobs,
     invalidResidual: built.invalid,
+    manifest: manifest.ok ? { withheld: manifest.withheld, json: manifest.json } : null,
+    manifestError: manifest.ok ? null : manifest.error,
     decisions,
     counts: {
       blocks: input.blocks.length,

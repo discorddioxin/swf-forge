@@ -1664,6 +1664,38 @@ refused": the field is already derived from the CFG, so dropping the tier condit
 second derivation from the emitter. `IMPL-120-R018` should then say which of the two sets `--vm.residual=forbid`
 gates, since `CMP-R026`'s "a T2 function MUST be accompanied by…" is written against the tier set while the flag
 is what makes a build fail. A joint decision for doc 050 and doc 120, not P6's.
+## E-050 — two mandated artifacts cannot be written as their specs print them: `CMP-R013`'s header opens with a suppression, and `AST` §6 asks the manifest for stage settings no input carries (open)
+
+**Found in:** implementing `WP-120-10`, the package that writes a generated header on every artifact and a
+manifest whose `movie` section `AST` §6 specifies two fields deeper than anything the pipeline can source.
+
+| The spec asks for | What the inputs and the neighbouring rules say | What P6 emitted |
+| --- | --- | --- |
+| `CMP-R013`'s generated header, whose first line is `/* eslint-disable */` | `IMPL-120-R014` and `REPO-R011` allow **no suppressions** in emitted code, and `IMPL-120-R015` exists so the emitted project's own build sees the ban list. A header that mutes ESLint in every generated file makes `WP-120-12`'s forbidden-construct lint a no-op on exactly the files it was written for | the header without the disable line — provenance plus the regenerate command. A test asserts no emitted file contains `eslint-disable` at all, header included |
+| `AST` §6's `movie.scaleMode` and `movie.align` (`CMP` §5's example puts the same pair under `stage`, a second disagreement about where they live) | the SWF file carries neither. Stage scale and alignment are player settings: `RT-R040`'s `fscommand` table maps `allowscale` onto a `Stage.scaleMode` adjustment. `ForgeConfig` names no key for them either | the two fields are absent from the manifest, and `AST-R044`'s "loadable independently" is what makes that safe. Defaulting them to `showAll`/`center` would put a player setting in the movie's data, where it shadows the `fscommand` that exists to change it |
+
+**Why P6 cannot patch either one.** The header line belongs to `CMP` §5's example and its own rule; deleting it
+from the spec is the spec owners' call, and adding it to the output would break the phase gate that follows. The
+two stage fields belong to `AST` §6 and to whichever component owns player parameters; a P6-side default would be
+a value the runtime has to *un*-choose when a game calls `fscommand("allowscale", "false")` on frame one, which is
+the sequence `080`'s table exists to describe.
+
+**Resolution for P6 (in code, this phase).** Both omissions are visible rather than silent, and writing the pair
+exposed a third case in the same family: the emitter had been prefixing its JSON artifacts with the `//` header it
+uses on sources, which only `tsc`'s JSONC reader tolerates. `emit/scaffold.ts` now puts `package.json`'s
+provenance in a `"//"` field — an npm-ignored key, where a comment is a parse error — and `forge.manifest.json`,
+which the app shell imports as data (`CMP` §5's example), carries no provenance comment at all; `tool` and
+`movie.sha256` are its provenance. A printer test parses every emitted `.json` strictly, so the rule that is true
+for one reader and false for another cannot be asserted globally again.
+
+**Asked of the spec owners.** `CMP-R013`: drop the `/* eslint-disable */` line from the example header, or scope it
+to files the emitted lint does not cover. `AST` §6 and `CMP` §5: pick one home for `scaleMode`/`align` — the
+player parameters `RT-R040` already routes, or a config key `WP-120-13`'s CLI could set — and mark the two fields
+optional in the schema, so a manifest that says nothing about them is valid rather than incomplete. The two
+documents should also agree on the nesting (`movie.*` versus `stage.*`), which is the part a code generator
+cannot guess.
+
 | 2.15 | 2026-10-14 | `E-047`, from `WP-120-08`: the IR binds some pushed values without recording a `result` (`GetTime`, `PushDuplicate`, `Enumerate`), leaving 17 of 93 corpus T0 root blocks reading a temp nothing defines, and it carries no per-op offsets, so statement-level source maps are unavailable. P6 reconciles the def sites and refuses a block it cannot account for (`WP-120-09` takes the blob), refuses `Enumerate` rather than invent an iteration cursor, and reports `SF0504` for the withheld maps instead of writing a block-granular one |
 | 2.16 | 2026-10-14 | `E-048`, from `WP-120-08`: `CMP-R018`'s worked example contradicts doc 120 §4's output tree, `IMPL-120-R017`'s frame-script signature, and doc 130's contract module — and it imports `Clip` from `@swf-forge/avm1`, which publishes no such type, so copying the example emits a project that fails its own build. P6 follows the normative rules, records the resolution in doc 120's new §4.1, and leaves the example to the spec owners; the timer accessor the example assumes became a labelled proposal in `emit/surface.ts` |
 | 2.17 | 2026-10-14 | `E-049`, from `WP-120-09`: the residual set is the tier-2 set in `IMPL-050-R057` and the lowering-refusal set in `IMPL-120-R018`, and on the corpus 68 of 87 refused blocks are T0/T1 with `residual: null` — the emitter recomputes slices from the CFG and treats the front end's list as a cross-check (`SF0505`), while `AVM1-D03`, `IMPL-050-R060` and `AVM1-R071` all read a number the specs never pin down |
+| 2.18 | 2026-10-14 | `E-050`, from `WP-120-10`: `CMP-R013`'s mandated generated header begins with `/* eslint-disable */`, a suppression `IMPL-120-R014`/`REPO-R011` forbid in emitted code and that would mute the very lint `WP-120-12` exists to run; and `AST` §6 asks `forge.manifest.json` for `movie.scaleMode`/`movie.align`, which no SWF field, model record or config key carries (`RT-R040` routes the equivalent through `fscommand`), while `CMP` §5 puts the same pair under `stage` — P6 emits neither, writes `package.json` as strict JSON with a `"//"` provenance field instead of a comment, and asks the spec owners to name one home and one nesting for the two fields |

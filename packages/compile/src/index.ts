@@ -121,6 +121,23 @@ export type { EmitArtifact, EmitStageOptions } from './emit/index.js';
 export { emitFiles } from './emit/files.js';
 export type { EmitHeader, EmitInput, EmitPlan, EmittedText, RefusedBlock, ResidualHooks } from './emit/files.js';
 export { buildResidualBlobs, descriptorLiteral, descriptorProblem, residualImport } from './emit/residual.js';
+export {
+  MANIFEST_SCHEMA_URL,
+  MANIFEST_SCHEMA_VERSION,
+  MANIFEST_WITHHELD_SECTIONS,
+  buildManifest,
+  checkManifestAssets,
+  diffManifestTexts,
+  manifestPayload,
+  serializeManifest,
+} from './emit/manifest.js';
+export type {
+  ManifestArtifact,
+  ManifestAssetFile,
+  ManifestFinding,
+  ManifestOutcome,
+  ManifestValue,
+} from './emit/manifest.js';
 export type { ResidualBlob, ResidualBuildResult, ResidualPolicy, ResidualRequest } from './emit/residual.js';
 export { EMITTED_BANS, scaffoldFiles } from './emit/scaffold.js';
 export {

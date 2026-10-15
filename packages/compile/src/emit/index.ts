@@ -14,6 +14,7 @@
 
 import { Codes } from '@swf-forge/swf';
 
+import { configHash } from '../config.js';
 import { requireArtifact } from '../pipeline.js';
 import type { Stage, StageContext, StageOutcome } from '../pipeline.js';
 import type { EmitInput, EmitPlan } from './files.js';
@@ -79,6 +80,7 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         frames: state.frames ?? null,
         shake: state.shake ?? null,
         residualPolicy: ctx.config.vm.residual,
+        toolConfigHash: configHash(ctx.config, 'emit'),
         header: {
           toolVersion: ctx.toolVersion,
           inputName: ctx.input.name,
@@ -87,6 +89,31 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         },
       };
       const plan = emitFiles(input);
+
+      // `SF0507`/`SF0508`: the manifest's two partial states. A section whose inputs live in the asset planner
+      // is reported as withheld rather than zero-filled (`IMPL-120-R019` forbids the two artifacts disagreeing,
+      // and an empty `textures` map is a claim about the movie this build cannot make); a value with no JSON
+      // spelling is a defect in what the emitter tried to say, and a manifest of `null`s would be worse than none.
+      if (plan.manifest !== null && plan.manifest.withheld.length > 0) {
+        ctx.diagnostics.emit({
+          code: Codes.MANIFEST_SECTIONS_WITHHELD ?? 'SF0507',
+          severity: 'warning',
+          message:
+            `forge.manifest.json omits ${plan.manifest.withheld.join(', ')}: those sections come from the asset ` +
+            'planner (WP-120-07), which this phase has not built, and an empty map would state something about the movie that no input proves',
+          offset: 0,
+          context: 'compile',
+        });
+      }
+      if (plan.manifestError !== null) {
+        ctx.diagnostics.emit({
+          code: Codes.MANIFEST_UNSERIALIZABLE ?? 'SF0508',
+          severity: 'error',
+          message: `no manifest was written: ${plan.manifestError}`,
+          offset: 0,
+          context: 'compile',
+        });
+      }
 
       // `SF0505`: a descriptor that would have lied. The block stays in the deferred set, which is the same
       // outcome the emitter had before the residual path existed, but the reason is a front-end bug rather than

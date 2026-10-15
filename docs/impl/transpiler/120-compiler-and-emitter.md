@@ -64,6 +64,9 @@ stages either — they are pure functions over the model and the IR, run on thei
 | `SF0503` | warning | `--verify-cache` recomputed a cached stage and the bytes differed; the entry is evicted and the recomputed output is used |
 | `SF0507` | warning | the manifest was written, but without the `AST` §6 sections whose inputs this phase does not have (`WP-120-07`'s asset planner): the report names the sections, because an omitted key says something different from an empty map |
 | `SF0508` | error | no manifest was written at all, because a value it would have carried has no JSON spelling — a non-finite number, which `JSON.stringify` would have turned into `null` and a reader would have taken for a missing asset rather than a broken build |
+| `SF0509` | warning | a report input the build was not given — the pin register, the `[verify]` items, the fidelity tier, or the divergence declarations — so the report states the gap instead of a value (`WP-120-11`) |
+| `SF0510` | error | a divergence declaration did not validate against `CMP` §4.9, so the harness was not told to expect the divergence it describes and the entry was dropped |
+| `SF0511` | error | a report document would have carried build-host identity — an absolute path, a host name, or a wall-clock timestamp — so no report file was written; the prohibition is `IMPL-120-R021`'s |
 | `SF0505` | warning | a residual entry descriptor did not validate against its own blob (a slice outside it, or a front-end `residual` list that disagrees with the CFG), so no blob was written and the block stays deferred with the reason in its decision row. A rejected descriptor is a front-end bug, and this is where it surfaces rather than at load time (`IMPL-130-R025`) |
 | `SF0506` | error | `--vm.residual=forbid` and the movie has a tier-2 function: no blob is written, so the build fails and every such function is listed with its original byte count and its tier reason (`IMPL-050-R060`, `CMP-R026`) |
 | `SF0504` | warning | an artifact the run asked for on the emitted side was not written. So far only `--sourcemap`: `CMP-R014` defaults to writing maps, but `ActionIR` records byte ranges per action block and not per statement, so statement-level mappings would attribute lines to offsets they did not come from (`E-047`). The report names the artifact and the reason; a build that treats warnings as failures fails |
@@ -272,6 +275,8 @@ open:
   build-info.json          tool versions, chapter-pin status, gate states, budgets
   porting-notes.json       every diagnostic, decision, and [verify] item
   divergence.json          expected-divergence declarations for the harness
+  reports/
+    porting-notes.md         the human projection of porting-notes.json (CMP §4.9, ARCH-R003's tier claim)
 ```
 
 ### 4.1 The surface emitted code may name
@@ -383,6 +388,54 @@ from reading as a passed hash check. `T-CMP-007` is wired at that library bounda
 tampered-hash cases are proven here, and the `verify --deep` *command*, its exit code and its disk walk stay with
 `WP-120-12`.
 
+### 4.4 The report files
+
+`IMPL-120-R021`'s `build-info.json`, §4's `porting-notes.json` and `divergence.json`, and `CMP` §4.9's
+`reports/porting-notes.md` are one stage — `stages/report.ts` — and one projection of data the run already had. Four
+rules decide its shape, and each is a place where the obvious implementation is wrong.
+
+**Rows come from stage artifacts, not from the live sink.** A cached stage restores its outcome and does not replay
+its diagnostics, so a report reading `ctx.diagnostics` would print a different file for a warm build than for a cold
+one — and `T-CMP-003`'s proof is `diff -r` over the whole output directory, so the report would fail the determinism
+gate for a reason nobody could see in the compiler. Every row is derived from an artifact
+(`ModelArtifact.readInterruptions`, the emit plan's invalid descriptors and manifest refusal), and where a message is
+needed it is the code registry's `meaning`, which reads the same on both paths. `porting-notes.json` carries a
+`diagnosticsScope` line saying as much: the rule leaves out the diagnostics only the sink carried, and `E-051` asks
+the sink to record which stage spoke so the list can become exhaustive. Each row also names its own origin, because
+the model stage's attribution is by offset span while a container-level diagnostic carries an offset in the *input
+file* — so a row can be an attribution rather than a claim the reader made, and the file does not pretend otherwise.
+
+**A gate list is obtained by walking the config, not by naming gates.** `R021` asks for "the state of every gate
+flag", and any enumeration of keys is a list that goes stale the day a config field is added. `gatesOf` flattens every
+scalar leaf of `ForgeConfig` and `RunSwitches` into dotted keys, and the emit stage echoes the two source-map answers
+it owns (`CMP-R014` asks for a file this phase refuses, which `SF0504` says in prose and the gate map says in data).
+A test asserts the flattened set equals an independent walk of the config object, so completeness is what is proven
+rather than assumed.
+
+**Withheld, not zero-filled** — §4.3's rule for the manifest, applied to the four inputs a stage may not go and
+fetch: the pin register, the `[verify]` items `T-TST-003` requires, `ARCH-R003`'s tier claim, and the project's
+divergence declarations. Each absence is one `SF0509` naming what is missing, and the artifact itself carries
+`{ "state": "withheld", "what": …, "reason": … }` so a reader of the file alone learns the same thing. The budgets are
+that story split in two: `IMPL-120-R028`'s residual-bytecode line is known and stated, and the other five lines are
+withheld until `WP-120-07` computes them.
+
+**`R021`'s MUST NOT is a check, not a hope.** `findHostLeaks` scans each composed document for an absolute path, an
+ISO-8601 or epoch timestamp, and — when the caller passes one — the build host's name; a hit suppresses *every*
+report file with `SF0511` rather than shipping the ones that happened to be clean, because the three are read
+together and a partial set is what gets mistaken for "the build had nothing to say". The run itself still completes:
+the defect is in what the build tried to publish, and the porter needs to know which document to fix.
+
+Two further gaps are recorded instead of guessed at, both of them the `E-050` pattern repeating. `R021` names a
+`--video-native` gate that exists in no config, so the flattened list states the gates that are real and the missing
+one is `E-051`'s business; and §4 puts the notes at the root as `.json` while `CMP` §4.9 and `ARCH-R003` put them in
+`reports/` as `.md`, so this phase writes both — the JSON for `INS-R022`'s panel and the harness, and the markdown as
+a projection of the same object, which is `IMPL-120-R025`'s `--json` rule applied to a file and the reason the human
+document cannot contradict the machine one. `divergence.json` carries only what the project declared: it is the
+harness's *expectation*, and a compiler manufacturing entries from its own refusals would be setting its own
+tolerance, which is what the decision register exists to prevent. `CMP` §4.10's completeness row is exposed as
+`divergenceCitations` and `checkDivergenceCompleteness`, pure functions for `WP-120-12`'s `verify`, in the shape
+`checkManifestAssets` set for the manifest.
+
 - **IMPL-120-R014** Emitted TypeScript MUST compile under the project's `tsconfig` with `strict`,
   `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and **no `any`** (ESLint-enforced,
   `IMPL-120-R015`). Warnings are errors in the emitted project's own build.
@@ -493,6 +546,8 @@ because the report is produced by the plan pass (`budgets.json`).
 | `T-CMP-013` | shake: the emitted group set equals the union over every block that survives pruning, an entry point's own union is reported beside it, a T2 block forces the full set, and no group is dropped while any kept block names it | F1 | P6 |
 | `T-CMP-011` | hoisting is sound: blocks differing only in position canonicalise equal, blocks differing only in a rebased jump or branch target do not (`IMPL-120-R034`), a T2 block is never hoisted, and every ungrouped or unhoisted block carries a reason | F1 | P6 |
 | `T-CMP-014` | a residual blob is the block's own bytes: the emitted literal re-derives to the same array as the tag stream's slice, the descriptor carries parameters, registers, preloads, constants and the CFG's slices, a descriptor failing either check (a slice outside the blob, or a front-end `residual` list that disagrees with the CFG) writes no blob and leaves the block deferred, and the module imports only the contract type so a build with no residual row keeps the interpreter droppable (`IMPL-120-R018`, `CMP-R027`) | F1 | P6 |
+| `T-CMP-016` | report determinism and completeness: a cold build and a warm one print byte-identical report files even though the sink holds an extra error row on one path (asserted as data, not assumed); keys are sorted at every depth; the gate list equals an independent walk of the config and the switches; and the markdown is the projection of the JSON it names | F1 | P6 |
+| `T-CMP-017` | the `IMPL-120-R021` prohibitions are a check: an absolute path, a host name, or a wall-clock or epoch timestamp in any composed document suppresses every report file with `SF0511`, and a clean build's reports carry a hash, a frame count and a byte total without tripping it | F1 | P6 |
 | `T-CMP-015` | `--vm.residual` changes the emitted set in three distinguishable ways: `on-demand` writes a blob only where a table routes it, `always` writes one per block and keeps the lowered function beside it, `forbid` writes none, strands the frame with the reason, and fails the build with one error per tier-2 function naming its byte count and reason (`IMPL-050-R060`, `CMP-R026`) | F1 | P6 |
 
 ## 9. Work packages
@@ -509,7 +564,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/source.ts`, `emit/surface.ts`, `emit/lower.ts`, `emit/files.ts`, `emit/scaffold.ts`, `emit/index.ts` — **Done**; statement-level source maps are withheld and reported (`SF0504`, `E-047`), blocks this phase cannot lower go to `WP-120-09`'s residual path, and the double-build CI proof stays `WP-120-14` |
 | WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` — **Done**, `T-CMP-014`/`T-CMP-015` wired: blobs are copied out of the tag stream and never re-encoded, a descriptor that would lie is refused with `SF0505`, all three `vm.residual` modes are honoured by the stage, and a frame carrying a residual block now runs interpreted instead of being dropped. Clip-event routing, the mixed frame form and the content-hash blob cache stay open, as §4.2 names |
 | WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | `emit/manifest.ts` — **Done**, `T-CMP-007` wired at the library boundary: one serialization spliced into `src/manifest.ts` and `forge.manifest.json`, `diffManifestTexts` and `checkManifestAssets` as pure functions for `WP-120-12`'s `verify --deep`, `AST` §6's asset sections omitted and reported (`SF0507`), and an unspeakable value refusing the pair (`SF0508`). §4.3 records the header, key-order, number and fixed-point rules the pair forced, and `emit/scaffold.ts` now writes `package.json` as strict JSON |
-| WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | report writers |
+| WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | `stages/report.ts` — **Done**, `T-CMP-016`/`T-CMP-017` wired: the three root artifacts and the markdown projection come from one pure `buildReport` over the stage artifacts, `gatesOf` enumerates every config leaf and switch so a new gate cannot skip the report, an input the build was not given is stated as withheld (`SF0509`) rather than zero-filled, a declaration that does not fit `CMP` §4.9 is dropped (`SF0510`), and a value carrying host identity suppresses all four files (`SF0511`). §4.4 records why the rows come from artifacts and not from the sink; the CLI that registers the stage and owns the disk stays `WP-120-13` |
 | WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007/009 |
 | WP-120-13 | CLI: build/plan/inspect/verify/report + exit codes | WP-120-12 | 4 | `packages/cli`, T-CMP-004 |
 | WP-120-14 | Determinism hardening + double-build CI job | WP-120-13 | 2 | T-CMP-003 |
@@ -544,3 +599,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.8 | 2026-10-14 | `WP-120-08` (the emitter) lands in four files under `src/emit/`. `source.ts` is the deterministic printer: number, string and table spelling (`REPO-R015`) and `CMP-R017`-shaped placement data. `surface.ts` is the closed contract of runtime identifiers emitted code may reference (§4.1), each entry citing the spec rule or marking itself a proposal, and a test fails if emitted output names anything off it. `lower.ts` lowers `ActionIR` to statements and refuses what it cannot lower. `files.ts` assembles the module set plus the generated `tsconfig.json`/`eslint.config.mjs`/`package.json` (`R014` bans, `R015` generated-not-copied). `emitStage` registers `emit` on the spine and returns files only: writing stays `WP-120-13`. A block that cannot be lowered is refused with a reason and deferred to `WP-120-09` residual-blob path rather than half-emitted, and `enumerate` plus `stack` operands are the two big deferrals. `SF0504` joins 2.1 for the withheld source maps |
 | 1.9 | 2026-10-14 | `WP-120-09` (residual blobs and entry descriptors) lands as `emit/residual.ts` plus routing in `emit/files.ts` and policy in `emit/index.ts`. A block the emitter cannot lower now ships its original bytes as a `Uint8Array` literal and an `entry` descriptor — parameters, registers, preloads, constants, the CFG's slices, the source range — so the interpreter parses nothing (`IMPL-120-R018`); the bytes are copied from the decompressed tag stream, which is what keeps `IMPL-050-R068`'s ban on re-serializing reserved codes unreachable by construction. A frame carrying a residual block moves to `residualEntries` and runs interpreted instead of being dropped, which shrinks the deferred set to blocks with no residual path either; sprite frame scripts are routed by the front end's frame associations, so an exported sprite function is no longer unreachable. Two codes join §2.1 — `SF0505` for a descriptor that failed to validate, `SF0506` for `--vm.residual=forbid` — and §4.2 records the four things this package deliberately leaves open. `T-CMP-014`/`T-CMP-015` are wired to the 10 new tests (34 in `emit.test.ts`). The residual set the emitter uses is wider than the tier-2 set `IMPL-050-R057` names, which is `E-049` |
 | 1.10 | 2026-10-14 | `WP-120-10` (manifest emission) lands as `emit/manifest.ts`: `buildManifest` composes the sections this phase can state, `serializeManifest` is the one writer (sorted keys, checked numbers, no header in the JSON), and `diffManifestTexts` plus `checkManifestAssets` give `WP-120-12`'s `verify --deep` its rules as pure functions. `IMPL-120-R019`'s "same in-memory object" is satisfied by splicing one serialized text into both artifacts, so the pair cannot drift by construction and the diff is about later edits. Two codes join §2.1 (`SF0507` for the sections withheld pending `WP-120-07`, `SF0508` for a value with no JSON spelling), `emit/scaffold.ts` stops writing a comment header into `package.json` (npm parses it strictly; `tsconfig.json` is the only JSON artifact whose reader allows comments), the manifest divides the raw FIXED8 frame rate by 256 because `AST` §6 wants frames per second, and `T-CMP-007` is wired to 11 new tests (44 in `emit.test.ts`). `E-050` filed: `CMP-R013`'s mandated header opens with `/* eslint-disable */`, a suppression the emitted project may not carry, and `AST` §6 asks for `movie.scaleMode`/`movie.align` that no input provides |
+| 1.11 | 2026-10-15 | `WP-120-11` (the report files) lands as `stages/report.ts`: `buildReport` is one pure projection of the stage artifacts into `build-info.json`, `porting-notes.json`, `divergence.json` and the `reports/porting-notes.md` projection, and `reportStage` turns its gaps into `SF0509`/`SF0510`/`SF0511`. The rows never read the live sink, because a cached stage does not replay its diagnostics and `T-CMP-003`'s `diff -r` covers the report files too; `gatesOf` walks the config and the switches instead of naming gates, and `findHostLeaks` turns `IMPL-120-R021`'s MUST NOT list into a check that suppresses all four files. §4.4 records those four rules and the two omissions `E-051` files; `EmitArtifact` gained the source-map pair the gate list reports; the JSON writer moved to `emit/json.ts` so the reports and the manifest cannot fork a canonical form; `T-CMP-016`/`T-CMP-017` are added and wired by 17 new tests in `report.test.ts` |

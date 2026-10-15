@@ -225,6 +225,9 @@ export const Codes = {
   RESIDUAL_FORBIDDEN: 'SF0506',
   MANIFEST_SECTIONS_WITHHELD: 'SF0507',
   MANIFEST_UNSERIALIZABLE: 'SF0508',
+  REPORT_INPUTS_WITHHELD: 'SF0509',
+  DIVERGENCE_DECLARATION_INVALID: 'SF0510',
+  REPORT_HOST_LEAK: 'SF0511',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -739,6 +742,23 @@ const REGISTRY: Record<string, CodeInfo> = {
     code: 'SF0508',
     severity: 'error',
     meaning: 'no manifest was written, because a value it would have carried has no JSON spelling',
+  },
+  SF0509: {
+    code: 'SF0509',
+    severity: 'warning',
+    meaning:
+      'a report input the build was not given, so the report states the gap instead of a value: pin register, [verify] items, fidelity tier, or divergence declarations',
+  },
+  SF0510: {
+    code: 'SF0510',
+    severity: 'error',
+    meaning: 'a divergence declaration did not validate against CMP-§4.9, so the harness was not told to expect it',
+  },
+  SF0511: {
+    code: 'SF0511',
+    severity: 'error',
+    meaning:
+      'a report value would have leaked build-host identity (an absolute path, a host name, or a wall-clock timestamp), so no report file was written (IMPL-120-R021)',
   },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };

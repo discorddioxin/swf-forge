@@ -5,7 +5,8 @@
  * cancellation, the cache seam, and the stage adapters for the three stages whose suppliers exist
  * (`read`, `model`, `analyze`). The remaining stages arrive with their own work packages: `decode` with
  * the P6 asset chain (`WP-070-07`, `WP-080-10`/`-11`, `WP-110-12`), `plan` with `WP-120-07`, `emit` with
- * `WP-120-08`…`-11`, `report` with `WP-120-11`.
+ * `WP-120-08`…`-11`, `report` with `WP-120-11` (the writers are `stages/report.ts`; the CLI that registers the stage
+ * and owns the disk is `WP-120-13`).
  */
 
 export { PipelineCancelled, createCancellationToken, linkAbortSignal } from './cancel.js';
@@ -115,6 +116,39 @@ export { modelStage } from './stages/model.js';
 export type { ModelStageOptions } from './stages/model.js';
 export { analyzeStage, nestedIrs } from './stages/analyze.js';
 export type { AnalyzeStageOptions } from './stages/analyze.js';
+
+export {
+  BUILD_INFO_SCHEMA_URL,
+  BUDGETS_WITHHELD,
+  DIVERGENCE_SCHEMA_URL,
+  PORTING_NOTES_SCHEMA_URL,
+  REPORT_INPUT_NAMES,
+  REPORT_SCHEMA_VERSION,
+  buildReport,
+  bytesByModuleGroup,
+  checkDivergenceCompleteness,
+  divergenceCitations,
+  divergenceEntry,
+  findHostLeaks,
+  gatesOf,
+  renderPortingNotesMarkdown,
+  reportDecisions,
+  reportDiagnostics,
+  reportStage,
+} from './stages/report.js';
+export type {
+  ChapterPin,
+  DivergenceDeclaration,
+  ReportArtifact,
+  ReportFinding,
+  ReportOptions,
+  ReportResult,
+  TierClaim,
+  VerifyItem,
+} from './stages/report.js';
+
+export { isJsonObject, writeJson } from './emit/json.js';
+export type { JsonFormat, JsonLike, JsonObject } from './emit/json.js';
 
 export { emitStage } from './emit/index.js';
 export type { EmitArtifact, EmitStageOptions } from './emit/index.js';

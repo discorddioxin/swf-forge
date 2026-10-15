@@ -19,18 +19,16 @@
  *    comes from the asset planner (`WP-120-07`), which this phase has not built. `"textures": {}` would read as
  *    "this movie has no textures" — a false statement a runtime could cache — while an absent key reads as "this
  *    build said nothing about textures", which is what the run report then names.
- * 3. **Numbers are checked, not formatted.** `formatNumber` in `source.ts` prints `Number.NaN` and
- *    `Number.POSITIVE_INFINITY`, correct inside TypeScript and a syntax error in JSON, while `JSON.stringify`
- *    answers `NaN` with `null`, which is silently wrong in a manifest. So a non-finite number refuses the whole
- *    artifact rather than becoming a zero, and `-0` is written as `0` because JSON has no negative zero.
- *
- * Keys are sorted lexicographically at serialization (`AST-R043`, `REPO-R016`), which is also what makes a
- * manifest diff between two builds reviewable: no byte of it depends on which `Map` a model happened to use.
+ * 3. **Numbers are checked, not formatted.** A non-finite number refuses the whole artifact rather than becoming
+ *    a zero, and `-0` is written as `0`. That rule and the sorted-key rule (`AST-R043`, `REPO-R016`) live in
+ *    `emit/json.ts`, because the report files of §4 are hashed build outputs exactly like the manifest is, and a
+ *    second JSON policy is how two artifacts start disagreeing about what "canonical" means.
  */
 
 import type { MovieModel } from '@swf-forge/swf';
 
 import type { EmitHeader } from './files.js';
+import { isJsonObject, writeJson, type JsonLike, type JsonObject } from './json.js';
 
 /** `AST` §6's schema identity. The schema text lives in the design spec; there is no schema file to validate against. */
 export const MANIFEST_SCHEMA_VERSION = 1;
@@ -52,9 +50,10 @@ export const MANIFEST_WITHHELD_SECTIONS: readonly string[] = [
   'budgets',
 ];
 
-export type ManifestObject = { [key: string]: ManifestValue };
+/** The manifest's JSON types alias `emit/json.ts`, so every hashed artifact shares one value grammar. */
+export type ManifestObject = JsonObject;
 
-export type ManifestValue = string | number | boolean | null | readonly ManifestValue[] | ManifestObject;
+export type ManifestValue = JsonLike;
 
 export interface ManifestArtifact {
   readonly ok: true;
@@ -75,62 +74,18 @@ const TWIPS_PER_PIXEL = 20;
  * is exact, so 6110 raw still reads as 23.8671875 rather than a rounded 23.87. */
 const FIXED8_SCALE = 256;
 
-function isPlainObject(value: ManifestValue): value is ManifestObject {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
+/** `json.ts`'s guard, under the name the manifest's structural comparisons read best with. */
+const isPlainObject = isJsonObject;
 
 /**
- * Sorted-key JSON text, written here rather than with `JSON.stringify` so the two invariants that matter stay in
- * one place: keys are lexicographic at every depth (`AST-R043`), and no number reaches the text unless JSON can
- * carry it. Strings go through `JSON.stringify`, which already escapes the two line separators that a JSON
- * parser accepts and a line-based tool splits on; `formatString` in `source.ts` is for *source* code, where a
- * raw NUL is not a string character at all, and using it here would put `\\u0000` in front of a JSON parser that
- * reads it as six characters.
+ * Sorted-key JSON with the manifest's rules, delegated to the emitter's one JSON writer (`emit/json.ts`) so the
+ * manifest and the report files cannot disagree about what a canonical artifact looks like.
  */
 export function serializeManifest(
   value: ManifestValue,
   compact = false,
 ): { readonly text: string } | { readonly error: string } {
-  const pad = (depth: number): string => (compact ? '' : '  '.repeat(depth));
-  const step = compact ? '' : '\n';
-  const space = compact ? ':' : ': ';
-  const walk = (node: ManifestValue, depth: number): string | null => {
-    if (typeof node === 'string') return JSON.stringify(node);
-    if (typeof node === 'number') {
-      if (!Number.isFinite(node)) return null;
-      return Object.is(node, -0) ? '0' : node.toString(10);
-    }
-    if (typeof node === 'boolean') return node ? 'true' : 'false';
-    if (node === null) return 'null';
-    const rows: string[] = [];
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const text = walk(item, depth + 1);
-        if (text === null) return null;
-        rows.push(`${pad(depth + 1)}${text}`);
-      }
-      if (rows.length === 0) return '[]';
-      return `[${step}${rows.join(`,${step}`)}${step}${pad(depth)}]`;
-    }
-    if (!isPlainObject(node)) return null;
-    for (const key of Object.keys(node).sort()) {
-      const child = node[key];
-      if (child === undefined) continue;
-      const text = walk(child, depth + 1);
-      if (text === null) return null;
-      rows.push(`${pad(depth + 1)}${JSON.stringify(key)}${space}${text}`);
-    }
-    if (rows.length === 0) return '{}';
-    return `{${step}${rows.join(`,${step}`)}${step}${pad(depth)}}`;
-  };
-  const text = walk(value, 0);
-  if (text === null) {
-    return {
-      error:
-        'a manifest value has no JSON spelling: a non-finite number (which `JSON.stringify` would silently write as null), or a value that is neither a JSON object, list, string, number, boolean, nor null',
-    };
-  }
-  return { text };
+  return writeJson(value, { compact, subject: 'manifest' });
 }
 
 /**

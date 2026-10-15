@@ -44,6 +44,7 @@ import type { NameTable } from './passes/names.js';
 import type { DeadCodePlan } from './passes/dead-code.js';
 import type { ShakePlan } from './passes/shake.js';
 import type { EmitArtifact } from './emit/index.js';
+import type { ReportArtifact } from './stages/report.js';
 import { PipelineCancelled, createCancellationToken, type CancellationToken } from './cancel.js';
 import { stableForm } from './codec.js';
 import { configHash, type ForgeConfig, type RunSwitches, DEFAULT_RUN_SWITCHES } from './config.js';
@@ -155,6 +156,8 @@ export interface PipelineState {
    * deferred to `WP-120-09`, and why — so the report never re-derives a verdict from bytes.
    */
   readonly emit?: EmitArtifact;
+  /** The report stage's accounting (`WP-120-13`'s `swfforge report` reads it; the files travel on the outcome). */
+  readonly report?: ReportArtifact;
   readonly passes?: readonly PassReport[];
 }
 

@@ -33,6 +33,13 @@ export interface EmitArtifact {
   readonly residualBytes: number;
   /** The `--vm.residual` value the plan honoured, echoed so the report never has to re-read the config. */
   readonly residualPolicy: ResidualPolicy;
+  /**
+   * The `--sourcemap` value this stage was given, and whether it wrote any. `IMPL-120-R021` asks the report to
+   * state the state of *every* gate, and `CMP-R014`'s default (`file`) is not what this phase honours (errata
+   * `E-047`), so the pair is echoed here rather than re-derived by a reader of `SF0504`'s text.
+   */
+  readonly sourceMapRequested: 'file' | 'inline' | 'none';
+  readonly sourceMapWritten: boolean;
 }
 
 export interface EmitStageOptions {
@@ -176,6 +183,10 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         residualCount: plan.residual.length,
         residualBytes: plan.counts.residualBytes,
         residualPolicy: input.residualPolicy ?? 'on-demand',
+        sourceMapRequested: sourceMaps,
+        // No map is written at any setting in this phase, which is what `SF0504` says; the flag is here so the
+        // report states the fact without parsing a message.
+        sourceMapWritten: false,
       };
       return { state: { emit: artifact }, files };
     },

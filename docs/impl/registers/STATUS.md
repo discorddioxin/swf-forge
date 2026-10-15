@@ -25,8 +25,8 @@ chapter-independent · ⏳ partial = open items remain (each listed in that docu
 | [020](../foundation/020-container-tag-stream-dictionary.md) | Container, Tag Stream, Dictionary, and Processing | 12 | 26 | 7 | 14 | 25 | ✅ |
 | [140](../harness/140-conformance-harness.md) | Conformance Harness, Fixtures, and Fuzzing | 11 | 48.5 | 0 | 4 | 0 | ✅ |
 | [050](../transpiler/050-actions-and-avm1.md) | Action Decoding and the AVM1 Front End | 19 | 52 | 7 | 41 | 26 | ✅ |
-| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 15 | 9 | ✅ |
-| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **298** | **262** | |
+| [120](../transpiler/120-compiler-and-emitter.md) | Compiler Pipeline, Emitter, and Build Output | 14 | 48 | 0 | 17 | 12 | ✅ |
+| **Total** | 16 documents | **214** | **≈ 668.5** | **70** | **300** | **265** | |
 
 `000-roadmap.md` owns the phases and the canonical work-package index; `errata.md` owns the
 upstream-source corrections and is not a work-package document. Counts are the rows the document
@@ -50,7 +50,7 @@ count, because `010` restates the container codes it owns jointly with `020`.
 | 010 | `SF0001`, `SF0002`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0008`, `SF0009`, `SF0010`, `SF0011`, `SF0012`, `SF0013`, `SF0014`, `SF0015`, `SF0016`, `SF0020`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033` | SF0001–SF0033 |
 | 020 | `SF0001`, `SF0003`, `SF0004`, `SF0005`, `SF0006`, `SF0007`, `SF0021`, `SF0022`, `SF0023`, `SF0024`, `SF0025`, `SF0026`, `SF0027`, `SF0028`, `SF0029`, `SF0030`, `SF0031`, `SF0032`, `SF0033`, `SF0101`, `SF0102`, `SF0103`, `SF0104`, `SF0107`, `SF0109` | SF0001–SF0109 |
 | 050 | `SF0400`, `SF0401`, `SF0402`, `SF0403`, `SF0404`, `SF0405`, `SF0406`, `SF0407`, `SF0408`, `SF0409`, `SF0410`, `SF0411`, `SF0412`, `SF0413`, `SF0414`, `SF0415`, `SF0416`, `SF0417`, `SF0418`, `SF0419`, `SF0420`, `SF0421`, `SF0422`, `SF0423`, `SF0424`, `SF1000` | SF0400–SF1000 |
-| 120 | `SF0500`, `SF0501`, `SF0502`, `SF0503`, `SF0504`, `SF0505`, `SF0506`, `SF0507`, `SF0508` | SF0500–SF0508 |
+| 120 | `SF0500`, `SF0501`, `SF0502`, `SF0503`, `SF0504`, `SF0505`, `SF0506`, `SF0507`, `SF0508`, `SF0509`, `SF0510`, `SF0511` | SF0500–SF0511 |
 
 The authoritative range allocation (which document may define which codes) is `010` §7; `SF1000+`
 is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g. `SF1000` in 040/050/120,
@@ -75,7 +75,7 @@ is the fatal range (AVM2 content ⇒ exit 3). Codes cited across documents (e.g.
 | 020 | `T-SWF-001`, `T-SWF-002`, `T-SWF-003`, `T-SWF-007`, `T-SWF-008`, `T-SWF-010`, `T-SWF-011`, `T-SWF-012`, `T-SWF-018`, `T-SWF-019`, `T-SWF-020`, `T-SWF-021`, `T-SWF-022`, `T-SWF-023` |
 | 140 | `T-TST-101`, `T-TST-102`, `T-TST-103`, `T-TST-104` |
 | 050 | `T-AVM1-FE-001`, `T-AVM1-FE-002`, `T-AVM1-FE-003`, `T-AVM1-FE-004`, `T-AVM1-FE-005`, `T-AVM1-FE-006`, `T-AVM1-FE-007`, `T-AVM1-FE-008`, `T-AVM1-FE-009`, `T-AVM1-FE-010`, `T-AVM1-FE-011`, `T-AVM1-FE-012`, `T-AVM1-FE-013`, `T-AVM1-FE-014`, `T-AVM1-FE-015`, `T-AVM1-FE-016`, `T-AVM1-FE-017`, `T-AVM1-FE-018`, `T-AVM1-FE-019`, `T-AVM1-FE-020`, `T-AVM1-FE-021`, `T-AVM1-FE-022`, `T-AVM1-FE-023`, `T-AVM1-FE-024`, `T-AVM1-FE-025`, `T-AVM1-FE-026`, `T-AVM1-FE-027`, `T-AVM1-FE-028`, `T-AVM1-FE-029`, `T-AVM1-FE-030`, `T-AVM1-FE-031`, `T-AVM1-FE-032`, `T-AVM1-FE-033`, `T-AVM1-FE-034`, `T-AVM1-FE-035`, `T-AVM1-FE-036`, `T-AVM1-FE-037`, `T-AVM1-FE-038`, `T-AVM1-FE-039`, `T-AVM1-FE-040`, `T-AVM1-FE-041` |
-| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008`, `T-CMP-009`, `T-CMP-010`, `T-CMP-011`, `T-CMP-012`, `T-CMP-013`, `T-CMP-014`, `T-CMP-015` |
+| 120 | `T-CMP-001`, `T-CMP-002`, `T-CMP-003`, `T-CMP-004`, `T-CMP-005`, `T-CMP-006`, `T-CMP-007`, `T-CMP-008`, `T-CMP-009`, `T-CMP-010`, `T-CMP-011`, `T-CMP-012`, `T-CMP-013`, `T-CMP-014`, `T-CMP-015`, `T-CMP-016`, `T-CMP-017` |
 
 `T-SWF-*` is shared by the two container documents (010 declares the primitive tests; 020 the header,
 tag-stream and dictionary tests, and each cites the other explicitly). `030` owns `T-MOD-001`–`012`,

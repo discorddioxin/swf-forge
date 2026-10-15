@@ -118,8 +118,10 @@ export type { AnalyzeStageOptions } from './stages/analyze.js';
 
 export { emitStage } from './emit/index.js';
 export type { EmitArtifact, EmitStageOptions } from './emit/index.js';
-export { emitFiles, residualBytesLiteral } from './emit/files.js';
-export type { EmitHeader, EmitInput, EmitPlan, EmittedText, RefusedBlock } from './emit/files.js';
+export { emitFiles } from './emit/files.js';
+export type { EmitHeader, EmitInput, EmitPlan, EmittedText, RefusedBlock, ResidualHooks } from './emit/files.js';
+export { buildResidualBlobs, descriptorLiteral, descriptorProblem, residualImport } from './emit/residual.js';
+export type { ResidualBlob, ResidualBuildResult, ResidualPolicy, ResidualRequest } from './emit/residual.js';
 export { EMITTED_BANS, scaffoldFiles } from './emit/scaffold.js';
 export {
   assessBlock,

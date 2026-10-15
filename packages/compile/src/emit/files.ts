@@ -1,6 +1,6 @@
 /**
- * The emitted file set: `src/symbols.ts`, `src/frames/*`, `src/classes/*`, `src/buttons/*`, and the project
- * scaffolding (`WP-120-08`, doc 120 §4's tree).
+ * The emitted file set: `src/symbols.ts`, `src/frames/*`, `src/classes/*`, `src/buttons/*`, `src/residual/*`,
+ * and the project scaffolding (`WP-120-08`, doc 120 §4's tree).
  *
  * Two rules decide most of what you see here. `CMP-R017` requires placement ops to be **declarative data**
  * rather than calls, so a timeline module is a table of plain objects the runtime can pre-batch and a human can
@@ -26,9 +26,16 @@ import { ownerCharacterOf } from '../passes/names.js';
 import { scaffoldFiles } from './scaffold.js';
 import { assessBlock, defineParams, definePrelude, lowerFunction, type Refusal } from './lower.js';
 import {
+  buildResidualBlobs,
+  residualImport,
+  type ResidualBlob,
+  type ResidualBuildResult,
+  type ResidualPolicy,
+  type ResidualRequest,
+} from './residual.js';
+import {
   emittedFunction,
   emittedPath,
-  formatBytes,
   formatNumber,
   formatString,
   generatedHeader,
@@ -59,6 +66,12 @@ export interface EmitInput {
   readonly frames: FramePlan | null;
   readonly shake: ShakePlan | null;
   readonly header: EmitHeader;
+  /**
+   * `ForgeConfig.vm.residual`, and it decides only what the *emitter* does with a block it cannot lower:
+   * `on-demand` gives it a blob, `always` gives every block one so the two paths can be compared, `forbid`
+   * gives none and the stage reports the failure. Default `on-demand`.
+   */
+  readonly residualPolicy?: ResidualPolicy;
 }
 
 export interface EmittedText {
@@ -77,24 +90,52 @@ export interface RefusedBlock {
   readonly refusal: Refusal;
 }
 
+/**
+ * What a module builder needs to route a block to the interpreter: the blobs that exist, and a `bind` that
+ * records the import the module will need and hands back the symbol to reference. Returning `null` is how the
+ * hooks say "there is no blob for that subject", which keeps every caller from having to know why.
+ */
+export interface ResidualHooks {
+  readonly blobs: ReadonlyMap<string, ResidualBlob>;
+  readonly bind: (fromPath: string, subjectId: string) => ResidualBlob | null;
+}
+
 export interface EmitPlan {
   readonly files: readonly EmittedText[];
   readonly emitted: readonly EmittedBlock[];
   readonly refused: readonly RefusedBlock[];
+  /** The residual entries `IMPL-120-R018`, one per block that is executed as a blob. */
+  readonly residual: readonly ResidualBlob[];
+  /** Blocks whose descriptor would have lied (`SF0505`): no blob was written, so the block stays deferred. */
+  readonly invalidResidual: readonly { readonly subjectId: string; readonly error: string }[];
   /** Per-block decisions in `IMPL-120-R013`'s shape, assembled from `emitted`/`refused`. */
   readonly decisions: readonly { readonly subject: string; readonly action: string; readonly reason: string }[];
   readonly counts: {
     readonly blocks: number;
     readonly emitted: number;
     readonly refused: number;
+    readonly residual: number;
+    readonly residualBytes: number;
     readonly files: number;
     readonly bytes: number;
   };
 }
 
-function moduleText(header: EmitHeader, timeline: string, chunks: readonly Chunk[]): string {
+/**
+ * Assembles one module: the generated header, the contract imports the body actually names, then any import the
+ * emitter owes for a *sibling* module (only the residual entries, `WP-120-09`). The contract list is derived
+ * from the rendered body rather than declared by the caller, which is what makes §4.1 checkable: a chunk that
+ * starts using a new helper drags its import with it, and a chunk that stops using one drops it, so the emitted
+ * project never carries an unused import.
+ */
+function moduleText(
+  header: EmitHeader,
+  timeline: string,
+  chunks: readonly Chunk[],
+  localImports: readonly string[] = [],
+): string {
   const rendered = render([chunks.map((chunk, index) => (index === 0 ? chunk : ['', chunk]))]);
-  const imports = surfaceImports(rendered);
+  const imports = [...surfaceImports(rendered), ...localImports];
   return `${generatedHeader({ ...header, timeline })}\n\n${imports.length === 0 ? '' : `${imports.join('\n')}\n\n`}${rendered}`;
 }
 
@@ -125,9 +166,16 @@ function symbolsModule(input: EmitInput): Chunk {
 
 /** One `const` per frame's script list, in execution order, calling the lowered functions by name. */
 /**
- * The frame table. A frame script is one executable unit — the runtime gives a frame a single entry point — so
- * a frame containing a block this phase cannot lower is deferred *whole* to `WP-120-09`'s residual-blob path
- * rather than emitted with a hole in it. The row is still counted, and the reason travels in the decisions.
+ * The frame table. A frame script is one executable unit — the runtime gives a frame a single entry point — so a
+ * frame containing a block this phase cannot lower does not get a hole in it. Under `on-demand`/`always` such a
+ * frame is routed to the interpreter as a whole, in schedule order, which is why the row moves to
+ * `residualEntries` instead of `frameScripts`: the frame still runs, from its original bytes. Only a frame whose
+ * residual block produced no blob stays out of both tables, and says so in a comment naming the reason.
+ *
+ * The mixed form — lowered units as calls, residual units as blobs, in one frame — is deliberately not here. It
+ * would need the emitted code to reach into the interpreter, and `CMP-R027` makes that reach a bundler-visible
+ * dependency; routing the whole frame keeps the interpreter droppable. Ratifying the split belongs to
+ * `WP-120-10`, with the interpreter's own entry API.
  *
  * Frame numbers are 1-based in the output, matching the timeline tables and the SWF's own numbering; the plan
  * is 0-based, and an off-by-one between two emitted tables is the kind of bug a reader never finds.
@@ -136,14 +184,30 @@ function frameModule(
   input: EmitInput,
   groups: readonly FramePlan['frames'][number][],
   refused: ReadonlySet<string>,
+  residual: ResidualHooks,
+  path: string,
 ): Chunks {
   const chunks: Chunk[] = [];
   const rows: string[] = [];
-  const deferred: string[] = [];
+  const residualRows: string[] = [];
+  const stranded: string[] = [];
   for (const group of groups) {
     const blocked = group.units.filter((unit) => unit.hoisted !== true && refused.has(unit.subjectId));
     if (blocked.length > 0) {
-      deferred.push(`frame ${group.frame + 1}: ${blocked.map((unit) => unit.subjectId).join(', ')}`);
+      const blobs = blocked.map((unit) => residual.bind(path, unit.subjectId)).filter((blob) => blob !== null);
+      const unbound = blocked.length - blobs.length;
+      if (blobs.length > 0 && unbound === 0) {
+        residualRows.push(
+          objectLiteral([
+            ['on', formatString(`frame:${group.frame + 1}`)],
+            ['entries', `[${blobs.map((blob) => blob.entrySymbol).join(', ')}]`],
+          ]),
+        );
+        continue;
+      }
+      // Part of the frame cannot be interpreted either, so the frame cannot run: dropping the whole row and
+      // naming it is honest, while running a frame with a missing unit would be a silent behaviour change.
+      stranded.push(`frame ${group.frame + 1}: ${blocked.map((unit) => unit.subjectId).join(', ')}`);
       continue;
     }
     const calls = group.units.map((unit) => {
@@ -161,15 +225,29 @@ function frameModule(
     );
     rows.push(`{ frame: ${group.frame + 1}, run: ${group.name} }`);
   }
-  if (deferred.length > 0) {
-    chunks.push(`// deferred to WP-120-09 (its blocks need the residual blob): ${deferred.join('; ')}`);
+  if (stranded.length > 0) {
+    chunks.push(`// no residual blob for these frames, so they run nothing: ${stranded.join('; ')}`);
   }
   chunks.push(
     `export const frameScripts: readonly FrameScript[] = ${
       rows.length === 0 ? '[]' : `[\n${rows.map((row) => `  ${row},`).join('\n')}\n]`
     };`,
   );
+  chunks.push(residualTable(residualRows));
   return chunks;
+}
+
+/** The residual routing table, shared by movie and sprite modules: what the interpreter runs, and when. */
+function residualTable(rows: readonly string[]): string {
+  const body = rows.length === 0 ? '[]' : `[\n${rows.map((row) => `  ${row},`).join('\n')}\n]`;
+  return [
+    '/**',
+    ' * Scripts this build cannot lower, as blobs plus entry descriptors (`IMPL-120-R018`). `on` is the',
+    ' * trigger the runtime matches: `frame:<n>` for a timeline frame, `init` for `DoInitAction`. A row with no',
+    ' * entry here means the frame has no residual path either, and the comment above says why.',
+    ' */',
+    `export const residualEntries: readonly { readonly on: string; readonly entries: readonly Entry[] }[] = ${body};`,
+  ].join('\n');
 }
 
 /**
@@ -254,7 +332,6 @@ function cxformLiteral(cxform: Cxform): string {
   ]);
 }
 
-/** One lowered function for one root block, or a comment when the block is refused. */
 /** Lowers one root action block to a `function` declaration, or says why it could not be lowered. */
 function blockFunction(
   ir: ActionIR,
@@ -294,8 +371,8 @@ function blockFunction(
   };
 }
 
-/** The button handler tables: `ButtonActionRecord`s, with the lowered arm attached by byte range. */
-function buttonModule(input: EmitInput, character: CharacterModel): Chunks {
+/** The button handler tables: `ButtonActionRecord`s, with the lowered arm — or the blob — attached by byte range. */
+function buttonModule(input: EmitInput, character: CharacterModel, residual: ResidualHooks, path: string): Chunks {
   const button = character.button;
   if (button === null) return [`// character ${character.id}: no decoded button payload`];
   const chunks: Chunk[] = [];
@@ -319,6 +396,18 @@ function buttonModule(input: EmitInput, character: CharacterModel): Chunks {
     }
     const lowered = blockFunction(ir, input, [`button ${character.id}`, `handler [${conditions.join(', ')}]`]);
     if (lowered.refusal !== null || lowered.text === null) {
+      // A handler the emitter cannot lower still has its original bytes, so the button keeps working: the row
+      // names the descriptor instead of the function, and the runtime hands that entry to the interpreter.
+      const blob = residual.bind(path, `block:${ir.id}`);
+      if (blob !== null) {
+        handlerRows.push(
+          objectLiteral([
+            ['conditions', conditionList],
+            ['entry', blob.entrySymbol],
+          ]),
+        );
+        continue;
+      }
       handlerRows.push(
         objectLiteral([
           ['conditions', conditionList],
@@ -343,13 +432,6 @@ function buttonModule(input: EmitInput, character: CharacterModel): Chunks {
   return chunks;
 }
 
-/**
- * The class tables (`CMP-R019`), in the declaration-first order the contract asks for: `name`, `methods`,
- * `members`, `parent`, `traits`, then the constructor and method bodies. This phase emits *what P5 can see*:
- * class names come from the name table, and member/trait records need `detectClasses`, which reports zero on
- * every corpus input (`E-044`). Writing plausible members from the AST would be inventing semantics, so the
- * gap is printed as a comment naming the erratum, and `porting-notes.json` (`WP-120-11`) carries it outward.
- */
 /**
  * The class tables (`CMP-R019`), in the declaration-first order the contract asks for: `name`, `methods`,
  * `members`, `parent`, `traits`, then the constructor and method bodies. This phase emits only what P5 can
@@ -382,6 +464,7 @@ export function emitFiles(input: EmitInput): EmitPlan {
   const files = new Map<string, Chunk[]>();
   const emitted: EmittedBlock[] = [];
   const refused: RefusedBlock[] = [];
+  const imports = new Map<string, Set<string>>();
   const add = (path: string, chunk: Chunk): void => {
     const key = emittedPath(path);
     const list = files.get(key) ?? [];
@@ -389,8 +472,19 @@ export function emitFiles(input: EmitInput): EmitPlan {
     files.set(key, list);
   };
 
-  add('src/symbols.ts', symbolsModule(input));
-
+  // ---- the residual pass, before any module is written (`WP-120-09`) --------------------------------
+  //
+  // Deciding which blocks end up as blobs has to happen first, because the frame and handler tables route on
+  // it: a row either calls a lowered function or names an entry, and it cannot know which until both answers
+  // exist. So the blocks are probed once here — the same `blockFunction` the modules use, with no per-module
+  // doc lines — and lowered again with those docs attached. The duplicate work is a pure function over the IR,
+  // and paying it is what keeps "who runs this frame" a single decision instead of two that can disagree.
+  const policy: ResidualPolicy = input.residualPolicy ?? 'on-demand';
+  const probe = new Map<string, { name: string; refusal: Refusal | null }>();
+  for (const ir of input.blocks) {
+    const lowered = blockFunction(ir, input, []);
+    probe.set(`block:${ir.id}`, { name: lowered.name, refusal: lowered.refusal });
+  }
   // Timeline modules in character-id order (REPO-R016); the main timeline first, as `movie.ts`.
   const byCharacter = new Map<number, ActionIR[]>();
   for (const ir of input.blocks) {
@@ -399,6 +493,63 @@ export function emitFiles(input: EmitInput): EmitPlan {
     list.push(ir);
     byCharacter.set(owner ?? -1, list);
   }
+
+  const requests: ResidualRequest[] = [];
+  // Which blocks a module can actually route. A blob nobody references executes nothing, so `on-demand` gives
+  // one only to a block a frame table or a handler table will name; `always` is the parity mode, where the
+  // harness addresses every blob by subject and unreferenced output is the point.
+  const routed = new Set<string>();
+  if (input.frames !== null) {
+    for (const group of input.frames.frames) for (const unit of group.units) routed.add(unit.subjectId);
+  }
+  for (const character of input.model.characters.values()) {
+    if (character.kind !== 'button' || character.button === null) continue;
+    for (const record of character.button.actions) {
+      const ir = input.blocks.find((block) => block.byteRange.start === record.actionBytes.offset);
+      if (ir !== undefined) routed.add(`block:${ir.id}`);
+    }
+  }
+  for (const [owner, list] of byCharacter) {
+    if (owner < 0) continue;
+    for (const ir of list) {
+      // A sprite's `onEnterFrame`-style clip handlers and nested functions have no table in this phase, so an
+      // unlowerable one stays deferred rather than becoming an orphan blob (the routing seam is `WP-120-10`).
+      if (ir.kind === 'init' || (ir.kind === 'timeline' && ir.frameAssociations.length > 0)) {
+        routed.add(`block:${ir.id}`);
+      }
+    }
+  }
+  for (const ir of input.blocks) {
+    const subjectId = `block:${ir.id}`;
+    if (policy !== 'always' && !routed.has(subjectId)) continue;
+    const refusal = probe.get(subjectId)?.refusal ?? null;
+    if (refusal === null && policy !== 'always') continue;
+    requests.push({
+      ir,
+      subjectId,
+      reason:
+        refusal === null
+          ? 'parity: --vm.residual=always emits a blob for every block so both paths can be compared'
+          : `${refusal.reason}: ${refusal.detail}`,
+    });
+  }
+  requests.sort((a, b) => (a.subjectId < b.subjectId ? -1 : a.subjectId > b.subjectId ? 1 : 0));
+  const built: ResidualBuildResult =
+    policy === 'forbid' ? { blobs: [], invalid: [] } : buildResidualBlobs(input.file, input.header.inputName, requests);
+  const blobs = new Map<string, ResidualBlob>(built.blobs.map((blob) => [blob.subjectId, blob]));
+  const residual: ResidualHooks = {
+    blobs,
+    bind(fromPath, subjectId) {
+      const blob = blobs.get(subjectId);
+      if (blob === undefined) return null;
+      const list = imports.get(fromPath) ?? new Set<string>();
+      list.add(residualImport(blob, fromPath));
+      imports.set(fromPath, list);
+      return blob;
+    },
+  };
+
+  add('src/symbols.ts', symbolsModule(input));
 
   const movieChunks: Chunks = [];
   for (const ir of byCharacter.get(-1) ?? []) {
@@ -413,11 +564,19 @@ export function emitFiles(input: EmitInput): EmitPlan {
     movieChunks.push(lowered.text);
     emitted.push({ subjectId: `block:${ir.id}`, path: 'src/frames/movie.ts', name: lowered.name });
   }
-  // The frame table is assembled after the functions it calls, because a frame whose block was refused has to be
-  // deferred whole: emitting `frame_7(...)` for a function that was never written would produce a project that
-  // does not build, and a broken build is a worse report than a missing frame.
+  // The frame table is assembled after the functions it calls, because a row has to name something that exists:
+  // emitting `frame_7(...)` for a function that was never written produces a project that does not build, which
+  // is a worse report than the frame table the module actually has.
   if (input.frames !== null) {
-    movieChunks.push(...frameModule(input, input.frames.frames, new Set(refused.map((entry) => entry.subjectId))));
+    movieChunks.push(
+      ...frameModule(
+        input,
+        input.frames.frames,
+        new Set(refused.map((entry) => entry.subjectId)),
+        residual,
+        'src/frames/movie.ts',
+      ),
+    );
   }
   if (movieChunks.length > 0) add('src/frames/movie.ts', movieChunks);
 
@@ -425,34 +584,93 @@ export function emitFiles(input: EmitInput): EmitPlan {
   for (const id of spriteIds) {
     const character = input.model.characters.get(id);
     if (character === undefined) continue;
+    const path = `src/frames/sprite_${id}.ts`;
     const chunks: Chunks = [...timelineTable(input.model, character)];
+    const frameRows: string[] = [];
+    const residualRows: string[] = [];
+    const scheduled: {
+      readonly frames: readonly number[];
+      readonly subjectId: string;
+      readonly name: string | null;
+    }[] = [];
     let initName: string | null = null;
+    let initBlob: ResidualBlob | null = null;
     for (const ir of byCharacter.get(id) ?? []) {
+      const subjectId = `block:${ir.id}`;
       const lowered = blockFunction(ir, input, [`sprite ${id}`]);
       if (lowered.refusal !== null || lowered.text === null) {
-        refused.push({
-          subjectId: `block:${ir.id}`,
-          refusal: lowered.refusal ?? { reason: 'unbound-temp', detail: 'unknown' },
-        });
+        refused.push({ subjectId, refusal: lowered.refusal ?? { reason: 'unbound-temp', detail: 'unknown' } });
+        if (ir.kind === 'init') initBlob = residual.bind(path, subjectId);
+        if (ir.kind === 'timeline' && ir.frameAssociations.length > 0) {
+          scheduled.push({ frames: ir.frameAssociations, subjectId, name: null });
+        }
         continue;
       }
       chunks.push(lowered.text);
       if (ir.kind === 'init') initName = lowered.name;
-      emitted.push({ subjectId: `block:${ir.id}`, path: `src/frames/sprite_${id}.ts`, name: lowered.name });
+      if (ir.kind === 'timeline') scheduled.push({ frames: ir.frameAssociations, subjectId, name: lowered.name });
+      emitted.push({ subjectId, path, name: lowered.name });
     }
-    // `DoInitAction` runs once when the sprite is created, so the runtime needs a named handle for it. Without
-    // this line the lowered init function is exported but unreachable, which is the failure mode the
-    // entry-descriptor work (`WP-120-09`) exists to close; clip-event handlers belong to that same seam.
+    // A sprite's own frame scripts are routed by the frames that reference them (`AVM1-R052`'s association data,
+    // which the front end records per block). A frame with more than one block runs them in stream order, the
+    // order their `DoAction` tags appear in, and a block that belongs to no frame gets no row: an exported
+    // function nobody calls is a smaller lie than a table that guesses when it runs.
+    const perFrame = new Map<number, { readonly run: string[]; readonly entries: string[] }>();
+    for (const unit of scheduled) {
+      const blob = unit.name === null ? residual.bind(path, unit.subjectId) : null;
+      for (const frame of unit.frames) {
+        const row = perFrame.get(frame) ?? { run: [], entries: [] };
+        if (unit.name !== null) row.run.push(unit.name);
+        else if (blob !== null) row.entries.push(blob.entrySymbol);
+        perFrame.set(frame, row);
+      }
+    }
+    for (const frame of [...perFrame.keys()].sort((a, b) => a - b)) {
+      const row = perFrame.get(frame);
+      if (row === undefined) continue;
+      if (row.entries.length > 0) {
+        residualRows.push(
+          objectLiteral([
+            ['on', formatString(`frame:${frame + 1}`)],
+            ['entries', `[${row.entries.join(', ')}]`],
+          ]),
+        );
+        continue;
+      }
+      const calls = row.run.map((name) => `${name}(vm, target, frame);`);
+      frameRows.push(
+        `{ frame: ${frame + 1}, run: (${['vm: Vm', 'target: Clip', 'frame: FrameCtx'].join(', ')}) => { ${calls.join(' ')} } }`,
+      );
+    }
+    if (frameRows.length > 0) {
+      chunks.push(
+        `export const frameScripts: readonly FrameScript[] = [\n${frameRows.map((row) => `  ${row},`).join('\n')}\n];`,
+      );
+    }
+    if (initBlob !== null) {
+      residualRows.push(
+        objectLiteral([
+          ['on', "'init'"],
+          ['entries', `[${initBlob.entrySymbol}]`],
+        ]),
+      );
+    }
+    // `DoInitAction` runs once when the sprite is created, so the runtime needs a named handle for it. A lowered
+    // init gets the handle directly; a refused one gets the descriptor row above, which is the seam
+    // `WP-120-09` exists to close. Clip-event handlers on a *placement* still have no table (`WP-120-10`).
     chunks.push(`export const initScript: FrameScript | null = ${initName ?? 'null'};`);
-    add(`src/frames/sprite_${id}.ts`, chunks);
+    chunks.push(residualTable(residualRows));
+    add(path, chunks);
   }
+
+  // One module per blob, so a diff of the emitted project shows the interpreted code as data rather than as an
+  // absent function. Sorted by path in the assembly below, like every other file.
+  for (const blob of built.blobs) add(blob.path, blob.chunks);
 
   for (const character of [...input.model.characters.values()].sort((a, b) => a.id - b.id)) {
     if (character.kind !== 'button' || character.button === null) continue;
-    add(`src/buttons/button_${character.id}.ts`, [
-      `export const buttonId: number = ${character.id};`,
-      buttonModule(input, character),
-    ]);
+    const path = `src/buttons/button_${character.id}.ts`;
+    add(path, [`export const buttonId: number = ${character.id};`, buttonModule(input, character, residual, path)]);
   }
 
   const classNames = input.table.symbols.filter((symbol) => symbol.kind === 'class');
@@ -470,33 +688,62 @@ export function emitFiles(input: EmitInput): EmitPlan {
   const all: EmittedText[] = [
     ...[...files.entries()]
       .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-      .map(([path, chunks]) => ({ path, text: moduleText(input.header, path, chunks) })),
+      .map(([path, chunks]) => ({
+        path,
+        text: moduleText(input.header, path, chunks, [...(imports.get(path) ?? [])].sort()),
+      })),
     ...scaffoldFiles(input.header),
   ].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 
-  const decisions = [
-    ...emitted.map((entry) => ({
-      subject: entry.subjectId,
-      action: 'emitted',
-      reason: `written to ${entry.path} as ${entry.name}()`,
-    })),
-    ...refused.map((entry) => ({
-      subject: entry.subjectId,
-      action: 'deferred to WP-120-09',
-      reason: `${entry.refusal.reason}: ${entry.refusal.detail}`,
-    })),
-  ].sort((a, b) => (a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0));
+  // One row per block, whatever else happened to it (`IMPL-120-R013`): the decisions list is the report's
+  // evidence that the emitter saw the block and chose, so a block missing from it is a bug in the emitter.
+  // A parity blob rides along in the row's reason instead of becoming a second row, which is what keeps
+  // `subject` unique in the list.
+  const emittedBy = new Map(emitted.map((entry) => [entry.subjectId, entry]));
+  const refusedBy = new Map(refused.map((entry) => [entry.subjectId, entry]));
+  const invalidBy = new Map(built.invalid.map((entry) => [entry.subjectId, entry.error]));
+  const decisions = input.blocks
+    .map((ir) => {
+      const subject = `block:${ir.id}`;
+      const blob = blobs.get(subject) ?? null;
+      const invalid = invalidBy.get(subject) ?? null;
+      const written = emittedBy.get(subject) ?? null;
+      const tail = invalid === null ? '' : `; no residual blob: ${invalid}`;
+      if (written !== null) {
+        const parity = policy === 'always' && blob !== null ? `, plus a parity blob at ${blob.path}` : '';
+        return {
+          subject,
+          action: 'emitted',
+          reason: `written to ${written.path} as ${written.name}()${parity}${tail}`,
+        };
+      }
+      const failure = refusedBy.get(subject);
+      const why = `${failure?.refusal.reason ?? 'unbound-temp'}: ${failure?.refusal.detail ?? 'unknown'}`;
+      if (blob !== null) {
+        return {
+          subject,
+          action: 'residual',
+          reason: `${why} → ${blob.path} (${blob.bytes} bytes, ${blob.sliceCount} slice(s), T${blob.tier})`,
+        };
+      }
+      return { subject, action: 'deferred to WP-120-09', reason: `${why}${tail}` };
+    })
+    .sort((a, b) => (a.subject < b.subject ? -1 : a.subject > b.subject ? 1 : 0));
 
   const bytes = all.reduce((sum, file) => sum + Buffer.byteLength(file.text, 'utf8'), 0);
   return {
     files: all,
     emitted,
     refused,
+    residual: built.blobs,
+    invalidResidual: built.invalid,
     decisions,
     counts: {
       blocks: input.blocks.length,
       emitted: emitted.length,
       refused: refused.length,
+      residual: built.blobs.length,
+      residualBytes: built.blobs.reduce((sum, blob) => sum + blob.bytes, 0),
       files: all.length,
       bytes,
     },
@@ -510,9 +757,4 @@ function ownerCharacterId(input: EmitInput, ir: ActionIR): number | null {
   }
   const owner = ownerCharacterOf(input.file, ir.byteRange.start);
   return owner;
-}
-
-/** `IMPL-120-R018`'s blob form, kept here so the residual pass and the frame emitter agree on the spelling. */
-export function residualBytesLiteral(bytes: readonly number[]): string {
-  return formatBytes(bytes);
 }

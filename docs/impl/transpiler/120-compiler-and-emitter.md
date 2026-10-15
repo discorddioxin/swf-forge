@@ -62,6 +62,8 @@ stages either — they are pure functions over the model and the IR, run on thei
 | --- | --- | --- |
 | `SF0500` | info | a pipeline stage has no implementation in this build; the run report names every such stage |
 | `SF0503` | warning | `--verify-cache` recomputed a cached stage and the bytes differed; the entry is evicted and the recomputed output is used |
+| `SF0505` | warning | a residual entry descriptor did not validate against its own blob (a slice outside it, or a front-end `residual` list that disagrees with the CFG), so no blob was written and the block stays deferred with the reason in its decision row. A rejected descriptor is a front-end bug, and this is where it surfaces rather than at load time (`IMPL-130-R025`) |
+| `SF0506` | error | `--vm.residual=forbid` and the movie has a tier-2 function: no blob is written, so the build fails and every such function is listed with its original byte count and its tier reason (`IMPL-050-R060`, `CMP-R026`) |
 | `SF0504` | warning | an artifact the run asked for on the emitted side was not written. So far only `--sourcemap`: `CMP-R014` defaults to writing maps, but `ActionIR` records byte ranges per action block and not per statement, so statement-level mappings would attribute lines to offsets they did not come from (`E-047`). The report names the artifact and the reason; a build that treats warnings as failures fails |
 
 A stage with no registered implementation is reported, never skipped silently — the same principle
@@ -257,7 +259,7 @@ open:
     buttons/
       button_<id>.ts       condition handler tables
     residual/
-      <fn>.bytecode.ts     T2 blobs + interpreter entry descriptors
+      <block>.bytecode.ts  blob + interpreter entry descriptor, per block the emitter cannot lower
     assets/
       index.ts             asset registry (typed)
   assets/                  ktx2/png/webp/ogg/mp4/... (content-hashed filenames)
@@ -294,6 +296,48 @@ already owns and lets a caller hand a script a root from another movie, which is
 project should be unable to express. `CMP-R018`'s worked example carries the other signature, a different
 path, and `Clip` imported from `@swf-forge/avm1`; that conflict is `E-048` rather than a silent divergence, and
 the file the example shows is not the file this document's tree names.
+
+### 4.2 What the residual path emits
+
+`IMPL-120-R018` fixes the shape — the block's original bytes plus a descriptor carrying its parameters,
+registers, preloads and constants — and leaves the file layout, the routing table and the policy semantics to
+this document. `emit/residual.ts` writes one module per blob at `src/residual/<block>.bytecode.ts`: a
+`Uint8Array` literal of the bytes as they sit in the decompressed tag stream, and an `entry` object. Nothing
+re-encodes an opcode — `IMPL-050-R068` forbids that for reserved and undefined codes, and copying is the only
+spelling that cannot invent a byte — and the slices the interpreter enters are the block-relative ones
+`IMPL-050-R057` already computes, which is why there is no rebasing step between a blob and its descriptor.
+
+Two checks run before a blob is written: every slice must lie inside the blob, and the front end's own
+`residual` list must agree with the slices recomputed from the CFG. A disagreement is `SF0505` and the block
+stays in the deferred set with the reason in its decision row, because emitting a descriptor the runtime would
+reject at load (`IMPL-130-R025`) moves a front-end bug into the player, where it reads as a black screen.
+
+Routing is a second table in the same timeline module, `residualEntries`: one row per trigger, keyed
+`frame:<n>` or `init`, naming the entries the interpreter runs in schedule order. A frame whose blocks all lower
+keeps its `frameScripts` row; a frame with any residual block moves whole, because the runtime gives a frame one
+entry point and a frame split between a call and a blob would need the emitted side to reach into the
+interpreter — a dependency `CMP-R027` makes visible to bundlers. So a residual module imports `Entry` from the
+contract and nothing else, and a movie with no residual row leaves the interpreter droppable. A sprite's own
+frame scripts are routed by the frames the front end records as referencing each block, and a frame association
+list that is empty gives the block no row: an exported function nobody calls is a smaller lie than a table that
+guesses when it runs. A clip-event handler on a placement still has no table, so its block is refused rather
+than given an unreferenced blob; that seam belongs to `WP-120-10` with the runtime's own entry API.
+
+`vm.residual` has three answers and the emitter is one of its two consumers (the tier-finalise pass is the
+other). `on-demand` writes a blob for a block a table can route — a blob nobody references executes nothing, so
+it would be output the build cannot defend. `always` writes one for every block, which is what makes
+`T-RT-101`'s claim of identical observable state on both paths measurable inside one build instead of across
+two configurations. `forbid` writes none and turns each tier-2 function into an error naming its size and reason.
+The byte count and reason also travel in `state.emit.residual`, so the report stage can render the `reports/`
+half of `CMP-R026` without re-deriving anything (`IMPL-120-R035`).
+
+Three things are deliberately absent. `IMPL-050-R068` permits caching blobs by content hash, which in a build
+that writes nothing is a per-run win only, so it waits for `WP-120-13`'s disk. The mixed frame form — lowered
+calls and interpreted blobs in one frame — needs the interpreter's entry API, `WP-120-10`'s. And the
+descriptor's field names are the emitter's proposal: `Entry` is in §4.1's surface list marked as awaiting the
+contract review that ratifies or renames it. Every boolean in a descriptor is written out, `false` included,
+because a field the runtime defaults is a field the two execution paths can disagree about; the drop-nulls
+convention that keeps the placement rows short does not cross into descriptors for that reason.
 
 - **IMPL-120-R014** Emitted TypeScript MUST compile under the project's `tsconfig` with `strict`,
   `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, and **no `any`** (ESLint-enforced,
@@ -404,6 +448,8 @@ because the report is produced by the plan pass (`budgets.json`).
 | `T-CMP-012` | dead-code pass: with `--prune-dead-code` off nothing is removed and every candidate is reported with its proof; with it on, a quarantined shape or an unparsed referencer payload disables pruning for the whole movie rather than proceeding partially, and a block is called unreachable only on the front end's own flag | F1 | P6 |
 | `T-CMP-013` | shake: the emitted group set equals the union over every block that survives pruning, an entry point's own union is reported beside it, a T2 block forces the full set, and no group is dropped while any kept block names it | F1 | P6 |
 | `T-CMP-011` | hoisting is sound: blocks differing only in position canonicalise equal, blocks differing only in a rebased jump or branch target do not (`IMPL-120-R034`), a T2 block is never hoisted, and every ungrouped or unhoisted block carries a reason | F1 | P6 |
+| `T-CMP-014` | a residual blob is the block's own bytes: the emitted literal re-derives to the same array as the tag stream's slice, the descriptor carries parameters, registers, preloads, constants and the CFG's slices, a descriptor failing either check (a slice outside the blob, or a front-end `residual` list that disagrees with the CFG) writes no blob and leaves the block deferred, and the module imports only the contract type so a build with no residual row keeps the interpreter droppable (`IMPL-120-R018`, `CMP-R027`) | F1 | P6 |
+| `T-CMP-015` | `--vm.residual` changes the emitted set in three distinguishable ways: `on-demand` writes a blob only where a table routes it, `always` writes one per block and keeps the lowered function beside it, `forbid` writes none, strands the frame with the reason, and fails the build with one error per tier-2 function naming its byte count and reason (`IMPL-050-R060`, `CMP-R026`) | F1 | P6 |
 
 ## 9. Work packages
 
@@ -417,7 +463,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-06 | Frame-script grouping/hoisting | WP-120-01, WP-030-09 | 3 | `passes/frames.ts`, §3.1 — **Done**, T-CMP-011 wired |
 | WP-120-07 | Asset planner + encoding scheduler | WP-070-07, WP-080-10, WP-090-10, WP-110-12 | 4 | `passes/assets.ts` |
 | WP-120-08 | Emitter: symbols, frames, classes, buttons | WP-120-05 | 6 | `emit/source.ts`, `emit/surface.ts`, `emit/lower.ts`, `emit/files.ts`, `emit/scaffold.ts`, `emit/index.ts` — **Done**; statement-level source maps are withheld and reported (`SF0504`, `E-047`), blocks this phase cannot lower go to `WP-120-09`'s residual path, and the double-build CI proof stays `WP-120-14` |
-| WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` |
+| WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` — **Done**, `T-CMP-014`/`T-CMP-015` wired: blobs are copied out of the tag stream and never re-encoded, a descriptor that would lie is refused with `SF0505`, all three `vm.residual` modes are honoured by the stage, and a frame carrying a residual block now runs interpreted instead of being dropped. Clip-event routing, the mixed frame form and the content-hash blob cache stay open, as §4.2 names |
 | WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | T-CMP-007 |
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | report writers |
 | WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007/009 |
@@ -452,3 +498,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.6 | 2026-10-14 | `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as pass objects on the runner spine, with §3.1 recording the five decisions the pass table left open. Two new rules: `IMPL-120-R033` (a synthetic name never embeds a source position) and `IMPL-120-R034` (a hoist candidate is position-independent but content-complete, and a T2 block is never hoisted), with obligations `T-CMP-010`/`T-CMP-011`. `T-CMP-001`'s dictionary permutation is what makes the first one measurable, and it is a test P5's `T-AVM1-FE-012` cannot be: shuffling a candidate array with an empty export map never moves a byte offset. The `WP-120-02` row here is corrected to 5 days with its deliverables, matching the roadmap. |
 | 1.7 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as pass objects on the spine, with `packages/compile/src/passes/{dead-code,shake}.ts` and 33 tests over real decoded fixtures. `R005` grows three clauses the fixtures forced — model blind spots count as unparsed referencers (`E-046`), an unresolvable reference is never an absence of references, and a `DoInitAction` block's owner is its schedule entry's sprite, not the tag's `inSprite` — and `R006` gains the fold rule for `timeline`, the group 040's §8.1 table cannot name (`E-045`). One new rule: `IMPL-120-R035` (a pass reads stage artifacts, never the live diagnostic sink — a warm build would otherwise prune what a cold one refused), which is the shape `ModelArtifact.readInterruptions` exists to give. `T-CMP-012`/`T-CMP-013` are wired to the two test files. |
 | 1.8 | 2026-10-14 | `WP-120-08` (the emitter) lands in four files under `src/emit/`. `source.ts` is the deterministic printer: number, string and table spelling (`REPO-R015`) and `CMP-R017`-shaped placement data. `surface.ts` is the closed contract of runtime identifiers emitted code may reference (§4.1), each entry citing the spec rule or marking itself a proposal, and a test fails if emitted output names anything off it. `lower.ts` lowers `ActionIR` to statements and refuses what it cannot lower. `files.ts` assembles the module set plus the generated `tsconfig.json`/`eslint.config.mjs`/`package.json` (`R014` bans, `R015` generated-not-copied). `emitStage` registers `emit` on the spine and returns files only: writing stays `WP-120-13`. A block that cannot be lowered is refused with a reason and deferred to `WP-120-09` residual-blob path rather than half-emitted, and `enumerate` plus `stack` operands are the two big deferrals. `SF0504` joins 2.1 for the withheld source maps |
+| 1.9 | 2026-10-14 | `WP-120-09` (residual blobs and entry descriptors) lands as `emit/residual.ts` plus routing in `emit/files.ts` and policy in `emit/index.ts`. A block the emitter cannot lower now ships its original bytes as a `Uint8Array` literal and an `entry` descriptor — parameters, registers, preloads, constants, the CFG's slices, the source range — so the interpreter parses nothing (`IMPL-120-R018`); the bytes are copied from the decompressed tag stream, which is what keeps `IMPL-050-R068`'s ban on re-serializing reserved codes unreachable by construction. A frame carrying a residual block moves to `residualEntries` and runs interpreted instead of being dropped, which shrinks the deferred set to blocks with no residual path either; sprite frame scripts are routed by the front end's frame associations, so an exported sprite function is no longer unreachable. Two codes join §2.1 — `SF0505` for a descriptor that failed to validate, `SF0506` for `--vm.residual=forbid` — and §4.2 records the four things this package deliberately leaves open. `T-CMP-014`/`T-CMP-015` are wired to the 10 new tests (34 in `emit.test.ts`). The residual set the emitter uses is wider than the tier-2 set `IMPL-050-R057` names, which is `E-049` |

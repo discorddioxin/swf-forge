@@ -18,6 +18,7 @@ import { requireArtifact } from '../pipeline.js';
 import type { Stage, StageContext, StageOutcome } from '../pipeline.js';
 import type { EmitInput, EmitPlan } from './files.js';
 import { emitFiles } from './files.js';
+import type { ResidualPolicy } from './residual.js';
 
 /** What the stage produced, in a shape the report passes (`WP-120-11`) can consume without re-deriving. */
 export interface EmitArtifact {
@@ -26,6 +27,11 @@ export interface EmitArtifact {
   readonly bytes: number;
   /** True when at least one block was deferred to `WP-120-09`; the exit gate reads this. */
   readonly hasDeferred: boolean;
+  /** The residual entries the run emitted, for `CMP-R026`'s `reports/` entry (byte count + reason travel in it). */
+  readonly residualCount: number;
+  readonly residualBytes: number;
+  /** The `--vm.residual` value the plan honoured, echoed so the report never has to re-read the config. */
+  readonly residualPolicy: ResidualPolicy;
 }
 
 export interface EmitStageOptions {
@@ -72,6 +78,7 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         table: state.names,
         frames: state.frames ?? null,
         shake: state.shake ?? null,
+        residualPolicy: ctx.config.vm.residual,
         header: {
           toolVersion: ctx.toolVersion,
           inputName: ctx.input.name,
@@ -80,6 +87,38 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         },
       };
       const plan = emitFiles(input);
+
+      // `SF0505`: a descriptor that would have lied. The block stays in the deferred set, which is the same
+      // outcome the emitter had before the residual path existed, but the reason is a front-end bug rather than
+      // a lowering limit and has to be visible as one.
+      for (const entry of plan.invalidResidual) {
+        ctx.diagnostics.emit({
+          code: Codes.RESIDUAL_DESCRIPTOR_INVALID ?? 'SF0505',
+          severity: 'warning',
+          message: `no residual blob for ${entry.subjectId}: ${entry.error}`,
+          offset: 0,
+          context: 'compile',
+        });
+      }
+
+      // `--vm.residual=forbid` (`IMPL-050-R060`, `CMP-R026`): no blob is written, so every T2 function is a
+      // build failure rather than a note, and the list has to name each one with its size and reason.
+      if (ctx.config.vm.residual === 'forbid') {
+        for (const ir of blocks) {
+          if (ir.tier !== 2) continue;
+          const subject = `block:${ir.id}`;
+          ctx.diagnostics.emit({
+            code: Codes.RESIDUAL_FORBIDDEN ?? 'SF0506',
+            severity: 'error',
+            message:
+              `--vm.residual=forbid: ${state.names.bySubject.get(subject) ?? subject} is tier 2 ` +
+              `(${ir.byteRange.end - ir.byteRange.start} bytes: ${ir.tierReasons.join(', ') || 'no reason recorded'}) ` +
+              'and cannot be emitted as TypeScript',
+            offset: 0,
+            context: 'compile',
+          });
+        }
+      }
 
       ctx.diagnostics.emit({
         code: Codes.SOURCEMAP_WITHHELD ?? 'SF0504',
@@ -104,7 +143,12 @@ export function emitStage(options: EmitStageOptions = {}): Stage {
         plan,
         fileCount: plan.files.length,
         bytes: plan.counts.bytes,
-        hasDeferred: plan.refused.length > 0,
+        // A block that ended up as a residual entry runs, so it is not "deferred": what the exit gate reads is
+        // whether anything is left with neither a lowered function nor a blob.
+        hasDeferred: plan.decisions.some((entry) => entry.action === 'deferred to WP-120-09'),
+        residualCount: plan.residual.length,
+        residualBytes: plan.counts.residualBytes,
+        residualPolicy: input.residualPolicy ?? 'on-demand',
       };
       return { state: { emit: artifact }, files };
     },

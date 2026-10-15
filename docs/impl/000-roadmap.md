@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.32 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.33 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -87,7 +87,7 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   records the five decisions those passes had to make, including the reading of doc 050's `R062` and
   `AVM1-R036` step 1 the phase had to adopt because P5's pass discards the export map — a measured gap (0 of 20 exported
   names appear among 149 recovered ones, `E-044`), not a stylistic preference; the P5-side fix is `WP-050-10`
-  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 7 work packages. `decode` waits on P6's own asset chain
+  and `WP-050-11` work, not something P6 may patch. **What remains:** the other 6 work packages. `decode` waits on P6's own asset chain
   (`WP-070-06`…`-09`, `WP-080-10`'s KTX2 half, `WP-080-11`, `WP-090-12`, `WP-110-12`), `emit` waits on P5's
   `WP-050-18` serializer for the losslessness claim it has to prove, and `WP-120-07` transitively on P0's
   unbuilt `WP-010-11` (§4.6 item F). P6's exit gate — a project that compiles with zero suppressions — is
@@ -127,14 +127,31 @@ components themselves. Each is a thin app over `packages/` (`TECH-SPEC.md` §3):
   deblocking bitmap and a payload our own reader over-ran leave nothing for a proof to read (`E-046`), so all
   three fail closed movie-wide. The fourth item is `IMPL-120`'s new `R035`, and it came from a defect in the first draft:
   reading `ctx.diagnostics` for a verdict makes a cached warm build prune what a cold build refused, so derived
-  signals belong on the stage artifact (`ModelArtifact.readInterruptions`). Doc 120 v1.7 carries the clauses.
+  signals belong on the stage artifact (`ModelArtifact.readInterruptions`). Doc 120 v1.7 carries the clauses. **`WP-120-09`** (residual blobs and entry descriptors) is the eighth, and it turns the emitter's refusals
+  into output rather than into gaps: a block the lowering tables cannot print ships as its own module holding that
+  block's original bytes, copied from the decompressed tag stream, plus an entry descriptor — parameters, register
+  slots, preload flags, the constant pool, the control-flow graph's block slices and the source range it came from
+  — so the interpreter parses nothing, and the re-encoding P5 forbids for reserved and undefined opcodes is
+  unreachable by construction. A frame carrying such a block is no longer dropped: it moves to a second table in the
+  same module and runs interpreted, and a sprite's own frame scripts are now routed by the frames the front end
+  records as referencing each block, so an exported sprite function is no longer unreachable. No blob is written
+  until its descriptor is checked against it — a slice past the blob's end, or a front-end residual list that
+  disagrees with the graph, is `SF0505`, and the block stays deferred rather than shipping a program counter that
+  can walk off the end. The residual mode decides the rest and the emitter honours all three settings: on-demand
+  writes a blob only where a table can route one (an unreferenced blob runs nothing), always writes one for every
+  block so the emitted and interpreted paths can be compared inside a single build, and forbid writes none and
+  fails the build with one error per tier-2 function naming its byte count and reason (`SF0506`). Over the 73
+  corpus inputs every one of the 87 refused root blocks gets a blob — 105 283 bytes — and none is left with no way
+  to run; the refusals are 68 unmodelled-op and 19 tier-2, which is also why the set the emitter treats as
+  residual is 87 blocks where P5's front end records 19 (`E-049`, open). Ten more tests, 34 in `emit.test.ts`, and
+  the surface list gains the descriptor type the runtime review still has to ratify.
 - **P7–P10 — Not started:** phase-owned acceptance has not begun. P3 decoders/assets and the P4 no-script renderer are prerequisites, not proof of P7 runtime execution, P8 playback/sync, P9 fidelity, or P10 video gates.
 - **P11 — In progress:** CI currently runs spec verification, typecheck, tests, a 10⁴-mutation smoke fuzz gate, build, lint, development audit, tag coverage, and a **browser lane** (headless Chromium over the shared §8 vectors — the P0-owned minimal lane of §4.2, which P11 extends into the three-engine matrix). The P11 release gates remain open: 24-hour fuzz history, the security suite, bundle/texture/audio/manifest budgets, and a decision register with no un-triaged entries.
 - **P12–P13 — Not started:** the design specs exist, but inspector and clean-engine phase acceptance has not begun.
 
 **Shared verification snapshot (2026-10-14):** `corepack pnpm build`, `typecheck` (now including
-`packages/compile/tsconfig.test.json`), `test` (**74 files / 922 tests**), `audit:dev`
-(**191 codes**, **597 rules**, **456 test ids — 239 cited / 215 unwired / 2 source-only**, `new=0`), `corpus:verify`
+`packages/compile/tsconfig.test.json`), `test` (**74 files / 932 tests**), `audit:dev`
+(**193 codes**, **597 rules**, **458 test ids — 242 cited / 213 unwired / 3 source-only**, `new=0`), `corpus:verify`
 (73/73 against the pinned manifest), `test:avm1-restart` (both reports identical), `test:browser` (**31 cases in headless Chromium 153.0.8010.0**, the same 26 vectors and the same pinned fingerprint as the Node lane), and `lint` pass. Carried forward from the 2026-10-11 snapshot: `python3 tools/verify_docs.py` (`ISSUES: 0`) and `corepack pnpm test:avm1-fuzz` (1,000,000 seeded mutations). These shared checks do not supersede the phase-specific open criteria above.
 
 Each phase's document-level detail lives in the per-area implementation specs; this document owns
@@ -817,3 +834,4 @@ art):
 | 1.30 | 2026-10-14 | P6's third and fourth work packages: `WP-120-05` (name assignment) and `WP-120-06` (frame-script grouping and hoisting) delivered as the first passes on the runner's pass spine, `T-CMP-001` wired and `T-CMP-010`/`T-CMP-011` added for doc 120's two new rules `R033`/`R034`, each negative-controlled by injecting the defect it forbids. `IMPL-120` → 1.6: §3.1 records the five decisions those passes had to make, and its `WP-120-02` row is aligned to the roadmap's 5 days — the drift `verify_docs.py`'s §7↔§10 cross-check caught when this document moved. The index follows to ≈ 668.5 d and §7's P6 row to 68 d |
 | 1.31 | 2026-10-14 | `WP-120-03` (dead-code pass) and `WP-120-04` (requirement shake) delivered as the next two objects on the pass spine, wiring `T-CMP-012`/`T-CMP-013`; `packages/compile` is at 117 tests across six files and the suite at 73/898. `IMPL-120` → 1.7: `R005` gains the three clauses the fixtures forced, `R006` gains the fold rule, and one new rule (`IMPL-120`'s `R035`: a pass takes its inputs from stage artifacts, never the live diagnostic sink — a cache hit re-emits nothing, so a sink-reading pass would prune on a warm build what it refused on a cold one). Two errata filed, both owned by P2 and neither patched from P6: `E-045` (the IR's `timeline` group has no §8.1 row; 17 of 119 corpus blocks in 11 of 73 movies) and `E-046` (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and an over-read that leaves `quarantined` unset while `SF0013` reports a *warning* at an offset inside the *next* tag — so no consumer can tell a partial payload from a complete one and no offset rule can attribute it). `errata.md` → 2.14, §2's P6 bullet now carries 6 of 14 work packages, and the shared snapshot is re-measured. |
 | 1.32 | 2026-10-14 | `WP-120-08` (the emitter) delivered as `packages/compile/src/emit/` — printer, runtime-surface contract, lowering, module assembly, generated scaffolding — and `emit` is registered on the spine, so a build returns files instead of reporting `SF0500`. Doc 120 → 1.8: `SF0504` joins §2.1 for the withheld source maps, §4's output tree gains the three generated project files the emitter must ship, §4.1 states the surface contract, and the §9 row records what the phase owns versus what `WP-120-09` and `WP-120-14` still owe. `E-047` filed (open, owned by P5's stack model and doc 020's map decision): the IR binds some pushed values without recording a `result`, and has no per-op offsets. `E-048` filed (open, owned by docs 020/120 jointly and `WP-120-10`): `CMP-R018`'s worked example contradicts the output tree, the frame-script signature and the contract module, and its import line does not resolve against the package it names — doc 120's new §4.1 records which way the emitter went and why. `errata.md` → 2.16. Shared snapshot re-measured: 922 tests in 74 files, 191 codes, `new=0`, `ISSUES: 0`, corpus 73/73. |
+| 1.33 | 2026-10-14 | `WP-120-09` (residual blobs and entry descriptors) delivered as `emit/residual.ts` with routing in `emit/files.ts` and policy in `emit/index.ts`: a block the emitter cannot lower ships as a `Uint8Array` of its own bytes from the decompressed tag stream plus a descriptor carrying parameters, registers, preloads, constants and the CFG's slices, so the interpreter parses nothing and nothing is re-encoded. A frame carrying such a block now runs interpreted instead of being dropped; a sprite's frame scripts are routed by the front end's frame associations; the three residual modes are honoured at the stage, with `forbid` failing the build per tier-2 function. `SF0505` (a descriptor that would lie) and `SF0506` (forbid) join doc 120's code table, `T-CMP-014`/`T-CMP-015` are wired to the 10 new tests, and doc 120 → 1.9 with a new §4.2 recording the routing shape and what stays open. `E-049` filed (open, owned by docs 050/120 jointly): the residual set is the tier-2 set doc 050 records and the lowering-refusal set doc 120 writes, and on the corpus that is 19 blocks against 87, 68 of them T0/T1 with no front-end slice list at all; `errata.md` → 2.17. Shared snapshot re-measured: 932 tests in 74 files, 193 codes, `new=0`, `ISSUES: 0`, corpus 73/73. P6 stands at 8 of 14 packages delivered, and `decode`/`plan`/`report` are still unregistered. |

@@ -1632,5 +1632,38 @@ two rules changed to match the example) — a joint decision for doc 020 and doc
 (`Clip`'s home, the timer accessor, whether `$` reaches globals) belongs to `WP-120-10`'s contract review,
 which is where the surface list gets either ratified or corrected.
 
+## E-049 — "residual" is defined twice, by tier in `IMPL-050-R057` and by lowering outcome in `IMPL-120-R018`, and on the corpus the two differ by 68 blocks (open)
+
+**Found in:** implementing `WP-120-09`, which has to decide, for every block, whether a blob exists.
+
+`IMPL-050-R057` makes `ActionIR.residual` — the block-relative slices an interpreter enters — a **tier-2** field,
+null otherwise. `IMPL-120-R018` makes the blob the answer to "a block this phase cannot lower", and the emitter's
+refusals are not tier verdicts. Over the 73 corpus inputs (119 root blocks) the two readings disagree on most of
+the set:
+
+| Measure | Count |
+| --- | --- |
+| blocks tiered T2, which is what `R057` gives a `residual` list for | 19 |
+| blocks the emitter refuses and therefore writes a blob for (`R018`'s set) | 87 |
+| refused T0/T1 blocks whose `ir.residual` is `null` | 68 |
+| refusal reasons behind those 87 | `unmodeled-op` 68, `tier-2` 19 |
+
+Neither number is wrong; they answer different questions, and the specs let a report line mean either. A runtime
+sized by the tier verdict — which is what `AVM1-D03` ("ship the interpreter only if something is residual") and
+`IMPL-050-R060`'s `forbid` failure both read against — would see 19 functions while the build that ships carries
+87, and `AVM1-R071`'s per-function tier entry in `divergence.json` is written from one of them.
+
+**Resolution for P6 (in code, this phase).** The emitter keeps both answers and states which it used: slices are
+recomputed from the CFG for every block (the only way the 68 get a blob at all), the front end's `residual` list is
+a cross-check whose disagreement is `SF0505` rather than the source of truth, and `state.emit.residual` carries
+bytes plus reason per entry so the `CMP-R026` line can name the set it is counting. `IMPL-120-R018`'s wording is
+what `emit/residual.ts` implements.
+
+**Asked of the spec owners.** `IMPL-050-R057` should widen `residual` to "tier 2, **or** a block whose lowering was
+refused": the field is already derived from the CFG, so dropping the tier condition costs nothing and removes a
+second derivation from the emitter. `IMPL-120-R018` should then say which of the two sets `--vm.residual=forbid`
+gates, since `CMP-R026`'s "a T2 function MUST be accompanied by…" is written against the tier set while the flag
+is what makes a build fail. A joint decision for doc 050 and doc 120, not P6's.
 | 2.15 | 2026-10-14 | `E-047`, from `WP-120-08`: the IR binds some pushed values without recording a `result` (`GetTime`, `PushDuplicate`, `Enumerate`), leaving 17 of 93 corpus T0 root blocks reading a temp nothing defines, and it carries no per-op offsets, so statement-level source maps are unavailable. P6 reconciles the def sites and refuses a block it cannot account for (`WP-120-09` takes the blob), refuses `Enumerate` rather than invent an iteration cursor, and reports `SF0504` for the withheld maps instead of writing a block-granular one |
 | 2.16 | 2026-10-14 | `E-048`, from `WP-120-08`: `CMP-R018`'s worked example contradicts doc 120 §4's output tree, `IMPL-120-R017`'s frame-script signature, and doc 130's contract module — and it imports `Clip` from `@swf-forge/avm1`, which publishes no such type, so copying the example emits a project that fails its own build. P6 follows the normative rules, records the resolution in doc 120's new §4.1, and leaves the example to the spec owners; the timer accessor the example assumes became a labelled proposal in `emit/surface.ts` |
+| 2.17 | 2026-10-14 | `E-049`, from `WP-120-09`: the residual set is the tier-2 set in `IMPL-050-R057` and the lowering-refusal set in `IMPL-120-R018`, and on the corpus 68 of 87 refused blocks are T0/T1 with `residual: null` — the emitter recomputes slices from the CFG and treats the front end's list as a cross-check (`SF0505`), while `AVM1-D03`, `IMPL-050-R060` and `AVM1-R071` all read a number the specs never pin down |

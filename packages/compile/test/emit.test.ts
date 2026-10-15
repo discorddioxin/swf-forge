@@ -1,5 +1,7 @@
 /**
- * The emitter — `WP-120-08`.
+ * The emitter — `WP-120-08`, and the residual path — `WP-120-09`, which is the evidence for **`T-CMP-014`**
+ * (a blob is the block's own bytes, and a descriptor that would lie is refused) and **`T-CMP-015`** (the three
+ * `--vm.residual` modes change the emitted set in three distinguishable ways).
  *
  * These tests read the emitted *text*, because that is the artifact: a claim about the emitter that only holds
  * for an internal data structure is worth nothing to the person who has to review the generated project. So the
@@ -41,11 +43,15 @@ import {
   analyzeStage,
   assessBlock,
   buildNameTable,
+  buildResidualBlobs,
+  descriptorProblem,
   emitFiles,
   emitStage,
+  framesPass,
   groupFrameScripts,
   lowerFunction,
   modelStage,
+  residualImport,
   namesPass,
   readStage,
   render,
@@ -55,7 +61,7 @@ import {
 } from '../src/index.js';
 import type { ActionIR, BasicBlock, Operand, Op, Terminator } from '@swf-forge/avm1';
 import type { CharacterModel } from '@swf-forge/swf';
-import type { EmitPlan } from '../src/index.js';
+import type { EmitPlan, ResidualPolicy } from '../src/index.js';
 
 const TRACE = 0x26;
 const STOP = 0x07;
@@ -154,7 +160,12 @@ interface Fixture {
  * A movie: one exported shape, a `DoAction` block on frame 1, a sprite with a placement and an `init` script,
  * and a `DoInitAction` pointing at that sprite. The frames argument supplies extra movie-level blocks.
  */
-function fixture(records: readonly number[] | null, extra: readonly (readonly number[])[] = []): Fixture {
+/** `policy` is `--vm.residual`, so one helper covers the emitter's three answers to a block it cannot lower. */
+function fixture(
+  records: readonly number[] | null,
+  extra: readonly (readonly number[])[] = [],
+  policy: ResidualPolicy = 'on-demand',
+): Fixture {
   const parts = [
     defineTag(Tag.DefineShape, 10),
     defineSprite(11, 1, concat(placeObject2(10, 1), showFrames(1), endTag())),
@@ -184,9 +195,20 @@ function fixture(records: readonly number[] | null, extra: readonly (readonly nu
     table,
     frames,
     shake: null,
+    residualPolicy: policy,
     header: { toolVersion: 'test-1', inputName: 'game.swf', sha256: sha256Hex(bytes), movie: 'main' },
   });
   return { bytes, plan, file, model, irs, table, frames };
+}
+
+/**
+ * Unwrap-or-fail: `noUncheckedIndexedAccess` makes the first element of a plan's list `| undefined`, and a
+ * `RegExpExecArray` is `| null`, so an assertion failure should name what is missing instead of tripping a
+ * non-null assertion in the middle of a test.
+ */
+function need<T>(value: T | undefined | null, what: string): T {
+  if (value === undefined || value === null) throw new Error(`expected a ${what}`);
+  return value;
 }
 
 function textOf(plan: EmitPlan, path: string): string {
@@ -308,11 +330,12 @@ describe('deferring what cannot be lowered (WP-120-09)', () => {
     expect(assessBlock(ir).refusal?.reason).toBe('unbound-temp');
   });
 
-  it('drops a frame whose only block was deferred instead of emitting a dangling call', () => {
-    // An unbalanced `Push` (a string with no NUL) tiers the block T2, so nothing is lowerable for frame 1.
+  it('defers a frame whose block cannot be lowered, without emitting a dangling call', () => {
+    // An unbalanced `Push` (a string with no NUL) tiers the block T2, so nothing is lowerable for frame 1. Since
+    // `WP-120-09` the frame is not simply gone: it moves to `residualEntries`, asserted there.
     const { plan } = fixture([0x96, 0x03, 0x00, 0x61, STOP, END]);
     const movie = textOf(plan, 'src/frames/movie.ts');
-    expect(movie).toContain('// deferred to WP-120-09');
+    expect(movie).not.toContain('no residual blob');
     expect(movie).toContain('export const frameScripts: readonly FrameScript[] = [];');
     expect(plan.refused.length).toBeGreaterThan(0);
     for (const call of movie.match(/(\w+)\(vm, target, frame\);/gu) ?? []) {
@@ -327,7 +350,7 @@ describe('deferring what cannot be lowered (WP-120-09)', () => {
     expect(new Set(subjects).size).toBe(subjects.length);
     for (const entry of plan.decisions) {
       expect(entry.reason.length).toBeGreaterThan(0);
-      expect(['emitted', 'deferred to WP-120-09']).toContain(entry.action);
+      expect(['emitted', 'residual', 'deferred to WP-120-09']).toContain(entry.action);
     }
     expect(plan.counts.emitted + plan.counts.refused).toBe(plan.counts.blocks);
   });
@@ -569,6 +592,156 @@ describe('buttons and classes', () => {
   });
 });
 
+describe('T-CMP-014 — residual blobs and entry descriptors (WP-120-09, IMPL-120-R018)', () => {
+  // An unbalanced `Push` — a string operand with no NUL terminator — tiers the block T2, which is the cheapest
+  // honest way to get a block the emitter refuses without hand-faking an IR.
+  const UNLOWERABLE = [0x96, 0x03, 0x00, 0x61, STOP, END];
+
+  it('copies the block bytes verbatim rather than re-serializing them (IMPL-050-R068)', () => {
+    const f = fixture(UNLOWERABLE);
+    const blob = need(f.plan.residual[0], 'residual blob');
+    const ir = need(
+      f.irs.find((candidate) => `block:${candidate.id}` === blob.subjectId),
+      'the deferred IR',
+    );
+    const expected = [...f.file.body.subarray(ir.byteRange.start, ir.byteRange.end)];
+    const module = textOf(f.plan, blob.path);
+    const literal = /export const bytes: Uint8Array = Uint8Array\.of\(([^)]*)\);/u.exec(module);
+    expect(literal, module).not.toBeNull();
+    const printed = (need(literal, 'the blob literal')[1] ?? '').split(',').map((text) => Number(text.trim()));
+    expect(printed).toEqual(expected);
+    // The descriptor's provenance agrees with the file, so `verify` can re-derive the blob from the source.
+    expect(module).toContain(`sourceOffset: ${ir.byteRange.start},`);
+    expect(module).toContain(`sourceLength: ${expected.length},`);
+    expect(blob.bytes).toBe(expected.length);
+  });
+
+  it('writes a descriptor that carries params, registers, preloads and constants (IMPL-120-R018)', () => {
+    const f = fixture(UNLOWERABLE);
+    const plan = f.plan;
+    const blob = need(plan.residual[0], 'residual blob');
+    const ir = need(
+      f.irs.find((candidate) => `block:${candidate.id}` === blob.subjectId),
+      'the deferred IR',
+    );
+    const module = textOf(plan, blob.path);
+    expect(module).toContain('export const entry: Entry = {');
+    expect(module).toContain('bytecode: bytes,');
+    expect(module).toContain('kind: "timeline",');
+    expect(module).toContain('params: [],');
+    expect(module).toContain('registers: 0,');
+    expect(module).toContain('preloads: { this: false, arguments: false, super: false, root: false');
+    expect(module).toContain('constants: [],');
+    // Every boolean is written, including `false`: an omitted field would be a default the runtime picked, and
+    // the emitted and interpreted paths are only comparable if neither of them defaults anything.
+    expect(module).toContain(`terminated: ${ir.terminated ? 'true' : 'false'},`);
+    expect(module).toContain(`slices: [{ block: 0, offset: 0, length: ${blob.bytes}, unreachable: false }],`);
+    expect(module).toContain(blob.reason);
+    expect(blob.sliceCount).toBe(1);
+  });
+
+  it('routes the frame to the interpreter, and names only entries the module imports', () => {
+    const { plan } = fixture(UNLOWERABLE);
+    const blob = need(plan.residual[0], 'residual blob');
+    const movie = textOf(plan, 'src/frames/movie.ts');
+    expect(movie).toContain('export const residualEntries: readonly');
+    expect(movie).toContain(`{ on: "frame:1", entries: [${blob.entrySymbol}] }`);
+    expect(movie).toContain(`import { entry as ${blob.entrySymbol} } from '../residual/`);
+    for (const symbol of movie.match(/\bentry_(\w+)/gu) ?? []) {
+      expect(movie, `${symbol} is used without an import`).toContain(`as ${symbol} }`);
+    }
+    const decision = need(
+      plan.decisions.find((entry) => entry.subject === blob.subjectId),
+      'a decision row',
+    );
+    expect(decision.action).toBe('residual');
+    expect(decision.reason).toContain(`${blob.bytes} bytes`);
+    // `CMP-R026`: the byte count and the reason travel with the entry, for the `reports/` side of the contract.
+    expect(plan.counts.residual).toBe(1);
+    expect(plan.counts.residualBytes).toBe(blob.bytes);
+  });
+
+  it('imports a blob module by a relative `.js` specifier, since the output resolves with NodeNext', () => {
+    const { plan } = fixture(UNLOWERABLE);
+    const blob = need(plan.residual[0], 'residual blob');
+    const leaf = blob.path.slice('src/residual/'.length).replace(/\.ts$/u, '.js');
+    for (const from of ['src/frames/movie.ts', 'src/frames/sprite_11.ts', 'src/buttons/button_42.ts']) {
+      expect(residualImport(blob, from)).toBe(`import { entry as ${blob.entrySymbol} } from '../residual/${leaf}';`);
+    }
+  });
+
+  it('keeps the residual module free of any interpreter import (CMP-R027)', () => {
+    const { plan } = fixture(UNLOWERABLE);
+    const blob = need(plan.residual[0], 'residual blob');
+    const module = textOf(plan, blob.path);
+    expect(module).toContain("@swf-forge/runtime/contract'");
+    for (const line of module.split('\n').filter((text) => text.startsWith('import '))) {
+      expect(line).not.toMatch(/interp|execute|vm\b/u);
+    }
+    expect(module).not.toMatch(/\bnew Function\b|\beval\s*\(/u);
+  });
+
+  it('gives every block a blob under --vm.residual=always, and still emits the function', () => {
+    const { plan } = fixture([...ARITHMETIC, ...HELLO, STOP, END], [], 'always');
+    const movie = textOf(plan, 'src/frames/movie.ts');
+    expect(plan.counts.emitted).toBeGreaterThan(0);
+    expect(plan.counts.residual).toBe(plan.counts.blocks);
+    // The frame runs as emitted code; the blob exists so the two paths can be compared (T-RT-101).
+    expect(movie).toContain('{ frame: 1, run: frame_1 }');
+    expect(movie).toContain(
+      'export const residualEntries: readonly { readonly on: string; readonly entries: readonly Entry[] }[] = [];',
+    );
+    const row = need(
+      plan.decisions.find((entry) => entry.action === 'emitted'),
+      'an emitted row',
+    );
+    expect(row.reason).toContain('parity blob at src/residual/');
+  });
+
+  it('writes no blob and leaves the frame stranded under --vm.residual=forbid', () => {
+    const { plan } = fixture(UNLOWERABLE, [], 'forbid');
+    expect(plan.residual.length).toBe(0);
+    expect(plan.files.filter((entry) => entry.path.startsWith('src/residual/')).length).toBe(0);
+    const movie = textOf(plan, 'src/frames/movie.ts');
+    expect(movie).toContain('no residual blob for these frames');
+    expect(movie).toContain(
+      'export const residualEntries: readonly { readonly on: string; readonly entries: readonly Entry[] }[] = [];',
+    );
+  });
+
+  it('refuses a descriptor whose slice runs past the blob, and keeps the block deferred', () => {
+    const f = fixture(UNLOWERABLE);
+    const ir = need(
+      f.irs.find((candidate) => candidate.tier === 2),
+      'a T2 block',
+    );
+    const bytes = f.file.body.subarray(ir.byteRange.start, ir.byteRange.end);
+    // A block whose recorded residual list disagrees with its CFG is a front-end bug, and the emitter says so
+    // rather than shipping a program counter that walks off the end of the blob.
+    const tampered = { ...ir, residual: [{ blockId: 0, offset: 0, length: bytes.length + 8 }] };
+    expect(descriptorProblem(f.file, tampered as ActionIR, bytes)).toContain('disagree');
+    // And a block with no executable slice cannot be entered at all.
+    const empty = { ...ir, byteRange: { start: 0, end: 4 }, blocks: [], residual: null };
+    expect(descriptorProblem(f.file, empty as ActionIR, new Uint8Array(4))).toContain('no executable basic block');
+    const built = buildResidualBlobs(f.file, 'game.swf', [
+      { ir: tampered as ActionIR, subjectId: `block:${ir.id}`, reason: 'test' },
+    ]);
+    expect(built.blobs.length).toBe(0);
+    expect(need(built.invalid[0], 'a refusal reason').error).toContain('disagree');
+  });
+
+  it('produces byte-identical residual modules on a second run', () => {
+    const first = fixture(UNLOWERABLE).plan;
+    const second = fixture(UNLOWERABLE).plan;
+    const files = (plan: EmitPlan) =>
+      plan.files
+        .filter((entry) => entry.path.startsWith('src/residual/'))
+        .map((entry) => `${entry.path}\n${entry.text}`);
+    expect(files(second)).toEqual(files(first));
+    expect(files(first).length).toBeGreaterThan(0);
+  });
+});
+
 describe('the emit stage', () => {
   function run(stages: 'full' | 'no-names') {
     const { bytes } = fixture([...ARITHMETIC, ...HELLO, STOP, END]);
@@ -588,6 +761,48 @@ describe('the emit stage', () => {
     });
     return { result, sink };
   }
+
+  it('T-CMP-015: fails the build under --vm.residual=forbid, listing every tier-2 function (IMPL-050-R060)', () => {
+    // The unbalanced `Push` again, driven through the stage so the *diagnostics* are the subject: `forbid`
+    // writes no blob, so each tier-2 function has to surface as an error carrying its size and its reason
+    // (CMP-R026 asks for byte count + reason per T2 function, and the report renders this list).
+    const { bytes } = fixture([0x96, 0x03, 0x00, 0x61, STOP, END]);
+    rmSync(outDir(), { recursive: true, force: true });
+    const sink = new DiagnosticSink();
+    const forbidden = runPipeline({
+      input: bytes,
+      inputName: 'game.swf',
+      config: resolveForgeConfig({ input: 'game.swf', outDir: outDir(), vm: { residual: 'forbid', allow: [] } }),
+      toolVersion: 'test-1',
+      stages: [readStage('game.swf'), modelStage(), analyzeStage(), emitStage()],
+      passes: [namesPass(), framesPass()],
+      diagnostics: sink,
+    });
+    const errors = forbidden.diagnostics.items.filter((entry) => entry.code === 'SF0506');
+    expect(errors.length).toBeGreaterThan(0);
+    expect(need(errors[0], 'an SF0506 error').severity).toBe('error');
+    expect(need(errors[0], 'an SF0506 error').message).toContain('cannot be emitted as TypeScript');
+    expect(forbidden.state.emit?.residualPolicy).toBe('forbid');
+    expect(forbidden.state.emit?.plan.residual.length).toBe(0);
+    expect(forbidden.state.emit?.hasDeferred).toBe(true);
+    expect(existsSync(outDir())).toBe(false);
+
+    // The same movie under the default policy has a residual path, so nothing is left deferred: the exit gate
+    // reads "is there no way to run this", not "was anything refused". The `frames` plan is what routes a movie
+    // block, so the run needs the pass as well — `IMPL-120-R012` lets emission go without it, and the frame
+    // table (with both its kinds of row) is the part that is then missing.
+    const allowed = runPipeline({
+      input: bytes,
+      inputName: 'game.swf',
+      config: resolveForgeConfig({ input: 'game.swf', outDir: outDir() }),
+      toolVersion: 'test-1',
+      stages: [readStage('game.swf'), modelStage(), analyzeStage(), emitStage()],
+      passes: [namesPass(), framesPass()],
+      diagnostics: new DiagnosticSink(),
+    });
+    expect(allowed.state.emit?.residualCount).toBeGreaterThan(0);
+    expect(allowed.state.emit?.hasDeferred).toBe(false);
+  });
 
   it('registers emit on the spine, so the run is complete rather than unregistered', () => {
     const { result } = run('full');

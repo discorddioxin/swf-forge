@@ -221,6 +221,8 @@ export const Codes = {
   STAGE_UNIMPLEMENTED: 'SF0500',
   CACHE_DRIFT: 'SF0503',
   SOURCEMAP_WITHHELD: 'SF0504',
+  RESIDUAL_DESCRIPTOR_INVALID: 'SF0505',
+  RESIDUAL_FORBIDDEN: 'SF0506',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -713,6 +715,17 @@ const REGISTRY: Record<string, CodeInfo> = {
     code: 'SF0504',
     severity: 'warning',
     meaning: 'an emitted-output artifact a switch asked for was not written; the run report names which and why',
+  },
+  SF0505: {
+    code: 'SF0505',
+    severity: 'warning',
+    meaning:
+      'a residual entry descriptor did not validate against its blob, so no blob was written and the block stays deferred',
+  },
+  SF0506: {
+    code: 'SF0506',
+    severity: 'error',
+    meaning: '--vm.residual=forbid and the movie has a tier-2 function; the build fails and every one is listed',
   },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };

@@ -23,49 +23,13 @@ function head(header: EmitHeader, timeline: string): string {
 }
 
 /**
- * The bans, as data. A test asserts each entry here appears in the written config, so adding a rule to the
- * prose without wiring it into the emitted project fails loudly rather than quietly.
+ * The ban list itself lives in `./bans.js` (`WP-120-12`), because `IMPL-120-R016` requires each entry to be a lint
+ * rule in the emitted project *and* a check in `verify` — two renderers of one policy, so the policy has one home.
+ * It is re-exported here so the scaffolding's consumers keep the path they already import, and
+ * `test/emit.test.ts` asserts the `marker` of every entry appears in the generated `eslint.config.mjs` below: an
+ * entry added to the list without wiring it into the emitted project fails loudly instead of quietly.
  */
-/**
- * The bans, as data with the exact text the written config must contain. A test asserts every `marker` appears
- * in `eslint.config.mjs`, so adding a ban to prose — or to this list — without wiring it into the emitted
- * project fails loudly instead of quietly.
- */
-export const EMITTED_BANS: readonly { readonly rule: string; readonly marker: string; readonly why: string }[] = [
-  { rule: 'no-eval', marker: "'no-eval': 'error'", why: 'IMPL-120-R014: nothing may synthesise code from a string' },
-  { rule: 'no-implied-eval', marker: "'no-implied-eval': 'error'", why: 'the same ban, for the timer string forms' },
-  {
-    rule: 'no-new-func',
-    marker: "'no-new-func': 'error'",
-    why: 'IMPL-120-R014: `Function(...)` is eval by another name',
-  },
-  {
-    rule: 'no-with',
-    marker: "'no-with': 'error'",
-    why: 'AVM1-R034: scope chains are modelled, not spelled with `with`',
-  },
-  {
-    rule: 'AwaitExpression',
-    marker: '"selector": "AwaitExpression"',
-    why: 'AVM1-R039: AVM1 has no suspension point, so awaiting would reschedule frames',
-  },
-  {
-    rule: 'ForInStatement',
-    marker: '"selector": "ForInStatement"',
-    why: 'AVM1-R038: JS property order is not the AVM1 enumeration order',
-  },
-  { rule: 'Proxy', marker: '"name": "Proxy"', why: 'AVM1-R037: AVM1 objects are modelled with slot maps, not proxied' },
-  {
-    rule: 'Math.random',
-    marker: '"property": "random"',
-    why: 'REPO-R015: determinism, and the runtime owns the seeded generator',
-  },
-  {
-    rule: 'no-explicit-any',
-    marker: "'@typescript-eslint/no-explicit-any': 'error'",
-    why: 'IMPL-120-R014: `any` hides a tier decision from the reader',
-  },
-];
+export { EMITTED_BANS, type EmittedBan } from './bans.js';
 
 /** `IMPL-120-R015`: the three files a generated project needs to build, lint and be opened in an editor. */
 export function scaffoldFiles(header: EmitHeader): { readonly path: string; readonly text: string }[] {
@@ -89,6 +53,7 @@ export default [
         'error',
         { "name": "Proxy", "message": "AVM1 objects are modelled, not proxied (AVM1-R037)." },
         { "name": "location", "message": "navigation comes from the manifest, not from a global (IMPL-120-R032)." },
+        { "name": "document", "message": "the shell owns the document; a ported movie writes to the canvas it is given (SEC-§3)." },
       ],
       'no-restricted-properties': [
         'error',
@@ -100,6 +65,7 @@ export default [
         { "selector": "ForInStatement", "message": "JS enumeration order is not AVM1 order (AVM1-R038)." },
         { "selector": "NewExpression[callee.name='Function']", "message": "no code synthesis (IMPL-120-R014)." },
         { "selector": "CallExpression[callee.object.name='eval']", "message": "no code synthesis (IMPL-120-R014)." },
+        { "selector": "Property[key.name=/^(?:innerHTML|outerHTML|insertAdjacentHTML)$/]", "message": "movie text is data, never markup (SEC-§3)." },
       ],
     },
   },

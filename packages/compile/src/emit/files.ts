@@ -51,6 +51,16 @@ import { surfaceImports } from './surface.js';
 /** A module's rendered chunks are a list; the printer accepts both, and so do these helpers. */
 type Chunks = Chunk[];
 
+/**
+ * The emitted symbols that exist **for the host application**, so `IMPL-120-R024`'s "referenced at least once"
+ * requirement is satisfied by declaration rather than by a caller that cannot exist yet. `src/manifest.ts`'s
+ * `manifest` is the case the emitter cannot close from inside: `CMP` §5's example has the app shell read the typed
+ * manifest, and nothing in the generated project imports it, so a check that walked only `src/**` would warn on
+ * every build until a porter silenced it — and a check that always warns is a check that gets turned off.
+ * `verify` treats this list as the project's own `--allow-unreferenced` default.
+ */
+export const EMITTED_PUBLIC_EXPORTS: readonly string[] = ['src/manifest.ts#manifest'];
+
 export interface EmitHeader {
   readonly toolVersion: string;
   readonly inputName: string;

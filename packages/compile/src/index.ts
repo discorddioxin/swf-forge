@@ -174,6 +174,11 @@ export type {
 } from './emit/manifest.js';
 export type { ResidualBlob, ResidualBuildResult, ResidualPolicy, ResidualRequest } from './emit/residual.js';
 export { EMITTED_BANS, scaffoldFiles } from './emit/scaffold.js';
+export { codeOnly, runBans } from './emit/bans.js';
+export { EMITTED_PUBLIC_EXPORTS } from './emit/files.js';
+export type { BanHit, EmittedBan } from './emit/bans.js';
+export { compareBuilds, verifyProject } from './verify.js';
+export type { VerifyCheck, VerifyFile, VerifyFinding, VerifyNotRun, VerifyOptions, VerifyResult } from './verify.js';
 export {
   assessBlock,
   binopForm,

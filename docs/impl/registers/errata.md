@@ -1730,6 +1730,46 @@ replace `--video-native` with a gate that exists, or point it at `WP-110-06`'s o
 do, "every diagnostic" in a build artifact is unachievable and the report says so.
 
 
+## E-052 — `CMP` §4.10's `verify` table asks for three checks an emitted project cannot answer, and `T-CMP-009`'s anchor half has nothing to bite (open)
+
+**Found in:** implementing `WP-120-12`, whose checks are `IMPL-120-R024`'s list and whose failure semantics are `CMP`
+§4.10's table.
+
+**What the specs ask, and what an emitted project contains.** Three of §4.10's seven rows are not properties of the
+bytes `verify` is given, at this phase or at any: "Emitted project compiles under `tsc --strict` | error in CI" is a
+*build* of the project, and a table for a pure checker that lists a compiler run alongside four text scans invites an
+implementation that shells out to `tsc` from a function whose contract is a file map (and then must explain why its
+diagnostics are not diagnostics). "Declared budgets are within TST-§7 targets | warning" reads `budgets.json`, which
+`IMPL-120-R028` gives to `WP-120-07` and which no P6 build writes. And "Every `assets/` file is referenced by the
+manifest and vice versa" has an empty left side in P6, because the emitter writes no `assets/**` at all — the
+manifest's nine asset sections are absent for the reason §4.3 states (`SF0507`). The fourth problem is a term, not a
+row: "Every resource handle referenced by `src/**` exists" names no construct. In an emitted project a handle reaches
+code through the manifest — asset paths are manifest string values (§4.3), and `src/**` contains no `assets/`
+literal, no `import()`, no URL — so the row either duplicates `checkManifestAssets` or has to be read as something
+else, and what it is *not* is a check on the SWF's own references. `T-CMP-009`'s first half has the same shape from
+the other side: it asks for output "for a fixture carrying `NamedAnchor` and scene data" to contain no `location`
+read, and while the decoder models both (`decodeFrameLabel`'s anchor byte, `sceneLabelEntries`), the emitter never
+addresses them — anchors arrive in the manifest and are consumed by the runtime — so the assertion is an absence,
+and it passes as readily for a movie with no anchor as for one with three.
+
+**Resolution for P6 (in code).** `verify` runs the four checks that are functions of the project's bytes and reports
+the other three as `notRun` rows, each naming the work package that can run it, rather than returning an empty
+finding list for a check that looked at nothing (`IMPL-120`'s new §4.5 states the rule). The resource-handle row is
+implemented as the dangling-reference check — a relative import that resolves to no emitted file, or to a file that
+does not export the name it is asked for — which is the only handle form `src/**` has, and it is also the cheap static
+form of the `tsc` row, so a porter sees the two failure modes that actually happen (a module the emitter renamed, a
+symbol it stopped exporting) without a compiler. `T-CMP-009` is wired as written — anchor fixture emitted, verified
+clean, then one injected `window.location.hash` read reported — with this entry alongside so the row is not later
+read as proof that anchor addressing was checked.
+
+**Asked of the spec owners.** `CMP` §4.10: name the referent of "resource handle", or replace the row with the
+reference the emitter really writes; move the `tsc --strict` and budget rows into `IMPL-120` §6 as CLI/CI
+obligations, where running a compiler belongs; and scope the asset rows "from `WP-120-07` onward", since until then
+the left side of "every `assets/` file" is empty by construction. `T-CMP-009`: say what an anchor or a scene is
+expected to *produce* in emitted output; if the answer is "nothing, it is carried in the manifest", then the decode
+half belongs to P2's tests and P6's half is the injected-`location` case — which is what this phase wired.
+
 | 2.17 | 2026-10-14 | `E-049`, from `WP-120-09`: the residual set is the tier-2 set in `IMPL-050-R057` and the lowering-refusal set in `IMPL-120-R018`, and on the corpus 68 of 87 refused blocks are T0/T1 with `residual: null` — the emitter recomputes slices from the CFG and treats the front end's list as a cross-check (`SF0505`), while `AVM1-D03`, `IMPL-050-R060` and `AVM1-R071` all read a number the specs never pin down |
 | 2.18 | 2026-10-14 | `E-050`, from `WP-120-10`: `CMP-R013`'s mandated generated header begins with `/* eslint-disable */`, a suppression `IMPL-120-R014`/`REPO-R011` forbid in emitted code and that would mute the very lint `WP-120-12` exists to run; and `AST` §6 asks `forge.manifest.json` for `movie.scaleMode`/`movie.align`, which no SWF field, model record or config key carries (`RT-R040` routes the equivalent through `fscommand`), while `CMP` §5 puts the same pair under `stage` — P6 emits neither, writes `package.json` as strict JSON with a `"//"` provenance field instead of a comment, and asks the spec owners to name one home and one nesting for the two fields |
 | 2.19 | 2026-10-15 | `E-051`, from `WP-120-11`: `ARCH-R003` is defined twice in `000-architecture.md` and no gate can see it (`verify_docs` §14 checks only impl docs and the two colliding design specs); `IMPL-120-R021` requires the state of a `--video-native` gate that exists in no config, CLI surface or design rule; doc 120 §4's root `porting-notes.json` and `CMP` §4.9/`ARCH-R003`'s `reports/porting-notes.md` are two homes for one file, so P6 writes both with the markdown as a projection of the JSON; and "every diagnostic" cannot be listed by a report at all, because the sink is not part of a cache hit (`CMP-R040`) and its span attribution can attach a container-level error to a dictionary entry — P6's report is artifact-sourced, says so per row and per file, and asks `WP-120-14` to decide whether diagnostics belong on a stage's cacheable outcome |
+| 2.20 | 2026-10-15 | `E-052`, from `WP-120-12`: `CMP` §4.10's `verify` table asks for a compiler run, a budget file and an asset directory that an emitted P6 project does not have, and its "resource handle" row names no construct `src/**` can contain; `T-CMP-009`'s `NamedAnchor` half asserts an absence the emitter cannot violate, because anchors reach the runtime through the manifest. `verifyProject` runs the four checks that are functions of the project's bytes, reports the other three as `notRun` rows with their owners, implements the handle row as the dangling-import check, and wires `T-CMP-009` with this entry beside it |

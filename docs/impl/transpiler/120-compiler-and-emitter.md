@@ -460,6 +460,67 @@ tolerance, which is what the decision register exists to prevent. `CMP` §4.10's
   MUST reference them; duplicate payloads MUST be deduplicated to one file with multiple manifest
   entries (design `REPO-D06`).
 
+### 4.5 `verify`, over a project rather than a build
+
+`IMPL-120-R024` names six things `verify` MUST check. `CMP` §4.10 gives seven rows and calls it a command that
+"parses the emitted project (not just the SWF)". §2 placed S10 outside the spine, and that placement fixes four
+properties of `src/verify.ts` that are easy to lose under time pressure.
+
+**It is a function over files, not a walk of a directory.** `verifyProject({files, deep?, previous?,
+unreferencedAllowed?})` takes `{path, text|bytes, sha256?}` records and returns `{findings, notRun, ran, files,
+deep, clean}`; `WP-120-13`'s CLI owns the disk, the report format and the mapping onto `R026`'s exit codes. The
+split is what makes `T-CMP-007` testable at all — putting a lie into one half of a manifest pair is an edit to a
+`Record<string, string>`, not a temp tree — and it keeps §2's promise: the same function can check output this
+process never wrote, including output a person edited afterwards, which is the only case where drift exists.
+
+**It reports findings, not diagnostics.** A `Diagnostic` is addressed to a build: an offset in the input, a
+character id, a code with a registry severity. `verify` normally runs with no build in progress — often against a
+directory whose build finished yesterday — so a finding is `{check, severity, path, detail, line?, rule}`: a
+location in the emitted project and the rule that failed, so a porter reading `IMPL-120-R032` in the file they are
+told about knows what to change. No new §2.1 code joins this work package, deliberately: a registry entry would
+imply a message the pipeline prints, and there is no pipeline. An `error` finding is what the CLI folds into exit 2;
+warnings and the `notRun` rows are output, not failure.
+
+**Four checks run here, and the ones that cannot are named.** `R024`'s clauses, with what a P6 build can actually
+verify:
+
+| The clause, in this build |
+| --- | --- |
+| manifest↔TS drift | `check: 'manifest'`, over `src/manifest.ts` and `forge.manifest.json`, one error per differing path; a pair with a **missing half** is an error in either direction |
+| every referenced asset exists and matches its recorded hash | `check: 'assets'`, §4.3's `checkManifestAssets` over the assets the caller supplied; a hash the manifest states for a file whose content was not handed over is a **mismatch, not a pass** |
+| every emitted symbol referenced at least once, or listed | `check: 'symbols'`: an error when a relative import names no emitted module, or names one that does not export it; a warning for an export nothing imports, silenced by the project's own list |
+| no forbidden constructs | `check: 'bans'`, below — the matchers over `src/**`, and the emitted config asserted to still carry each entry |
+| the double-build determinism check in `--deep` mode | `check: 'determinism'`, only when a previous build was supplied; otherwise a `notRun` row, because comparing one build with itself measures nothing |
+| every T2 blob decodes under the interpreter's validator | `notRun`, owner `WP-130-12`: `@swf-forge/avm1` publishes `validateRegister`, an operand helper, so there is no callable validator to hand a blob to |
+| budgets, and the project compiling under `tsc --strict` | `notRun`, owners `WP-120-07` and `WP-120-13`: a P6 build writes no `budgets.json` (the same missing input as §4.3's `SF0507`), and running a compiler here would hide its diagnostics behind a finding |
+| `CMP` §4.10's divergence completeness row | `check: 'divergence'`, warnings, over the emitted project's own `PORTING-DIVERGENCE.md` and the citations §4.4 counts |
+
+**The ban list is one policy with two renderers, so it has one home.** `R016`'s sentence — "a lint rule in the
+emitted project *and* a check in `verify`" — is the whole design problem: two encodings of one list drift, and the
+drift is invisible in exactly the case that matters. `emit/bans.ts` now holds `EMITTED_BANS`, where each entry
+carries the ESLint rule, the **marker text** the generated `eslint.config.mjs` must contain, and the matcher `verify`
+runs; `test/emit.test.ts` asserts every marker appears in the scaffolded config and `test/verify.test.ts` asserts
+every matcher fires on its fixture, so an entry wired on one side only fails. Writing the list down exposed three
+gaps in the config `WP-120-08` had been generating: `CMP` §4.10 requires `document.write` and `innerHTML` to be
+checked and neither had a rule, and `location` had a `no-restricted-globals` entry with no matcher behind it — the
+ban `R032` and `T-CMP-009` depend on was decoration. All three are entries now.
+
+**Matchers run on code, not on text.** `codeOnly` blanks comments and string/template contents while preserving every
+offset, which fixes two problems a regex over source has at once. A naive comment-strip reads `const u = "//";
+eval(code);` as a comment and passes the call — a bypass anyone can type — and a naive string-strip lets a movie's own
+text trip a ban, since `pushString("rating: any")` is the movie's content and not the build's code. Blanking rather
+than deleting keeps a finding's column honest, because a porter jumps to it. When the scanner cannot finish — an
+unterminated quote, a stray backtick, a mis-read regex literal — it hands back the **original text**: for a security
+ban a false positive is a reworded comment and a false negative is what gets shipped.
+
+**The symbol clause reads a re-export as a use, and the project declares its own public surface.**
+`export { play } from './playback/hero.js'` is how the emitter publishes something the app shell imports, so it
+counts as a reference *and* as an export of the module that writes it. And `src/manifest.ts`'s `manifest` is
+exported for the host and imported by nothing inside the project, which `R024` permits by "or listed as
+intentionally unreferenced" — so `emit/files.ts` declares `EMITTED_PUBLIC_EXPORTS`, owned by the module that knows
+which files face outward, and `unreferencedAllowed` extends it. A check that warns on every build about a symbol
+whose entire purpose is to be imported from outside is a check that gets switched off within a release.
+
 ## 5. Determinism and provenance
 
 - **IMPL-120-R021** `build-info.json` MUST record: tool name/version, the SWF's sha256, per-chapter pin
@@ -533,14 +594,14 @@ because the report is produced by the plan pass (`budgets.json`).
 | ID | Test | Level | Phase owner |
 | --- | --- | --- | --- |
 | `T-CMP-001` | name assignment stability across 100 shuffled dictionary orders | F1 | P6 |
-| `T-CMP-002` | forbidden-construct lint over emitted output (one fixture per rule) | F1 | P6 |
+| `T-CMP-002` | forbidden-construct lint over emitted output (one fixture per rule) — wired in `packages/compile/test/verify.test.ts`, which pairs each `EMITTED_BANS` entry with a snippet and asserts the pairing is exhaustive in both directions, so a ban cannot be added to the prose without a fixture nor to the config without a matcher | F1 | P6 |
 | `T-CMP-003` | double build → `diff -r` is empty (incl. assets) | F1 | P6 |
 | `T-CMP-004` | exit codes per failure class (5 fixtures) | F1 | P6 |
 | `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs | F1 | P6 |
 | `T-CMP-006` | cancellation: SIGINT during an asset encode returns within 2 s, no partial files left | F1 | P6 |
-| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash — the three cases are proven against `diffManifestTexts` and `checkManifestAssets` as pure functions (`WP-120-10`); the command, its exit code and its disk walk stay with `WP-120-12` | F1 | P6 |
+| `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash — the three cases are proven against `diffManifestTexts` and `checkManifestAssets` as pure functions (`WP-120-10`); the command, its exit code and its disk walk stay with `WP-120-13`. `WP-120-12` re-proves all three cases one layer up, through `verifyProject`, where the question is not whether the two functions notice but whether `verify` runs them at all, at what severity, and with what the caller had to hand over | F1 | P6 |
 | `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 | P6 |
-| `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one | F1 | P6 |
+| `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one — wired in `test/verify.test.ts`: a `FrameLabel` carrying the anchor byte is emitted and verifies clean, then one injected `window.location.hash` read in that same output is a `bans` error citing `IMPL-120-R032`. The first half proves an absence, and an absence the emitter cannot violate: no emitted line addresses an anchor, since anchors reach the runtime through the manifest. `E-052` records that so the row is not read as stronger | F1 | P6 |
 | `T-CMP-010` | name assignment is a pure function of content and order: the serialised table is identical under 100 permutations of the `ExportAssets` dictionary **dealt into slots interleaved between the control tags**, so the claim cannot be satisfied by absolute offsets that happen not to move — the test asserts those offsets take several distinct tuples — plus the sanitisation table, the base-claim and `_2`/`_3` collisions, and `IMPL-120-R033`'s ban on offset-bearing names | F1 | P6 |
 | `T-CMP-012` | dead-code pass: with `--prune-dead-code` off nothing is removed and every candidate is reported with its proof; with it on, a quarantined shape or an unparsed referencer payload disables pruning for the whole movie rather than proceeding partially, and a block is called unreachable only on the front end's own flag | F1 | P6 |
 | `T-CMP-013` | shake: the emitted group set equals the union over every block that survives pruning, an entry point's own union is reported beside it, a T2 block forces the full set, and no group is dropped while any kept block names it | F1 | P6 |
@@ -565,7 +626,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-09 | Emitter: residual blobs + entry descriptors | WP-120-08, WP-050-08 | 2 | `emit/residual.ts` — **Done**, `T-CMP-014`/`T-CMP-015` wired: blobs are copied out of the tag stream and never re-encoded, a descriptor that would lie is refused with `SF0505`, all three `vm.residual` modes are honoured by the stage, and a frame carrying a residual block now runs interpreted instead of being dropped. Clip-event routing, the mixed frame form and the content-hash blob cache stay open, as §4.2 names |
 | WP-120-10 | Manifest emission (TS + JSON) + drift check | WP-120-08 | 3 | `emit/manifest.ts` — **Done**, `T-CMP-007` wired at the library boundary: one serialization spliced into `src/manifest.ts` and `forge.manifest.json`, `diffManifestTexts` and `checkManifestAssets` as pure functions for `WP-120-12`'s `verify --deep`, `AST` §6's asset sections omitted and reported (`SF0507`), and an unspeakable value refusing the pair (`SF0508`). §4.3 records the header, key-order, number and fixed-point rules the pair forced, and `emit/scaffold.ts` now writes `package.json` as strict JSON |
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | `stages/report.ts` — **Done**, `T-CMP-016`/`T-CMP-017` wired: the three root artifacts and the markdown projection come from one pure `buildReport` over the stage artifacts, `gatesOf` enumerates every config leaf and switch so a new gate cannot skip the report, an input the build was not given is stated as withheld (`SF0509`) rather than zero-filled, a declaration that does not fit `CMP` §4.9 is dropped (`SF0510`), and a value carrying host identity suppresses all four files (`SF0511`). §4.4 records why the rows come from artifacts and not from the sink; the CLI that registers the stage and owns the disk stays `WP-120-13` |
-| WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | T-CMP-002/007/009 |
+| WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | `src/verify.ts`, `src/emit/bans.ts` — **Done**, `T-CMP-002`/`T-CMP-007`/`T-CMP-009` wired: `verifyProject` is a pure function over `{path, text\|bytes}` records reporting findings rather than diagnostics (it runs outside a build, so there is no offset to attribute and no code to register), `R024`'s six clauses are four checks plus named `notRun` rows, and the ban list became one table with two renderers — which added `document.write`, `innerHTML` and a real matcher for `location` to the generated ESLint config. The CLI that walks a directory and picks an exit code stays `WP-120-13` |
 | WP-120-13 | CLI: build/plan/inspect/verify/report + exit codes | WP-120-12 | 4 | `packages/cli`, T-CMP-004 |
 | WP-120-14 | Determinism hardening + double-build CI job | WP-120-13 | 2 | T-CMP-003 |
 | | **Total** | | **48** | |
@@ -600,3 +661,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.9 | 2026-10-14 | `WP-120-09` (residual blobs and entry descriptors) lands as `emit/residual.ts` plus routing in `emit/files.ts` and policy in `emit/index.ts`. A block the emitter cannot lower now ships its original bytes as a `Uint8Array` literal and an `entry` descriptor — parameters, registers, preloads, constants, the CFG's slices, the source range — so the interpreter parses nothing (`IMPL-120-R018`); the bytes are copied from the decompressed tag stream, which is what keeps `IMPL-050-R068`'s ban on re-serializing reserved codes unreachable by construction. A frame carrying a residual block moves to `residualEntries` and runs interpreted instead of being dropped, which shrinks the deferred set to blocks with no residual path either; sprite frame scripts are routed by the front end's frame associations, so an exported sprite function is no longer unreachable. Two codes join §2.1 — `SF0505` for a descriptor that failed to validate, `SF0506` for `--vm.residual=forbid` — and §4.2 records the four things this package deliberately leaves open. `T-CMP-014`/`T-CMP-015` are wired to the 10 new tests (34 in `emit.test.ts`). The residual set the emitter uses is wider than the tier-2 set `IMPL-050-R057` names, which is `E-049` |
 | 1.10 | 2026-10-14 | `WP-120-10` (manifest emission) lands as `emit/manifest.ts`: `buildManifest` composes the sections this phase can state, `serializeManifest` is the one writer (sorted keys, checked numbers, no header in the JSON), and `diffManifestTexts` plus `checkManifestAssets` give `WP-120-12`'s `verify --deep` its rules as pure functions. `IMPL-120-R019`'s "same in-memory object" is satisfied by splicing one serialized text into both artifacts, so the pair cannot drift by construction and the diff is about later edits. Two codes join §2.1 (`SF0507` for the sections withheld pending `WP-120-07`, `SF0508` for a value with no JSON spelling), `emit/scaffold.ts` stops writing a comment header into `package.json` (npm parses it strictly; `tsconfig.json` is the only JSON artifact whose reader allows comments), the manifest divides the raw FIXED8 frame rate by 256 because `AST` §6 wants frames per second, and `T-CMP-007` is wired to 11 new tests (44 in `emit.test.ts`). `E-050` filed: `CMP-R013`'s mandated header opens with `/* eslint-disable */`, a suppression the emitted project may not carry, and `AST` §6 asks for `movie.scaleMode`/`movie.align` that no input provides |
 | 1.11 | 2026-10-15 | `WP-120-11` (the report files) lands as `stages/report.ts`: `buildReport` is one pure projection of the stage artifacts into `build-info.json`, `porting-notes.json`, `divergence.json` and the `reports/porting-notes.md` projection, and `reportStage` turns its gaps into `SF0509`/`SF0510`/`SF0511`. The rows never read the live sink, because a cached stage does not replay its diagnostics and `T-CMP-003`'s `diff -r` covers the report files too; `gatesOf` walks the config and the switches instead of naming gates, and `findHostLeaks` turns `IMPL-120-R021`'s MUST NOT list into a check that suppresses all four files. §4.4 records those four rules and the two omissions `E-051` files; `EmitArtifact` gained the source-map pair the gate list reports; the JSON writer moved to `emit/json.ts` so the reports and the manifest cannot fork a canonical form; `T-CMP-016`/`T-CMP-017` are added and wired by 17 new tests in `report.test.ts` |
+| 1.12 | 2026-10-15 | `WP-120-12` (`verify` + the forbidden-construct lint) lands as `src/verify.ts` and `src/emit/bans.ts`. `verifyProject` is a pure function over `{path, text}` or `{path, bytes}` records that answers with **findings**, not diagnostics — `check`, `severity`, `path`, `detail`, `line`, `rule` — because S10 is a command over a project and there is no build in progress to attribute an offset to, so no §2.1 code is added and `WP-120-13` owns the exit codes. `IMPL-120-R024`'s six clauses became four checks plus rows recorded as not run with their owner named: the T2-blob validator (`WP-130-12`, which is all `@swf-forge/avm1` publishes today is `validateRegister`), budgets (`WP-120-07`, the missing input behind `SF0507`), and the emitted project's `tsc --strict`. `EMITTED_BANS` is now one list rendered twice — a matcher and the marker the generated `eslint.config.mjs` must carry, each asserted from a different side — and writing it down found three gaps in what `WP-120-08` had been generating: `document.write` and `innerHTML` had no rule though `CMP` §4.10 names both, and `location` had a rule and no matcher, so the ban `R032` and `T-CMP-009` depend on was decoration. Matchers run over `codeOnly` text, which blanks comments and string contents at identical offsets: `const u = "//"; eval(x)` cannot hide a call, a movie's text cannot trip a ban, and an unterminated construct returns the raw file rather than a blind spot. `emit/files.ts` gained `EMITTED_PUBLIC_EXPORTS`, the project's own "intentionally unreferenced" list, and a re-export now counts as a use of what it re-exports. New §4.5 records the four properties S10's placement forces; `T-CMP-002`, `T-CMP-007` and `T-CMP-009` are wired by 38 tests in `test/verify.test.ts`; `E-052` files what the specs cannot answer |

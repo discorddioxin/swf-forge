@@ -42,7 +42,8 @@ export type FailOn = 'error' | 'warning' | 'risk';
 export interface RunFacts {
   /** `null` when the run never started: the input or the config was unusable. */
   readonly status: 'complete' | 'dry-run' | 'refused' | 'failed' | 'cancelled' | null;
-  readonly diagnostics: readonly { readonly code: string; readonly severity: string }[];
+  /** The run's diagnostic rows. `count` is the sink's repeat counter, and defaults to one row = one occurrence. */
+  readonly diagnostics: readonly { readonly code: string; readonly count?: number; readonly severity: string }[];
   readonly failOn: FailOn;
   readonly maxWarnings: number;
   /** True when `--budget-strict` is on and a budget line exceeded its target. */
@@ -106,18 +107,38 @@ export function exitForRun(facts: RunFacts): ExitDecision {
     };
   }
   if (errors > 0) return { exit: EXIT.failed, reason: `${errors} error diagnostic(s)` };
-  const warnings = facts.diagnostics.filter((entry) => entry.severity === 'warning').length;
+  // A budget is measured in **occurrences**, not in rows. The sink folds a repeated diagnostic into one row with a
+  // `count`, which is what makes a printable table out of a fuzz input that warns 92,680 times about one 52-byte
+  // file (`E-055`) — and a limit compared against the row count would call that run within budget. The two numbers
+  // are printed together below, because a porter who sees "6 warning(s)" and an exit 4 is reading a riddle.
+  const warnings = occurrences(facts.diagnostics, 'warning');
   if (facts.failOn === 'warning' && warnings > 0) {
-    return { exit: EXIT.threshold, reason: `--fail-on=warning and the run reported ${warnings} warning(s)` };
+    return {
+      exit: EXIT.threshold,
+      reason: `--fail-on=warning and the run reported ${warnings} warning occurrence(s) in ${rows(facts.diagnostics, 'warning')} row(s)`,
+    };
   }
   // The limit is read literally — `0` means every warning is fatal — which is why `DEFAULT_FORGE_CONFIG` holds
   // `CMP` §8's 200 rather than a 0 that would make the default outcome of any build with one warning an exit 4.
   if (warnings > facts.maxWarnings) {
-    return { exit: EXIT.threshold, reason: `--max-warnings=${facts.maxWarnings} exceeded (${warnings})` };
+    return {
+      exit: EXIT.threshold,
+      reason: `--max-warnings=${facts.maxWarnings} exceeded (${warnings} occurrence(s) in ${rows(facts.diagnostics, 'warning')} row(s))`,
+    };
   }
   if (facts.budgetExceeded)
     return { exit: EXIT.threshold, reason: 'a budget line exceeded its target under --budget-strict' };
   return { exit: EXIT.ok, reason: null };
+}
+
+/** How many times a severity actually happened, counting the sink's repeat counter. */
+function occurrences(items: RunFacts['diagnostics'], severity: string): number {
+  return items.reduce((total, item) => (item.severity === severity ? total + (item.count ?? 1) : total), 0);
+}
+
+/** How many rows a severity occupies, which is the number the printed table shows. */
+function rows(items: RunFacts['diagnostics'], severity: string): number {
+  return items.filter((item) => item.severity === severity).length;
 }
 
 /** A `verify` finding is not a build diagnostic, but it is the same class of failure: 1 for errors, else 0. */
@@ -140,7 +161,9 @@ export const USAGE_EXIT = EXIT.unreadable;
 export function runFacts(
   result: {
     readonly status: 'complete' | 'dry-run' | 'refused' | 'failed' | 'cancelled';
-    readonly diagnostics: { readonly items: readonly { readonly code: string; readonly severity: string }[] };
+    readonly diagnostics: {
+      readonly items: readonly { readonly code: string; readonly count?: number; readonly severity: string }[];
+    };
     readonly stages: readonly { readonly id: string; readonly status: string }[];
   },
   switches: { readonly dryRun?: boolean },

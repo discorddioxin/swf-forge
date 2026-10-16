@@ -569,7 +569,7 @@ reader, so it cannot report a different file from the one `build` compiled.
 - **IMPL-120-R026** Exit codes follow `CMP-R029`, which is the table `apps/decompiler` already implements:
   `0` success; `1` an `error` diagnostic, a failed stage, or a cancelled run; `2` input unreadable or not a
   SWF, a config that does not parse, and a usage error; `3` AVM2 content (`SF1000`); `4` a threshold exceeded
-  (`--max-warnings`, `--fail-on`, budgets under `--budget-strict`); `5` an internal error. Codes are part of
+  (`--max-warnings` and `--fail-on`, both counted in warning *occurrences* — §7 — and budgets under `--budget-strict`, which P6 has none of); `5` an internal error. Codes are part of
   the CLI contract (`T-CMP-004`). The precedence the table does not state is stated in `src/exit.ts`: internal
   first, then unreadable input, then the AVM2 refusal, then errors, then thresholds — a crash explains why
   nothing else could be measured, and a warning threshold explains nothing about a broken build. `E-053`
@@ -604,7 +604,7 @@ stage are made here:
 Five flags in `CMP` §8's table have nothing to act on in this phase, and each is accepted, reported as inert
 with a reason, and named here: `--jobs` (no parallel encode before `WP-120-07`), `--fail-on=risk` (the
 diagnostic registry has three severities), `--sourcemap` (consumed as an emit-stage option; `E-047`), and
-`--budget-strict` (recorded in the report's gate map; no budget table exists to fail). The report stage's four
+`--budget-strict` (recorded in the report's gate map; what it will gate is §7's decision). The report stage's four
 withheld inputs — `pins`, `verifyItems`, `tier`, `divergences` — have no flag and no config field, which is
 exactly why `SF0509` reports them as gaps; `E-053` asks the owners for either.
 
@@ -641,18 +641,40 @@ exactly why `SF0509` reports them as gaps; `E-053` asks the owners for either.
 These are the codes the design spec `AST-§4` budget table cites; they live in the emitter range
 because the report is produced by the plan pass (`budgets.json`).
 
+**What the phase's last package decided about budgets, and what it left to `WP-120-07`.** `R028` names six
+quantities and `R029` says `--budget-strict` turns an overrun into a failure; in P6 exactly one of the six is
+computable. `build-info.json`'s `budgetSummary` carries `residualBytecodeBytes` — the emitter knows the size of
+every blob it wrote — and lists `audioBytes`, `bundleBytesByModuleGroup`, `firstFrameWork`, `textureBytes` and
+`videoBytes` under `withheld`, with the owner named in the same object, so a reader of the file alone learns
+which numbers are missing and who produces them. Three consequences follow, and all three are the shipped
+behaviour rather than an intention:
+
+- `--budget-strict` is **accepted, recorded in the gate map, and inert**. A flag that can never be satisfied is
+  worse than a flag that says so, and `SF0501`/`SF0502` stay withheld rather than being aimed at a number nothing
+  computes. `R030`'s top-contributor list travels with the budget it explains, so it is withheld too — the exit-4
+  verdict for the budget P6 *does* have states the contributor instead: the code, its row count and its
+  occurrence count.
+- The live threshold is `--max-warnings`, and it is measured in **occurrences**, not in rows. The sink folds a
+  repeated diagnostic into one row with a `count`, so a row-count budget would call a 52-byte fuzz input that
+  warned 92,680 times "6 warning(s), within budget" — which is what it did until the corpus lane met it
+  (`E-055`). `crash-005-shape-edge-past-limit.swf` now exits 4 on a default build, and it is the only file in
+  the corpus that does.
+- `T-CMP-008` (`plan` matches `budgets.json` within tolerance) stays **unwired**, owned by `WP-120-07` along with
+  the table it compares against, and `R031`'s video extents stay behind `WP-110-06`. A test id invented to grade
+  an artifact that does not exist yet is worth more left scheduled than satisfied by a stub.
+
 ## 8. Test obligations
 
 | ID | Test | Level | Phase owner |
 | --- | --- | --- | --- |
 | `T-CMP-001` | name assignment stability across 100 shuffled dictionary orders | F1 | P6 |
 | `T-CMP-002` | forbidden-construct lint over emitted output (one fixture per rule) — wired in `packages/compile/test/verify.test.ts`, which pairs each `EMITTED_BANS` entry with a snippet and asserts the pairing is exhaustive in both directions, so a ban cannot be added to the prose without a fixture nor to the config without a matcher | F1 | P6 |
-| `T-CMP-003` | double build → `diff -r` is empty (incl. assets) | F1 | P6 |
+| `T-CMP-003` | double build → `diff -r` is empty (incl. assets) — wired in `packages/cli/test/corpus.test.ts`, which compares three builds of every committed `.swf` as data (a cold build, the same build on a warm cache, the same build in a second workspace), and again on purpose by the `determinism` CI job, which runs `tools/corpus-roundtrip.mjs check` plus the literal `diff -r` over two workspaces and then asks `swfforge verify --deep` to agree with the shell, because a green diff and a red verify would mean the checker is wrong | F1 | P6 |
 | `T-CMP-004` | exit codes per failure class (5 fixtures) — wired in `packages/cli/test/cli.test.ts`, which runs five real invocations against temp projects rather than unit-testing a classifier: a clean build (0), a file with no SWF signature (2, and no output directory created), a missing input (2), a `DoABC` movie (3, nothing written), a `--max-warnings=0` movie the reader warns about (4). Class 5 is not reachable from an argument — a stage fault is recorded in the run result and a disk fault is class 2 — so it is proven by the crash report's content and by `exitForRun`'s precedence, and the classes a fixture cannot produce are named in the test file rather than faked | F1 | P6 |
-| `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs | F1 | P6 |
+| `T-CMP-005` | cache equivalence: cold vs warm builds produce identical outputs — wired in `packages/compile/test/cache.test.ts` per stage, and re-proven corpus-wide in `packages/cli/test/corpus.test.ts`, which requires the warm build to report a `cached` stage as well as byte-identical output: equality alone cannot tell a hit cache from an inert one | F1 | P6 |
 | `T-CMP-006` | cancellation: SIGINT during an asset encode returns within 2 s, no partial files left | F1 | P6 |
 | `T-CMP-007` | `verify --deep` detects an injected manifest↔TS drift, a missing asset, a tampered hash — the three cases are proven against `diffManifestTexts` and `checkManifestAssets` as pure functions (`WP-120-10`); the command, its exit code and its disk walk stay with `WP-120-13` and are wired there now: `verify` walks the directory, reads both halves of the manifest pair, an injected edit to `forge.manifest.json` is exit 1, and `--deep --against` proves the double-build comparison runs at all. `WP-120-12` re-proves all three cases one layer up, through `verifyProject`, where the question is not whether the two functions notice but whether `verify` runs them at all, at what severity, and with what the caller had to hand over | F1 | P6 |
-| `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance | F2 | P6 |
+| `T-CMP-008` | `plan` output matches the real build's `budgets.json` within tolerance — scheduled, not stubbed: no `budgets.json` exists until `WP-120-07`, and §7 records what P6 measures instead | F2 | P6 |
 | `T-CMP-009` | emitted output for a fixture carrying `NamedAnchor` and scene data contains no `location` read (R032), and the forbidden-construct lint fails the build on an injected one — wired in `test/verify.test.ts`: a `FrameLabel` carrying the anchor byte is emitted and verifies clean, then one injected `window.location.hash` read in that same output is a `bans` error citing `IMPL-120-R032`. The first half proves an absence, and an absence the emitter cannot violate: no emitted line addresses an anchor, since anchors reach the runtime through the manifest. `E-052` records that so the row is not read as stronger | F1 | P6 |
 | `T-CMP-010` | name assignment is a pure function of content and order: the serialised table is identical under 100 permutations of the `ExportAssets` dictionary **dealt into slots interleaved between the control tags**, so the claim cannot be satisfied by absolute offsets that happen not to move — the test asserts those offsets take several distinct tuples — plus the sanitisation table, the base-claim and `_2`/`_3` collisions, and `IMPL-120-R033`'s ban on offset-bearing names | F1 | P6 |
 | `T-CMP-012` | dead-code pass: with `--prune-dead-code` off nothing is removed and every candidate is reported with its proof; with it on, a quarantined shape or an unparsed referencer payload disables pruning for the whole movie rather than proceeding partially, and a block is called unreachable only on the front end's own flag | F1 | P6 |
@@ -680,7 +702,7 @@ because the report is produced by the plan pass (`budgets.json`).
 | WP-120-11 | Reports: build-info, porting-notes, divergence | WP-120-10 | 3 | `stages/report.ts` — **Done**, `T-CMP-016`/`T-CMP-017` wired: the three root artifacts and the markdown projection come from one pure `buildReport` over the stage artifacts, `gatesOf` enumerates every config leaf and switch so a new gate cannot skip the report, an input the build was not given is stated as withheld (`SF0509`) rather than zero-filled, a declaration that does not fit `CMP` §4.9 is dropped (`SF0510`), and a value carrying host identity suppresses all four files (`SF0511`). §4.4 records why the rows come from artifacts and not from the sink; the CLI that registers the stage and owns the disk stays `WP-120-13` |
 | WP-120-12 | `verify` implementation + forbidden-construct lint | WP-120-10 | 4 | `src/verify.ts`, `src/emit/bans.ts` — **Done**, `T-CMP-002`/`T-CMP-007`/`T-CMP-009` wired: `verifyProject` is a pure function over `{path, text\|bytes}` records reporting findings rather than diagnostics (it runs outside a build, so there is no offset to attribute and no code to register), `R024`'s six clauses are four checks plus named `notRun` rows, and the ban list became one table with two renderers — which added `document.write`, `innerHTML` and a real matcher for `location` to the generated ESLint config. The CLI that walks a directory and picks an exit code stays `WP-120-13` |
 | WP-120-13 | CLI: build/plan/inspect/verify/report + exit codes | WP-120-12 | 4 | `packages/cli` — **Done**, `T-CMP-004` wired (43 tests): one flag table for `CMP` §8 with a mechanical parity test that feeds every entry through `resolveForgeConfig`, the five verbs over real temp projects, sorted-and-rolled-back writes, `./forge.config.json` auto-detection that never reads the copy it wrote, the stage cache kept outside `--out`, and §6.1's four decisions. `--dry-run` is `plan`; `report` is a printer, not a judge. `E-053` files the exit-table and flag-home conflicts it found; `E-054` the emitted project's own unreferenced-export warnings |
-| WP-120-14 | Determinism hardening + double-build CI job | WP-120-13 | 2 | T-CMP-003 |
+| WP-120-14 | Determinism hardening + double-build CI job | WP-120-13 | 2 | `tools/corpus-roundtrip.mjs`, the `determinism` CI job, `audits/P6-CORPUS-ROUNDTRIP.json` + `audits/P6-C4-ROUNDTRIP.json`, and `packages/cli/test/corpus.test.ts` — **Done** (26 tests): 99 inputs round-tripped (21 fixtures, 5 fuzz crashers, 73 C4-c movies), 85 projects written, zero crashes, zero stderr, byte-identical cold/warm/fresh `85/85`, report files agreeing `85/85` over 2,720 gate rows, `verify` findings `0`; `E-054` closed by the emitter's outward-surface declaration, `E-055` closed by counting budgets in occurrences; §7 records the budget decision and `--budget-strict` stays inert | T-CMP-003, `T-CMP-005` |
 | | **Total** | | **48** | |
 
 ## 10. Done criteria
@@ -696,6 +718,23 @@ because the report is produced by the plan pass (`budgets.json`).
    the reference title. It is not the open-title corpus, which is P11's programme.
 4. Every emitted symbol is either referenced or listed; no orphaned code paths in the manifest.
 5. `porting-notes.json` names every diagnostic, every `[verify]` item, and every gate and its state.
+
+**Measured by `WP-120-14`, on the corpus `registers/corpus.md` bounds.** Criterion 2 holds: every one of the 99
+inputs the lane runs (C1's 21 fixtures, its 5 fuzz crashers, C4-c's 73 licensed movies) exits 0, 1, 2, 3 or 4 and
+none exits 5, no invocation wrote to stderr, and the one file that could not be read left no project behind.
+Criterion 3 holds over C1 and C2 — byte-identical cold, warm and second-workspace builds for all 85 projects that
+were written — over the corpus the register bounds, and criterion 4 and 5 hold as asserted data: `verify` reports
+zero findings on every written project (`E-054` is what made that sentence true), and the two report files agree
+with each other on 2,720 gate rows while every row's value is the one the run resolved.
+
+Criterion 1 is **not measurable in this repository yet** and is recorded rather than waived: it names the C3
+reference title, which `registers/corpus.md` §2 lists as OPEN, with no `fixtures/PROVENANCE.md` to admit anything
+against and its own two-reviewer requirement unmet. Its second clause — that the produced project "type-checks" —
+has a second blocker behind it: the emitted `src/**` imports its runtime contract from `@swf-forge/runtime`, which
+is `WP-130-01`, so `verify`'s `strict-build` row stays `notRun` with that owner named rather than being satisfied
+by type-checking a project whose one dependency is missing. The half of `R014` that *is* decidable here — the
+strictness of the emitted `tsconfig.json`, which is what makes the claim testable at all — is asserted in
+`packages/compile/test/emit.test.ts`, in the describe block that carries `R014` and `R015`.
 
 ## 11. Changelog
 
@@ -715,3 +754,4 @@ because the report is produced by the plan pass (`budgets.json`).
 | 1.11 | 2026-10-15 | `WP-120-11` (the report files) lands as `stages/report.ts`: `buildReport` is one pure projection of the stage artifacts into `build-info.json`, `porting-notes.json`, `divergence.json` and the `reports/porting-notes.md` projection, and `reportStage` turns its gaps into `SF0509`/`SF0510`/`SF0511`. The rows never read the live sink, because a cached stage does not replay its diagnostics and `T-CMP-003`'s `diff -r` covers the report files too; `gatesOf` walks the config and the switches instead of naming gates, and `findHostLeaks` turns `IMPL-120-R021`'s MUST NOT list into a check that suppresses all four files. §4.4 records those four rules and the two omissions `E-051` files; `EmitArtifact` gained the source-map pair the gate list reports; the JSON writer moved to `emit/json.ts` so the reports and the manifest cannot fork a canonical form; `T-CMP-016`/`T-CMP-017` are added and wired by 17 new tests in `report.test.ts` |
 | 1.12 | 2026-10-15 | `WP-120-12` (`verify` + the forbidden-construct lint) lands as `src/verify.ts` and `src/emit/bans.ts`. `verifyProject` is a pure function over `{path, text}` or `{path, bytes}` records that answers with **findings**, not diagnostics — `check`, `severity`, `path`, `detail`, `line`, `rule` — because S10 is a command over a project and there is no build in progress to attribute an offset to, so no §2.1 code is added and `WP-120-13` owns the exit codes. `IMPL-120-R024`'s six clauses became four checks plus rows recorded as not run with their owner named: the T2-blob validator (`WP-130-12`, which is all `@swf-forge/avm1` publishes today is `validateRegister`), budgets (`WP-120-07`, the missing input behind `SF0507`), and the emitted project's `tsc --strict`. `EMITTED_BANS` is now one list rendered twice — a matcher and the marker the generated `eslint.config.mjs` must carry, each asserted from a different side — and writing it down found three gaps in what `WP-120-08` had been generating: `document.write` and `innerHTML` had no rule though `CMP` §4.10 names both, and `location` had a rule and no matcher, so the ban `R032` and `T-CMP-009` depend on was decoration. Matchers run over `codeOnly` text, which blanks comments and string contents at identical offsets: `const u = "//"; eval(x)` cannot hide a call, a movie's text cannot trip a ban, and an unterminated construct returns the raw file rather than a blind spot. `emit/files.ts` gained `EMITTED_PUBLIC_EXPORTS`, the project's own "intentionally unreferenced" list, and a re-export now counts as a use of what it re-exports. New §4.5 records the four properties S10's placement forces; `T-CMP-002`, `T-CMP-007` and `T-CMP-009` are wired by 38 tests in `test/verify.test.ts`; `E-052` files what the specs cannot answer |
 | 1.13 | 2026-10-15 | `WP-120-13` lands as `packages/cli` (`@swf-forge/cli`, bin `swfforge`): the argument table, the disk walk, the report output and `CMP-R029`'s exit codes. §6 is rewritten to the delivered surface — `build`/`plan`/`inspect`/`verify`/`report`, with `--dry-run` defined as `plan` and `inspect` defined as a printer over the pipeline's own dry run, so no verb has a second reader — and new §6.1 records the four things only the CLI can decide: a clean run is the only run that writes, the config file is read from the working directory only, the stage cache lives outside `--out` so two output directories stay diffable, and writes are sorted, temp-named and rolled back. §4's tree gains `forge.config.json`, which `CMP-R004` mandates and the tree did not list. `IMPL-120-R026`'s exit table is reworded to `CMP-R029`'s, because `apps/decompiler` already implements that one and two CLIs in one repository cannot mean different things by `1`; the header's `MS-§2` citation is corrected to `CMP-§8`, the spec that has the flag table. `T-CMP-004` is wired by five real invocations and `T-CMP-007`'s command half is wired here; `E-053` files the exit-table conflict, the phantom doc id, `R025`'s `REPO-§7` pointer, the four flags with no config home and the `@swf-forge/compiler` name `REPO-§2` still carries, and `E-054` the eight `symbols` warnings a clean emitted project carries |
+| 1.14 | 2026-10-15 | `WP-120-14` (hardening + the double-build job) lands as `tools/corpus-roundtrip.mjs` and the `determinism` CI job, with `packages/cli/test/corpus.test.ts` as the always-on half: every committed `.swf` and every C4-c movie goes through `plan`, `inspect`, a cold build, a warm build, a build in a second workspace, `verify` and `verify --deep`, and the evidence is committed as `audits/P6-CORPUS-ROUNDTRIP.json` (C1: 26 inputs) and `audits/P6-C4-ROUNDTRIP.json` (99 with C4-c). Findings: 0 crashes, 0 stderr, 85/85 projects byte-identical across all three runs, 0 `verify` findings, report files agreeing on all 2,720 gate rows, 14 C4-c files correctly refused. Two defects closed: `E-054` (the emitter declares its outward surface — `EMITTED_PUBLIC_EXPORTS` gained the id/timeline/class/button/residual/asset families, precise where the module is fixed and directory-wide where the count is data-dependent, because §4 emits no bootstrap module) and `E-055` (a budget is counted in diagnostic *occurrences*, not sink rows — the 52-byte fuzz input that warned 92,680 times exited 0 before this). §7 records the phase's budget decision: `residualBytecodeBytes` is computed, five rows stay withheld with their owner, `--budget-strict` stays inert, `T-CMP-008` stays scheduled; §8 marks `T-CMP-003` wired and `T-CMP-005` re-proven corpus-wide; §10 records which criteria the corpus can measure and that criterion 1 waits on C3 and on `WP-130-01` |

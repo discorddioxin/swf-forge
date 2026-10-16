@@ -40,11 +40,28 @@ the contents API off its 60-requests-per-hour unauthenticated limit. Class C4-c 
 `docs/impl/registers/corpus.md` describes the selection and what the report does and does not
 discharge; `E-034` and `E-035` in `docs/impl/registers/errata.md` are what running it found.
 
+The P6 round-trip lane is a fourth Node tool, and it is the one that measures *this repository's* corpus:
+
+```bash
+pnpm corpus:roundtrip                 # build + verify every committed .swf, write the report
+pnpm corpus:roundtrip:check           # the same, then fail if audits/P6-CORPUS-ROUNDTRIP.json drifted
+pnpm corpus:roundtrip:open            # also cover C4-c, refusing to run on a partial or mismatched cache
+```
+
+For every input it runs `plan`, `inspect`, a cold `build`, the same build again on a warm stage cache, the same
+build in a second workspace, `verify`, and `verify --deep --against` — so cache equivalence (`IMPL-120-R002`) and
+double-build determinism (`T-CMP-003`) are measured on the corpus rather than asserted by one fixture, and a
+`plan` that wrote a file or a `verify` that found something on a clean project is a finding. It calls the CLI's
+`runCli` in one process rather than spawning a CLI per input: a crash inside a build is what the lane is looking
+for, and a wrapper that swallowed exit 5 into a tally would hide it. `check` is what CI runs (`determinism` job),
+and `--with-open` writes a second artifact so the default one stays reproducible without a corpus cache.
+
 The AVM1 process-restart probe is a separate Node tool: `corepack pnpm test:avm1-restart` builds the workspace, then compares synthetic direct-analysis and CLI reports across fresh processes. The fixture includes T0, T1 (`dynamic-pool`), and T2 (`unknown-opcode`) entries, recovered names, and non-empty requirements; the evidence is local and synthetic only, not open-corpus evidence. Its hashes and report summary are recorded in `audits/P5-C4-RESTART-PROBE.json`.
 
 `adpcm_hunt.py`, `browser-lane.mjs` and `open-corpus.mjs` are the three exceptions to "no network": the
 first exists to search GitHub and npm for Flash content, the second to fetch a browser engine, the third
-to fetch the licensed external corpus. Everything else is offline.
+to fetch the licensed external corpus. Everything else is offline — including `corpus-roundtrip.mjs`, which reads
+the corpus cache `open-corpus.mjs` filled but never reaches the network itself.
 
 ## `verify_docs.py`
 

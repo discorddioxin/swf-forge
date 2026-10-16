@@ -82,9 +82,10 @@ export interface VerifyOptions {
   readonly previous?: readonly VerifyFile[];
   /**
    * `IMPL-120-R024`'s "or listed as intentionally unreferenced" list, added to the emitter's own
-   * `EMITTED_PUBLIC_EXPORTS`: `src/…​.ts`, or `src/…​.ts#name` for one
-   * export of a module. The API surface a generated project hands its host is unreferenced *by design*, and an
-   * escape hatch the caller owns is the alternative to a check that cries wolf until the project disables it.
+   * `EMITTED_PUBLIC_EXPORTS`. Three spellings, same grammar: `src/dir/` silences every emitted file in a
+   * generated family, `src/x.ts` silences one module, and `src/x.ts#name` silences one export of it. The API
+   * surface a generated project hands its host is unreferenced *by design*, and an escape hatch the project
+   * declares is the alternative to a check that cries wolf until the project disables it.
    */
   readonly unreferencedAllowed?: readonly string[];
 }
@@ -307,8 +308,11 @@ function checkBans(project: Project): readonly VerifyFinding[] {
  * without running a compiler.
  *
  * The **warning** direction is an export nothing imports, which `R024` allows when it is "listed as intentionally
- * unreferenced" — so `unreferencedAllowed` is the list, and a listed entry silences exactly one finding rather
- * than one file.
+ * unreferenced". The list is the *project's*: `EMITTED_PUBLIC_EXPORTS`, declared by the emitter that wrote the
+ * files, extended by `unreferencedAllowed` for a caller that knows something the emitter cannot. Three spellings,
+ * tightest first — `src/x.ts#name` silences one export, `src/x.ts` one module, `src/dir/` a generated family whose
+ * file count is a property of the movie (`E-054` is why the third exists, and why it is the emitter's to state and
+ * never a verb's to pass).
  */
 function checkSymbols(project: Project, unreferencedAllowed: readonly string[] = []): readonly VerifyFinding[] {
   const findings: VerifyFinding[] = [];
@@ -417,12 +421,18 @@ function checkSymbols(project: Project, unreferencedAllowed: readonly string[] =
     }
   }
 
-  const allowed = new Set([...EMITTED_PUBLIC_EXPORTS, ...unreferencedAllowed]);
+  const allowed = [...EMITTED_PUBLIC_EXPORTS, ...unreferencedAllowed];
+  // A trailing-slash entry is a generated family: the emitter knows `src/frames/` faces outward without knowing
+  // how many sprites the movie has, and a porter's own `src/app/shell.ts` matches no entry at all.
+  const isListed = (path: string, name: string): boolean =>
+    allowed.includes(path) ||
+    allowed.includes(`${path}#${name}`) ||
+    allowed.some((entry) => entry.endsWith('/') && path.startsWith(entry));
   for (const path of project.sources) {
     for (const name of exported.get(path) ?? []) {
       if (name === 'default') continue;
       if (imported.has(name)) continue;
-      if (allowed.has(path) || allowed.has(`${path}#${name}`)) continue;
+      if (isListed(path, name)) continue;
       findings.push(
         finding(
           'symbols',

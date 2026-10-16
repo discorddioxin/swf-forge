@@ -58,8 +58,32 @@ type Chunks = Chunk[];
  * manifest, and nothing in the generated project imports it, so a check that walked only `src/**` would warn on
  * every build until a porter silenced it — and a check that always warns is a check that gets turned off.
  * `verify` treats this list as the project's own `--allow-unreferenced` default.
+ *
+ * `E-054` settled the rest of the surface, and the settlement is a principle rather than a paste: `IMPL-120` §4
+ * emits **no bootstrap module**. Every file under `src/` is a table the runtime or the app shell addresses — the
+ * id tables, the frame and routing tables, the recovered classes, the button handlers, the residual blobs — so
+ * their being unreferenced inside the project is the design working, not a hole in it. Two shapes follow from
+ * that:
+ *
+ * - a **fixed** module is named per export, so a stray `export` the emitter did not intend stays reportable;
+ * - a **family** (one timeline module per sprite, one per button, one per refused block — the count is a
+ *   property of the movie, so no list of names can finish it) is named as a trailing-slash directory prefix,
+ *   which covers every file the emitter generates there and no file a porter writes.
+ *
+ * A porter-authored module under `src/` is therefore still checked, and the check `E-054` refused to weaken is
+ * the one that catches a project whose own wiring came apart.
  */
-export const EMITTED_PUBLIC_EXPORTS: readonly string[] = ['src/manifest.ts#manifest'];
+export const EMITTED_PUBLIC_EXPORTS: readonly string[] = [
+  'src/manifest.ts#manifest',
+  'src/symbols.ts#characterByName',
+  'src/symbols.ts#characterIdByName',
+  'src/symbols.ts#exportedAssets',
+  'src/assets/',
+  'src/buttons/',
+  'src/classes/',
+  'src/frames/',
+  'src/residual/',
+];
 
 export interface EmitHeader {
   readonly toolVersion: string;

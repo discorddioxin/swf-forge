@@ -112,7 +112,7 @@ export const CONFIG_FLAGS: readonly FlagSpec[] = [
     kind: 'number',
     config: ['diagnostics', 'maxWarnings'],
     verbs: ['build', 'plan'],
-    summary: 'fail after n warnings (0 makes every warning fatal)',
+    summary: 'fail after n warning occurrences, not table rows (0 makes every warning fatal)',
   },
   {
     name: '--fail-on',
@@ -187,7 +187,7 @@ const SWITCH_FLAGS: readonly FlagSpec[] = [
     kind: 'boolean',
     switch: 'budgetStrict',
     verbs: ['build', 'plan'],
-    summary: 'recorded in the report gates; there is no budget table to fail until WP-120-07',
+    summary: 'recorded in the report gates; inert, because only the residual-bytes budget exists in P6',
   },
   {
     name: '--deep',

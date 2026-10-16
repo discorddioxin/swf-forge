@@ -29,7 +29,8 @@ All five take `--json`, `--verbose`, `--quiet`, `--help` and `--version`. `CMP` 
 `src/args.ts` states which `ForgeConfig` path, `RunSwitches` key or stage option it sets — a test feeds every
 one of them through `resolveForgeConfig`, so `CMP-R028`'s "every flag has a config field" is a check rather
 than an intention. A flag that cannot honour it is still accepted, and reported inert with its reason on every
-run: `--jobs` and `--fail-on=risk` today, `--budget-strict` until `WP-120-07` computes a budget, and
+run: `--jobs` and `--fail-on=risk` today, `--budget-strict` because only the residual-bytes budget is computed
+in this phase (the other five rows are named as withheld in `build-info.json`), and
 `--sourcemap`, which is consumed as an emit-stage option (`E-047`).
 
 `--json` prints one envelope — `{command, exit, schemaVersion: 1, tool, …}` — with sorted keys and no
@@ -43,7 +44,7 @@ timestamps, and the human output is the same rows with their values formatted, n
 | 1 | an `error`-severity diagnostic, a stage that threw, or a cancelled run |
 | 2 | input unreadable or not a SWF (`SF0001`), a config that does not parse, a usage error, an unwritable output directory |
 | 3 | AVM2 content (`SF1000`) |
-| 4 | a threshold exceeded: `--max-warnings`, `--fail-on`, budgets under `--budget-strict` |
+| 4 | a threshold exceeded: `--max-warnings` and `--fail-on`, both counted in warning *occurrences* rather than table rows, and budgets under `--budget-strict` (inert in P6) |
 | 5 | internal error — our bug, reported with the input that triggered it |
 
 Precedence, which the table leaves open and a caller depends on: internal, then unreadable input, then the
@@ -72,3 +73,13 @@ Only a run that completed with no `error` diagnostic writes, and it writes `@swf
 plus `forge.config.json` (the resolved config minus this version's defaults, `CMP-R004`). Nothing is created
 otherwise: not a directory, not a partial project. `--report-only` narrows the write set to the report files,
 which is the fastest way to see what a build decided without taking its output.
+
+## Corpus evidence
+
+`pnpm corpus:roundtrip` (and `:check`, which also diffs the committed report) runs this CLI over every committed
+`.swf`, and `:open` adds the licensed corpus after re-hashing the cache: `plan`, `inspect`, a cold build, the same
+build on a warm stage cache, the same build in a second workspace, `verify`, then `verify --deep --against`. The
+answer is `audits/P6-CORPUS-ROUNDTRIP.json`, and the `determinism` CI job re-runs it. Two rules are worth knowing
+from the inside: a project written by a clean run must verify **silent** (zero findings, not zero errors — that is
+what `verify`'s symbol clause was fixed to mean), and the warning budgets above are counted in occurrences so that
+one 52-byte fuzz input warning 92,680 times cannot pass as six warnings.

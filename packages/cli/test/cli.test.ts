@@ -211,6 +211,35 @@ describe('T-CMP-004: one exit code per failure class', () => {
     expect(decision.reason).toContain('1 error diagnostic(s)');
   });
 
+  /**
+   * `E-055`. The sink folds a repeated diagnostic into one row carrying a `count`, so a budget compared against
+   * *rows* would pass a 52-byte fuzz input that warned 92,680 times about one shape edge. `CMP-§8`'s "fail after n
+   * warnings" is about the flood, and both numbers are printed, because a run that says "6 warning(s)" and exits 4
+   * is a riddle unless the line also says the six rows hold 92,680 occurrences.
+   */
+  it('measures `--max-warnings` in occurrences, not in rows', () => {
+    const flooded = {
+      budgetExceeded: false,
+      diagnostics: [{ code: 'SF0013', count: 92680, severity: 'warning' }],
+      failOn: 'error' as const,
+      internal: null,
+      maxWarnings: 200,
+      readFailed: false,
+      status: 'complete' as const,
+      unreadable: null,
+    };
+
+    const decision = exitForRun(flooded);
+    expect(decision.exit).toBe(EXIT.threshold);
+    expect(decision.reason).toContain('92680 occurrence(s) in 1 row(s)');
+    expect(exitForRun({ ...flooded, maxWarnings: 92680 }).exit).toBe(EXIT.ok);
+    // No counter is one occurrence, so an ordinary run's arithmetic is exactly what it was before this rule.
+    expect(
+      exitForRun({ ...flooded, diagnostics: [{ code: 'SF0028', count: 1, severity: 'warning' }], maxWarnings: 1 }).exit,
+    ).toBe(EXIT.ok);
+    expect(exitForRun({ ...flooded, failOn: 'warning' as const }).reason).toContain('92680 warning occurrence(s)');
+  });
+
   it('reports an internal fault as exit 5 with the input it was given, next to where the output goes', async () => {
     const root = workspace();
     const path = writeCrashBundle(join(root, 'out'), 'swfforge 0.0.0 crashed\ninput: movie.swf\ninput bytes: 42\n');

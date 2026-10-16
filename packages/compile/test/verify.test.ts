@@ -45,6 +45,7 @@ import {
   scaffoldFiles,
   verifyProject,
 } from '../src/index.js';
+import { EMITTED_PUBLIC_EXPORTS } from '../src/index.js';
 import type { VerifyFile, VerifyFinding, ForgeConfig } from '../src/index.js';
 
 const STOP = 0x07;
@@ -493,6 +494,53 @@ describe('verify over a real emitted project (T-CMP-009)', () => {
     expect(reported[0]?.path).toBe(original.path);
     expect(reported[0]?.detail).toContain('window.location.hash');
     expect(result.clean).toBe(false);
+  });
+
+  /**
+   * `E-054`. `IMPL-120-R024` permits an unreferenced export only when the emitter lists it as intentionally
+   * public, and `IMPL-120` §4 emits no bootstrap module: every file under `src/` is a table the runtime or the
+   * app shell addresses. So the emitted project has to verify with **no** symbol findings — otherwise the clause
+   * is a warning that fires on every build of every movie, which is the shape of a check that gets switched off.
+   * The half that matters is the timeline module: `src/frames/movie.ts` exports `frameScripts` and
+   * `residualEntries`, and no precise entry names them, so a clean result here can only come from the emitter's
+   * directory arm — the arm that also covers `src/frames/sprite_<id>.ts`, whose count is a property of the movie.
+   */
+  it('finds no dead export in the output of a real build (E-054)', () => {
+    const { files } = emitted();
+    const timeline = files.find((file) => file.path === 'src/frames/movie.ts');
+    expect(timeline, 'the emit stage wrote no timeline module for this fixture').toBeDefined();
+    const text = new TextDecoder().decode((timeline as VerifyFile).bytes ?? new Uint8Array());
+    expect(text).toContain('export const frameScripts');
+    expect(EMITTED_PUBLIC_EXPORTS).not.toContain('src/frames/movie.ts#frameScripts');
+    const result = verifyProject({ files });
+    expect(findings(result, 'symbols')).toEqual([]);
+    expect(result.clean).toBe(true);
+  });
+
+  /**
+   * The other half of `E-054`: the arm still has to be able to fail. A porter-authored module is not part of the
+   * emitter's outward surface, so its unused export is reported, and the project's own list — `unreferencedAllowed`
+   * through the same three-spelling grammar — is what silences it.
+   */
+  it('reports a dead export in a module the emitter did not write, and honours the list', () => {
+    const { files } = emitted();
+    const withPorterFile: VerifyFile[] = [
+      ...files,
+      { path: 'src/app/shell.ts', text: 'export const unusedByDesign = 1;\nexport const unusedToo = 2;\n' },
+    ];
+    const reported = findings(verifyProject({ files: withPorterFile }), 'symbols');
+    expect(reported.map((finding) => `${finding.path}#${finding.detail}`)).toHaveLength(2);
+    expect(reported.every((finding) => finding.path === 'src/app/shell.ts')).toBe(true);
+    expect(reported[0]?.detail).toContain('list `src/app/shell.ts#');
+    expect(
+      findings(
+        verifyProject({
+          files: withPorterFile,
+          unreferencedAllowed: ['src/app/shell.ts#unusedByDesign', 'src/app/shell.ts#unusedToo'],
+        }),
+        'symbols',
+      ),
+    ).toEqual([]);
   });
 
   it('catches an injected manifest drift in that same output', () => {

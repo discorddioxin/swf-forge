@@ -152,6 +152,16 @@ export type {
   TimelineSoundEvent,
 } from './tags/sounds.js';
 
+// ---- video extents (`IMPL-110` §3, WP-110-12) -----------------------------------------------------
+export {
+  DEFINE_VIDEO_STREAM_BYTES,
+  VIDEO_FRAME_BYTES,
+  readVideoFrameExtent,
+  readVideoStreamHeader,
+  summariseVideoStreams,
+} from './video/extent.js';
+export type { VideoExtentSummary, VideoFrameExtent, VideoStreamExtent, VideoStreamHeader } from './video/extent.js';
+
 // ---- model (`CMP` §3, `IMPL-030` §7/§8, `IMPL-040` §5) ------------------------------------------
 export { assembleTimeline, buildMovieModel, fallbackId, openTagCursor } from './model/index.js';
 export type {

@@ -48,6 +48,7 @@ reusable if a future phase accepts `.flv` input; the SWF path never sees an FLV)
 
 ```
 packages/swf/src/video/
+  extent.ts                    DefineVideoStream header + summed VideoFrame byte extents (WP-110-12, P6)
   define-video-stream.ts   DefineVideoStream (60): flags, codec id, declared size
   video-frame.ts           VideoFrame (61): FrameNum ordering, duplicate/overrun checks
   video-model.ts           VideoStreamModel, availability + display indices, codec routing
@@ -400,7 +401,7 @@ Codes `SF0240`–`SF0249` are this document's primary block; the Screen Video v2
 | WP-110-09 | Runtime contract (`frameToSource` seek/play, policy-blocked retry) | WP-110-07, RT | 3 | RT-R058 wiring | P10 |
 | WP-110-10 | Licensing/attribution report entries | WP-110-02 | 1 | SEC-§5 integration | P10 |
 | WP-110-11 | Video corpus: synthetic streams per codec + App C palette fixture | WP-110-05 | 3 | CI fixtures, `inspect --video`, T-MOD-916 | P10 |
-| WP-110-12 | `DefineVideoStream` header + summed `VideoFrame` byte extents (no packet parsing) | WP-020-05 | 2 | `video/extent.ts`, T-MOD-917 | P6 |
+| WP-110-12 | `DefineVideoStream` header + summed `VideoFrame` byte extents (no packet parsing) | WP-020-05 | 2 | `video/extent.ts`, T-MOD-917 — **Delivered at P6:** `packages/swf/src/video/extent.ts` (the header reader, the frame-extent reader, `summariseVideoStreams`), `packages/swf/test/video-extent.test.ts` (13 tests, all `T-MOD-917`) | P6  |
 | | **Total** | | **36** | | |
 
 ## 10. Open items
@@ -438,3 +439,4 @@ deblocking/smoothing semantics, alpha definition) are **settled** — see §3–
 | 1.2 | 2026-10-04 | Ch.14-grounded rewrite: `DefineVideoStream` flags/codec table with the **`CodecID = 6` gap** (`SF0290`); `VideoFrame` is `FrameNum`-addressed and display is `Ratio`-driven, with timing from the movie's frame rate only (replaces v1.0's "order encountered" model); two indices (availability + display); H.263 packet headers, the Sorenson feature deltas and the `UB[16]` ≠ `UI16` rule; Screen Video v1 grid/partial-block/BGR/unchanged-block rules; **Screen Video v2 corrected** (per-*packet* palettes via a v1 `IMAGEBLOCK`, 15/7-bit mixed 1-/2-byte pixel stream, diff blocks, zlib priming and its fallback) replacing v1.0's "per-block palettes" model; VP6/VP6-alpha with the chapter's premultiplied-ARGB decode, `OffsetToAlpha` validation and the keyframe-pairing rule; Appendix C's 128-entry palette transcribed; diagnostics `SF0290`–`SF0294`; tests `T-MOD-909`–`916`; WPs 01–11 = 34 d |
 | 1.3 | 2026-10-04 | Appendix pass: the palette obligation is upgraded from spot values to an order-sensitive 128-entry comparison against Appendix C (`T-MOD-911`, cited as `T-TST-104`) |
 | 1.4 | 2026-10-13 | Roadmap §4.6 item C (supply-forward rule, §4.1): `WP-110-12` re-homes the *header and byte-extent* decode of `DefineVideoStream`/`VideoFrame` to **P6**, which is the earliest phase that needs it — the emitter's plan pass must report video bytes in `budgets.json`, and until now no video tag was decoded anywhere, so the P6 asset planner depended on P10's `WP-110-06`. Packet-header validation, alpha pairing, transcode, native decoders, emission and verification stay P10. `WP-110-01` now consumes the extent model instead of re-deriving it, the WP table gains a `Phase owner` column, and `T-MOD-917` owns the extent obligation |
+| 1.5 | 2026-10-15 | `WP-110-12` delivered (`packages/swf/src/video/extent.ts`, `T-MOD-917`): the `DefineVideoStream` header decodes all eight documented fields, `VideoFrame` payloads are measured as *body minus four bytes* without being parsed, and `summariseVideoStreams` attributes frames by `StreamID` across interleaved streams so a `VideoFrame` in a later sprite frame still counts to its stream. No codec validation happens here (`SF0240` stays `WP-110-01`'s) and no `NumFrames` judgement is made (`SF0242` likewise): the declared and counted frames are both returned as data, which is what `IMPL-120-R031`'s budget line needs at P6 |

@@ -93,7 +93,11 @@ export const DEFAULT_RUN_SWITCHES: RunSwitches = {
 export const DEFAULT_FORGE_CONFIG: Omit<ForgeConfig, 'input' | 'outDir'> = {
   target: 'baseline-2020',
   graphics: {
-    maxDrawCalls: 200,
+    // `CMP` §8 prints 700 for `--graphics.max-draw-calls` (GFX-§16's batch budget target), and P6 only ever
+    // *records* the number — no draw calls exist to count until the renderer measures them — which is precisely
+    // why the default has to be the table's: a budget nobody reads is also a budget nobody will notice drifting
+    // (`E-056`, and the test that now pins the table).
+    maxDrawCalls: 700,
     textureFormat: 'auto',
     atlas: { enabled: true, maxSize: 4096, padding: 2 },
     settle: 'flash',

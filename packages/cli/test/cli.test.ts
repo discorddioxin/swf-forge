@@ -34,7 +34,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
-import { DEFAULT_FORGE_CONFIG, resolveForgeConfig } from '@swf-forge/compile';
+import { DEFAULT_FORGE_CONFIG, DEFAULT_RUN_SWITCHES, resolveForgeConfig } from '@swf-forge/compile';
 import type { ForgeConfig } from '@swf-forge/compile';
 import { Tag } from '@swf-forge/swf';
 import { buildSwf, concat, endTag, showFrames, tag } from '@swf-forge/swf/test-support';
@@ -310,6 +310,65 @@ describe('CMP-R028: the flag table and the config file', () => {
       else if (spec.kind === 'boolean') expect(node, spec.name).toBe(true);
       else expect(node, spec.name).toBe(sample);
     }
+  });
+
+  /**
+   * `CMP` §8 prints a Default beside every flag, `CMP-R028` pairs every flag with a config field, and until now
+   * **nothing related the two** — which is how `graphics.maxDrawCalls` could ship at 200 while the table said 700
+   * and every gate in the repository stay green (`E-056`). The rows below are transcribed from that table, one per
+   * line: each asserts both halves of the pairing, that the flag has the config home the table implies and that an
+   * invocation with no flags at all resolves to the table's value there. A flag the table lists and the config
+   * cannot hold is not silently skipped — its row sits in the exception list below, beside `E-053`, where the
+   * missing home is the finding.
+   */
+  it('defaults the config to the numbers `CMP` §8 prints', () => {
+    const table: readonly (readonly [string, readonly string[], unknown])[] = [
+      ['--graphics.max-draw-calls', ['graphics', 'maxDrawCalls'], 700],
+      ['--audio.codec', ['audio', 'codec'], 'auto'],
+      ['--vm.residual', ['vm', 'residual'], 'on-demand'],
+      ['--network.policy', ['network', 'policy'], 'deny'],
+      ['--max-warnings', ['diagnostics', 'maxWarnings'], 200],
+      ['--fail-on', ['diagnostics', 'failOn'], 'error'],
+      ['--reproducible', ['reproducible'], true],
+    ];
+    const resolved = resolveForgeConfig({ input: 'movie.swf', outDir: 'out' });
+
+    for (const [name, path, expected] of table) {
+      const spec = FLAGS.find((entry) => entry.name === name);
+      expect(spec, `${name} is in the design spec's table but not in the parser's`).toBeDefined();
+      expect(spec?.config, `${name} has no config home (CMP-R028, E-053)`).toEqual(path);
+      let node: unknown = resolved;
+      for (const key of path) node = (node as Record<string, unknown>)[key];
+      expect(node, `${name} defaults to ${JSON.stringify(node)}; CMP §8 prints ${JSON.stringify(expected)}`).toEqual(
+        expected,
+      );
+    }
+
+    // "off" in the table means false in the run switches, and the three rows P6 cannot honour are exceptions with
+    // reasons rather than omissions: a flag that sets nothing reports nothing inert, and each of the three reports
+    // exactly itself when it is set.
+    expect(DEFAULT_FORGE_CONFIG.reproducible).toBe(true);
+    expect(DEFAULT_RUN_SWITCHES.dryRun).toBe(false);
+    expect(DEFAULT_RUN_SWITCHES.pruneDeadCode).toBe(false);
+    expect(parseInvocation(['build', 'movie.swf']).inert).toEqual([]);
+    for (const argv of [
+      ['--jobs', '4'],
+      ['--fail-on', 'risk'],
+    ]) {
+      const name = argv[0] as string;
+      const inert = parseInvocation(['build', 'movie.swf', ...argv]).inert;
+      // A value that is inert rather than the flag itself is named with the value attached (`--fail-on=risk`),
+      // because the reason belongs to the pairing and not to the flag.
+      expect(inert.length, name).toBe(1);
+      expect(inert[0]?.name.startsWith(name), name).toBe(true);
+      expect(inert[0]?.reason.length ?? 0, `${name} is inert without a reason`).toBeGreaterThan(10);
+    }
+    // `--budget-strict` is the table's third row P6 cannot make decisive, and it is a different condition: the
+    // switch is *recorded* in the gate map rather than announced inert, because "remembered, not yet allowed to
+    // fail you" is what `E-056`'s decision is. §7 of doc 120 owns the sentence.
+    const strict = parseInvocation(['build', 'movie.swf', '--budget-strict']);
+    expect(strict.inert).toEqual([]);
+    expect(strict.switches.budgetStrict).toBe(true);
   });
 
   it('accepts --jobs and --fail-on=risk with a note, because the table asks for them and P6 cannot honour them', async () => {

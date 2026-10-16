@@ -1863,6 +1863,41 @@ one fixture. The second explanation — that the project is missing its entry po
 `WP-120-07`/`WP-130-01`'s app-shell seam, doc 120 §4.10's `strict-build` row names its owner, and if a bootstrap
 module ever lands it will *shrink* this list, not grow it.
 
+## E-056 — `CMP` §8's `--graphics.max-draw-calls` default of 700 shipped as 200, and nothing in the repository could tell (closed on our side by `WP-120-14`; the spec ask is open)
+
+**Found in:** starting `WP-120-07`, whose job is budget accounting — the first work in the phase that has a reason to
+*read* the budget defaults rather than carry them.
+
+**What happens.** `CMP-§8` prints `| --graphics.max-draw-calls <n> | 700 | Batch budget target (GFX-§16) |`, and
+`packages/compile`'s `DEFAULT_FORGE_CONFIG.graphics.maxDrawCalls` was `200`. `WP-120-13`'s commit record *claimed* the
+default had been aligned to 700; the change that actually landed in that commit aligned `diagnostics.maxWarnings` to
+the table's 200 and left the draw-call row alone. So a number in an emitted `build-info.json` gate map, in a porter's
+`forge.config.json` echo, and in the roadmap's own account of the phase was wrong by a factor of 3.5 for three
+commits, and every gate stayed green the whole time.
+
+**Why nothing saw it.** The relation nobody asserted. `CMP-R028` says every flag MUST have a matching
+`forge.config.json` field, and `packages/cli/test/cli.test.ts` enforced exactly that — name to path. The
+*value* the table prints beside a flag had no test, and `maxDrawCalls` is a number no P6 code reads, because there
+is no renderer to count draw calls and no `budgets.json` to compare them against: a default that nothing consumes is
+a default nothing can notice. Two of the repo's own rules were therefore both satisfied and jointly useless, which
+is the shape `REPO-R019` warns about — a check that passes because it tests the plumbing and not the claim.
+
+**Closed on our side.** The default is now `700` with the citation beside it, and the CLI's `CMP-R028` describe block
+grew a test that transcribes `CMP-§8`'s Default column — seven rows, each asserting the flag exists, that it names
+the config path the pairing implies, and that an invocation with no flags resolves to the table's value there. Three
+rows the table prints and the config cannot hold are asserted where they actually live (`DEFAULT_RUN_SWITCHES` for
+the two `off` flags, the gate map for `--budget-strict`, which is *recorded* rather than announced inert because
+`WP-120-14` left it non-decisive), so the test covers all thirteen table rows and none of them by omission. The
+emitted project's byte-for-byte behaviour did not move: the corpus lane reports the same 85 projects, the same 0
+findings and the same 2,720 agreeing gate rows before and after, which is the honest scope of a default that nothing
+reads — and the reason the pin matters anyway, because `WP-120-07` will be the first consumer and should inherit the
+table's number rather than discover this one.
+
+**Asked of the owners.** `CMP-§8` should mark which of its defaults are *targets recorded for another phase* (the
+draw-call and per-frame budgets) as distinct from bounds this phase enforces, so `700` is not read as something a P6
+build can fail on. Recorded here rather than fixed in the design spec: `REPO-R013` forbids P6 restating `CMP`'s
+table in its own voice.
+
 ## E-055 — `CMP` §8's "Fail after n warnings" does not say what a warning is, and the sink's dedupe makes the difference four orders of magnitude (open)
 
 **Found in:** `WP-120-14`'s first full-corpus round trip, on `packages/swf/test/fuzz/corpus/crash-005-shape-edge-past-limit.swf`.
@@ -1900,3 +1935,4 @@ here: neither table is P6's, and `REPO-R013` forbids quietly restating another p
 | 2.21 | 2026-10-15 | `E-053`, from `WP-120-13`: `IMPL-120-R026`'s exit table contradicts `CMP-R029` on the meanings of `1`, `4` and `5` while `apps/decompiler` already implements the latter; doc 120's header cites `MS-§2`, a document that is not in the spec map, for the CLI surface `CMP` §8 owns; `IMPL-120-R025` sends the `--json` schema version to `REPO-§7`, a testing section; `CMP-R028`'s "every flag has a config field" fails for `--jobs`, `--fail-on=risk`, `--sourcemap` and `--budget-strict`, and `report`'s four withheld inputs have no flag or field either; and `CMP-R004`'s `forge.config.json` is missing from doc 120 §4's own output tree, and `REPO-§2` spells the compiler package `@swf-forge/compiler` while the repository has delivered `@swf-forge/compile`, a name `IMPL-150-R001` also cites; `swfforge` follows `CMP-R029`, accepts the unmatched flags and reports them inert with a reason, writes the config copy the tree forgot, and reads only `./forge.config.json` so the copy it wrote cannot become its own input |
 | 2.22 | 2026-10-15 | `E-054`, from `WP-120-13`: `swfforge verify` over the output of a clean `swfforge build` warns eight times about exports nothing references, because `EMITTED_PUBLIC_EXPORTS` omits them or the emitted project has no module that imports them, and the two readings want opposite fixes; `WP-120-14` owns the decision, and `verify` keeps reporting what it sees rather than being given a suppression list by the CLI that calls it |
 | 2.23 | 2026-10-15 | `E-055`, from `WP-120-14`: `CMP-§8`'s "Fail after n warnings" does not say whether `n` counts occurrences or sink rows, and the 52-byte fuzz crasher that warns 92,680 times in one row exited 0 under a 200 budget; budgets are now counted in occurrences, the summary keeps its row semantics (doc 010/020's contract, read by the decompiler), the exit-4 line prints both numbers, and `E-054` closes in the same package — doc 120 §4 emits no bootstrap module, so the outward tables are declared as the emitter's own surface (`path#name` where a module is fixed, a trailing-slash directory where the file count is a property of the movie), `swfforge verify` over a clean build reports zero findings, and the dead-export arm still fires on a porter-authored module |
+| 2.24 | 2026-10-15 | `E-056`: `CMP-§8`'s `--graphics.max-draw-calls` default of 700 shipped as 200 for three commits and no gate could see it, because `CMP-R028`'s pairing was tested as name-to-path and never as value; found while starting `WP-120-07`, closed on our side by aligning the default and pinning every row of the table's Default column in `packages/cli/test/cli.test.ts`, with the ask to `CMP` left open |

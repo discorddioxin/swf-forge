@@ -1769,7 +1769,86 @@ the left side of "every `assets/` file" is empty by construction. `T-CMP-009`: s
 expected to *produce* in emitted output; if the answer is "nothing, it is carried in the manifest", then the decode
 half belongs to P2's tests and P6's half is the injected-`location` case — which is what this phase wired.
 
+## E-053 — `IMPL-120-R026`'s exit table contradicts `CMP-R029`, the CLI's design-spec citation names a document that does not exist, and five flags in `CMP` §8 have no config home (open)
+
+**Found in:** implementing `WP-120-13`, whose contract is the flag table in `CMP` §8, the exit codes in `CMP-R029`,
+and the rule list in `IMPL-120` §6 — the three of which do not agree with each other.
+
+**What is wrong.** Four separate things, all of them the kind a CLI inherits silently.
+
+1. `IMPL-120-R026` and `CMP-R029` give different meanings to the same three numbers. `CMP-R029` is
+   `0` ok, `1` error, `2` input unreadable, `3` AVM2, `4` budget or threshold, `5` internal; `R026` says `1` is
+   "build failure (our bug)", `4` is "external tool missing" and `5` is "budget exceeded under `--budget-strict`".
+   `apps/decompiler/src/exit.ts` already implements `CMP-R029`, so the repository had two exit tables before this
+   package existed, and the impl doc's version would have made a third.
+2. `IMPL-120`'s header cites `MS-§2 (CLI surface)` as a design spec. The spec map in `docs/specs/README.md` runs
+   `ARCH` 000 … `CLN` 130 and has no `MS` document; the flag table that the section describes is `CMP` §8.
+3. `IMPL-120-R025` requires the `--json` schema to be "versioned under `REPO-§7`", and `REPO` §7 is the testing
+   section: it names no schema, no version, and no field.
+4. `CMP-R028` states that every flag MUST have a matching `forge.config.json` field, and five entries in `CMP` §8's
+   own table cannot satisfy it: `--jobs` (there is no parallel encode before `WP-120-07`), `--fail-on=risk` (the
+   diagnostic registry defines `error`, `warning`, `info`, and `E-043` is open on the missing severity),
+   `--sourcemap` (the emit stage consumes it as a *stage option*, and `E-047` withholds the maps themselves), and
+   `--budget-strict` (a run switch, recorded in the report's gate map, with no budget table to fail). Beside them,
+   the report stage's four withheld inputs — `pins`, `verifyItems`, `tier`, `divergences` — have neither a flag nor
+   a config key, which is precisely why `SF0509` can only state them as gaps: there is nothing for a project to set.
+
+5. Finally, a name. `REPO-§2`'s layout spells the compiler package `packages/compiler` · `@swf-forge/compiler`,
+   and the repository has delivered `packages/compile` · `@swf-forge/compile` — the name `WP-120-01` chose and
+   nine packages now import. `IMPL-150-R001` cites the spec spelling, so an inspector package written to that rule
+   would declare a dependency that does not exist. The divergence is harmless until someone renames a directory to
+   close it, which is why it is recorded rather than fixed here.
+
+**Our resolution.** `swfforge` follows `CMP-R029`, because it is the design spec, because `apps/decompiler`
+implements it, and because two commands in one repository cannot mean different things by exit `1`; `R026` is
+reworded to that table with the precedence the table omits written into `packages/cli/src/exit.ts`. The
+"budget exceeded" meaning `R026` wanted for `5` becomes a threshold in `4` — which is what `CMP`'s own row says —
+and `--budget-strict` therefore has a class even though it has no data yet. The header's `MS-§2` citation is
+corrected to `CMP-§8`. `IMPL-120` §6 now says plainly that the CLI carries the `schemaVersion: 1` envelope field
+until a spec owns it. The four unmatched flags are accepted, applied where a consumer exists, and *reported as
+inert with a reason* on every run, so a user is never left to discover by experiment that `--jobs 8` changed
+nothing; `forge.config.json` gained a copy in the output tree (`CMP-R004`) that §4's own file list had forgotten.
+
+**Asked of the spec owners.** `REPO-§2`: either correct the layout tree to the delivered `@swf-forge/compile` or
+order the rename, and fix `IMPL-150-R001`'s citation to match whichever answer is given.
+`CMP` §8: either add `jobs`/`sourcemap`/`failOn`-with-`risk` to the §3 config schema
+or drop them from the flag table, and give `report`'s four withheld inputs a home (a `forge.config.json` field for
+the pins register and the divergence declarations would let `verify` and `report` check a project without the CLI
+supplying them). `IMPL-120-R025`: name the document that owns the `--json` schema version, or delete the `REPO-§7`
+pointer. `CMP-R029`: state the precedence between the classes, because `2` and `4` can both be true of one run and
+the CLI has to choose which one a caller sees.
+
+## E-054 — a clean `swfforge build` output is not clean under `swfforge verify`: eight of the project's own exports are referenced by nothing (open)
+
+**Found in:** wiring `WP-120-13`'s `verify` over the directory `build` had just written, with no edits by anybody.
+
+**What happens.** `IMPL-120-R024`'s symbol check reports every exported name in `src/**` that no other emitted file
+references, unless the emitter lists it as intentionally public. On a one-frame movie the check warns eight times —
+`src/classes/index.ts#classes`, `src/frames/movie.ts#frameScripts`, `#residualEntries`, `#frame_01`, `#frame_1`,
+`src/symbols.ts#exportedAssets`, `#characterByName`, `#characterIdByName` — and each warning tells the porter to
+"either wire it, or list it as intentionally unreferenced". `EMITTED_PUBLIC_EXPORTS` is the emitter's own list and
+does not contain these names, though `WP-120-12` built the list for exactly this reason.
+
+**Why it is not this package's fix.** There are two explanations and they want opposite edits. Either those symbols
+are host-facing, in which case the list is incomplete by one line per name and the emitted project is correct; or
+they are internal, in which case the emitter has a hole worth more than a warning — a project that writes
+`frames/movie.ts` and `symbols.ts` and *never imports either* has no entry point that binds its own tables, and
+`CMP` §4's layout claims the runtime is handed one (`REPO-R021`'s boot claim, `WP-120-14`'s CI job). Silencing the
+eight warnings in `WP-120-13` — by teaching `verify` to ignore them, or by the CLI passing them in
+`unreferencedAllowed` — would choose the first explanation and make the second invisible. A checker that is laxer
+than the config it checks is the mistake `WP-120-12` already corrected once, and `verify`'s escape hatch belongs in
+the project's own emitted list, not in a caller's argument.
+
+**Our resolution.** `WP-120-13` ships `verify` unchanged in severity terms: warnings warn, errors fail, and a clean
+build therefore exits `0` with eight findings visible in `--json`'s `findings` array and in the printed table.
+`WP-120-14` decides which explanation is true: if the emitted project needs a bootstrap module, that is an emitter
+change (`emit/files.ts`, with `R019`'s manifest pair re-checked); if it does not, the eight names join
+`EMITTED_PUBLIC_EXPORTS` and this entry closes with a test that runs `verifyProject` over a real build and expects
+zero findings. Either way the check that "the emitted project is self-consistent" is worth keeping able to fail.
+
 | 2.17 | 2026-10-14 | `E-049`, from `WP-120-09`: the residual set is the tier-2 set in `IMPL-050-R057` and the lowering-refusal set in `IMPL-120-R018`, and on the corpus 68 of 87 refused blocks are T0/T1 with `residual: null` — the emitter recomputes slices from the CFG and treats the front end's list as a cross-check (`SF0505`), while `AVM1-D03`, `IMPL-050-R060` and `AVM1-R071` all read a number the specs never pin down |
 | 2.18 | 2026-10-14 | `E-050`, from `WP-120-10`: `CMP-R013`'s mandated generated header begins with `/* eslint-disable */`, a suppression `IMPL-120-R014`/`REPO-R011` forbid in emitted code and that would mute the very lint `WP-120-12` exists to run; and `AST` §6 asks `forge.manifest.json` for `movie.scaleMode`/`movie.align`, which no SWF field, model record or config key carries (`RT-R040` routes the equivalent through `fscommand`), while `CMP` §5 puts the same pair under `stage` — P6 emits neither, writes `package.json` as strict JSON with a `"//"` provenance field instead of a comment, and asks the spec owners to name one home and one nesting for the two fields |
 | 2.19 | 2026-10-15 | `E-051`, from `WP-120-11`: `ARCH-R003` is defined twice in `000-architecture.md` and no gate can see it (`verify_docs` §14 checks only impl docs and the two colliding design specs); `IMPL-120-R021` requires the state of a `--video-native` gate that exists in no config, CLI surface or design rule; doc 120 §4's root `porting-notes.json` and `CMP` §4.9/`ARCH-R003`'s `reports/porting-notes.md` are two homes for one file, so P6 writes both with the markdown as a projection of the JSON; and "every diagnostic" cannot be listed by a report at all, because the sink is not part of a cache hit (`CMP-R040`) and its span attribution can attach a container-level error to a dictionary entry — P6's report is artifact-sourced, says so per row and per file, and asks `WP-120-14` to decide whether diagnostics belong on a stage's cacheable outcome |
 | 2.20 | 2026-10-15 | `E-052`, from `WP-120-12`: `CMP` §4.10's `verify` table asks for a compiler run, a budget file and an asset directory that an emitted P6 project does not have, and its "resource handle" row names no construct `src/**` can contain; `T-CMP-009`'s `NamedAnchor` half asserts an absence the emitter cannot violate, because anchors reach the runtime through the manifest. `verifyProject` runs the four checks that are functions of the project's bytes, reports the other three as `notRun` rows with their owners, implements the handle row as the dangling-import check, and wires `T-CMP-009` with this entry beside it |
+| 2.21 | 2026-10-15 | `E-053`, from `WP-120-13`: `IMPL-120-R026`'s exit table contradicts `CMP-R029` on the meanings of `1`, `4` and `5` while `apps/decompiler` already implements the latter; doc 120's header cites `MS-§2`, a document that is not in the spec map, for the CLI surface `CMP` §8 owns; `IMPL-120-R025` sends the `--json` schema version to `REPO-§7`, a testing section; `CMP-R028`'s "every flag has a config field" fails for `--jobs`, `--fail-on=risk`, `--sourcemap` and `--budget-strict`, and `report`'s four withheld inputs have no flag or field either; and `CMP-R004`'s `forge.config.json` is missing from doc 120 §4's own output tree, and `REPO-§2` spells the compiler package `@swf-forge/compiler` while the repository has delivered `@swf-forge/compile`, a name `IMPL-150-R001` also cites; `swfforge` follows `CMP-R029`, accepts the unmatched flags and reports them inert with a reason, writes the config copy the tree forgot, and reads only `./forge.config.json` so the copy it wrote cannot become its own input |
+| 2.22 | 2026-10-15 | `E-054`, from `WP-120-13`: `swfforge verify` over the output of a clean `swfforge build` warns eight times about exports nothing references, because `EMITTED_PUBLIC_EXPORTS` omits them or the emitted project has no module that imports them, and the two readings want opposite fixes; `WP-120-14` owns the decision, and `verify` keeps reporting what it sees rather than being given a suppression list by the CLI that calls it |

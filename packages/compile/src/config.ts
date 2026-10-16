@@ -110,7 +110,9 @@ export const DEFAULT_FORGE_CONFIG: Omit<ForgeConfig, 'input' | 'outDir'> = {
   },
   vm: { residual: 'on-demand', allow: [] },
   network: { policy: 'deny' },
-  diagnostics: { maxWarnings: 0, failOn: 'error' },
+  // `maxWarnings` is `CMP` §8's default for `--max-warnings`, and the CLI reads the number literally: a limit of
+  // 0 makes the first warning fatal, so a *default* of 0 would exit 4 on any build that warned at all.
+  diagnostics: { maxWarnings: 200, failOn: 'error' },
   reproducible: true,
 };
 

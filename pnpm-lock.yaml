@@ -90,6 +90,15 @@ importers:
         specifier: workspace:*
         version: link:../swf
 
+  packages/cli:
+    dependencies:
+      '@swf-forge/compile':
+        specifier: workspace:*
+        version: link:../compile
+      '@swf-forge/swf':
+        specifier: workspace:*
+        version: link:../swf
+
   packages/compile:
     dependencies:
       '@swf-forge/avm1':

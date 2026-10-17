@@ -62,8 +62,9 @@ P7's `WP-130-01`). Each gets a decision point below instead of a schedule slip d
 6. **Corpus artifacts are regenerated, never hand-edited.** Any change to what `verify` or the exit
    codes report regenerates `audits/P6-CORPUS-ROUNDTRIP.json` / `audits/P6-C4-ROUNDTRIP.json` in the
    same commit.
-7. **One package per commit series**, gates green at each landing, pushed to
-   `arena/11541273-swf-forge` with CI watched to completion before the next wave starts.
+7. **One package per commit series**, gates green at each landing, pushed to the working branch
+   with CI watched to completion before the next wave starts. (The session branch this plan was
+   executed on was merged into `main` at the Wave-2 handoff; continue from `main`.)
 
 ## 3. P0 — Foundations (Wave 1)
 

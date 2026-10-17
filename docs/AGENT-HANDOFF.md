@@ -1,10 +1,13 @@
 # Agent handoff — swf-forge (read this first)
 
-You are continuing an ongoing build on branch `arena/11541273-swf-forge` of
-`discorddioxin/swf-forge` (a SWF→modern-web transpiler toolchain, TypeScript/pnpm monorepo). This
-file tells you what is being worked on, what the last few steps implemented, and exactly where to
-continue. It is a handoff note, not a specification — the authoritative documents are named below.
-Delete or rewrite this file as it goes stale; the registers always win over it.
+You are continuing an ongoing build of `discorddioxin/swf-forge` (a SWF→modern-web transpiler
+toolchain, TypeScript/pnpm monorepo). **This work reached `main` by merge before this handoff:**
+the session branch it was developed on (`arena/11541273-swf-forge`) is closed and will not be
+continued — start from `main`, and do your work on whatever branch your own process gives you.
+This file tells you what is being worked on, what the last few steps before the merge implemented,
+and exactly where to continue. It is a handoff note, not a specification — the authoritative
+documents are named below. Delete or rewrite this file as it goes stale; the registers always win
+over it.
 
 ## 1. Authority and working agreement (do not violate)
 
@@ -45,8 +48,8 @@ Delete or rewrite this file as it goes stale; the registers always win over it.
 
 ## 3. What the last few steps implemented (the close-out waves)
 
-Execute against `docs/TEMP-ROADMAP-P0-P6-CLOSEOUT.md` §9. Landed, CI-green (verify, browser,
-determinism jobs), tip commit `33199ee`:
+Execute against `docs/TEMP-ROADMAP-P0-P6-CLOSEOUT.md` §9. Landed and CI-green (verify, browser,
+determinism jobs) before the merge; pre-merge tip commit `33199ee`, plus this handoff update:
 
 - **Wave 0** (`75fbef4`) — doc hygiene: `WP-120-01`'s missing **Done** marker restored; the reader-fuzz
   deliverable re-pointed at its delivered home `packages/swf/test/fuzz.test.ts`.
@@ -113,14 +116,15 @@ roadmap (Wave 5, which also re-verifies P1–P4 without re-opening them).
 
 ## 5. Sandbox survival (hard-won; read before your first command)
 
-- **The sandbox restores aggressively.** Symptoms: `HEAD` rewound to session base `475edc7`,
-  branch work showing as thousands of uncommitted diffs, and/or `node_modules`, `dist`,
-  `.forge-cache` gone. Also observed mid-turn, twice. Habit, before every commit and at session
-  start: `git fetch origin arena/11541273-swf-forge; git log --oneline -1; git log --oneline -1
-  FETCH_HEAD; git status --short`. If rewound, recover with `git reset --hard FETCH_HEAD` (your
-  pushed commits are the safety net — uncommitted work is only safe in `/tmp` copies). Re-run
-  `git diff --stat <last-pushed-sha>` right before `git push` to confirm the delta is what you
-  intend. Never leave finished work uncommitted at the end of a turn.
+- **Sandboxes in this workflow may restore aggressively.** Symptoms seen on the session branch
+  this work was developed on: `HEAD` rewound to the branch's base commit, branch work showing as
+  thousands of uncommitted diffs, and/or `node_modules`, `dist`, `.forge-cache` gone, sometimes
+  mid-turn. The defence generalises to any branch: habit, before every commit and at session
+  start — `git fetch origin <your-branch>; git log --oneline -1; git log --oneline -1 FETCH_HEAD;
+  git status --short`; if rewound, recover with `git reset --hard FETCH_HEAD` (pushed commits are
+  the safety net — uncommitted work is only safe in `/tmp` copies), and re-run
+  `git diff --stat <last-pushed-sha>` right before `git push`. Never leave finished work
+  uncommitted at the end of a turn.
 - **Toolchain is not on PATH.** From the repo root, always `corepack pnpm …` (install first with
   `--prefer-offline` after any restore). `./node_modules/.bin/{vitest,tsc,prettier}` work when
   `node_modules` survived. `tools/*.mjs` import built output by relative path, so
@@ -151,7 +155,7 @@ python3 tools/audit_dev.py    # NEW FINDINGS: 0
 Corpus artifacts (`audits/P6-CORPUS-ROUNDTRIP.json`, `audits/P6-C4-ROUNDTRIP.json`) store gate
 counts and agreement: regenerate in the same commit if (and only if) behaviour they measure
 changed. CI = `.github/workflows/ci.yml` jobs `verify`, `browser`, `determinism`; watch the run
-to completion (`gh run list --branch arena/11541273-swf-forge --limit 1`) before calling work
+to completion (`gh run list --branch <your-branch> --limit 1`, or `--branch main` for merges)
 done. Commit messages state the WP/test id and what the evidence is; one package per commit
 series (doc updates + evidence together).
 

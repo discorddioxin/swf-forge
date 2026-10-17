@@ -540,7 +540,7 @@ applies).
 | `T-SWF-001` | header/version/compression matrix (in doc 020) | F1 | P0 |
 | `T-SWF-003` | `RECORDHEADER` short/long boundary at 62/63 bytes (doc 020) | F1 | P0 |
 | `T-SWF-004` | primitive vectors below, exact equality | F1 | P0 |
-| `T-SWF-009` | two parses of every fixture produce identical offsets and values | F1 | P0 open — §10 / §11.1 in-repo inventory |
+| `T-SWF-009` | two parses of every fixture produce identical offsets and values | F1 | P0 — **delivered**: `packages/swf/test/fixture-inventory.test.ts` asserts the checked-in C1 inventory (21 + 5 = 26) against the directory walk and the register's count, and repeat-parse identity over all 26 |
 | `T-SWF-013` | MATRIX rotation convention round-trip (E-005) | F2 | P0 |
 | `T-SWF-014` | property test: `writer → reader → writer` is a fixed point for 10⁵ random values | F1 | P0 open — WP-010-11 property test |
 | `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 | P0 — cited; recovery contract strengthening open |
@@ -658,7 +658,7 @@ consuming a P0 deliverable), and the undeclared cycle described in
 As of v1.6 this table is **empty of open rows**. That is a statement about chapter-text questions, not
 about acceptance: §11's done criteria are a separate list, and several are still open — the §8 vector
 matrix is incomplete until `WP-010-11`'s writer exists for the `RECT`/`MATRIX`/`CXFORMWITHALPHA` rows,
-the `UI32` row is disputed (`E-033`), and `T-SWF-009`/`014`/`015`/`016`/`017` all lack their evidence.
+the `UI32` row is disputed (`E-033`), and `T-SWF-014`/`015`/`016`/`017` still lack their full evidence (`T-SWF-009` closed 2026-10-16, v1.8).
 `docs/impl/registers/STATUS.md` counts the rows below, so "0 open items" here must not be read as P0
 being closeable (roadmap §2's status policy: code presence or a test citation alone does not close an
 obligation).
@@ -704,3 +704,4 @@ obligation).
 | 1.5 | 2026-10-04 | Rule-id and cross-reference hygiene after the area pass: `IMPL-060`'s `R046`–`R052`, `IMPL-030-R007`, `IMPL-120-R015`; registry row for 080 corrected to `SF0270`–`0289` and the design-owned `SF0200`–`0239` block documented as not-free |
 | 1.6 | 2026-10-13 | Roadmap §4.4 follow-ups applied (supply-forward rule, `IMPL-000` 1.20): §8 gains the normative **allocation/copy counter contract** (`IMPL-010-R043`–`R045`, adopting P4's instrumented-counter precedent and separating `T-SWF-017`'s hot-read object count from `SWF-R001`'s payload-copy bound) and the **primitive-consumer register**; §10 items 3–4 close on that register — item 3 **positively** (`DefineFontAlignZones`, tag 73, consumes `FLOAT16`; `E-004`'s risk sentence corrected) and item 4 negatively (no `SI24` in the encoded set; the sole 24-bit field is doc 110's `OffsetToAlpha UI24`, which consumes the register rather than supplying it); §9 gains a `Phase owner` column (all rows P0) and `WP-010-12` is re-sited from the ungated `tools/fuzz/readers.ts` into `packages/swf/test/fuzz/`, with long-run hosting declared as a P11 forward on `WP-140-07`; §11 criterion 1 records the delivered browser lane and criterion 4 cites the counter contract; the §8 `UI32` row is annotated as disputed and filed as `E-033` rather than silently corrected |
 | 1.7 | 2026-10-16 | Temporary P0–P6 close-out roadmap, Wave 0: `WP-010-12`'s deliverable cell re-pointed at the delivered target (`packages/swf/test/fuzz.test.ts` + `fuzz/corpus/`, `pnpm test:fuzz`). The fuzz target was done in substance and mis-described in the ledger; no obligation changed |
+| 1.8 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-1: `T-SWF-009` delivered — `packages/swf/test/fixture-inventory.test.ts` carries the checked-in C1 inventory (the 21 committed fixtures + 5 crasher-corpus files the register counts), asserts the directory walk and `registers/corpus.md` §1's count against it, and asserts two parses of every file produce identical header values, tag offsets, dictionary entries and diagnostics. Adding a fixture without updating the inventory now fails a gated test |

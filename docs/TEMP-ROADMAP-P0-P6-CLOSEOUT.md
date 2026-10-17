@@ -12,6 +12,12 @@ snapshot, roadmap Draft 1.40, errata 2.24, corpus register 1.5), the owning docu
 `impl/transpiler/120-compiler-and-emitter.md`, and the audits `P0-AUDIT-RESOLUTION.md`,
 `P5-AUDIT-RESOLUTION.md`, `P0-PHASE-DEPENDENCY-MAP.md`, `P0-P5-COMPLETION-AND-P6-READINESS.md`.
 
+**Progress (2026-10-16):** Waves 0–2 done. P0 is **Completed** (roadmap Draft 1.45; `E-033` ruled
+from the upstream SWF v19 text the user supplied). `WP-050-18` is delivered, closing P5's
+byte-round-trip criterion; P5's remaining criteria are D2/D3 only. D4 was deferred by the user to
+the start of Wave 3's image chain. Next: Wave 3's independent lanes (`WP-080-11`, `WP-090-12`),
+then the image chain once D4 is taken.
+
 **Scope rule.** "Closing out P0 to P6" means: every phase's own exit criteria pass on evidence, or any
 criterion that cannot pass is recorded as blocked on a named external owner — never waived silently,
 never re-homed to a later phase to make the count look better, and never closed from a test citation

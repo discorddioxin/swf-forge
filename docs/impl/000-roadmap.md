@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.45 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.46 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -847,3 +847,4 @@ art):
 | 1.43 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the diagnostic-literal lint (`IMPL-010` §11.5) delivered and scope-ruled, and roadmap §6's P0 lint row now reads Delivered. The lint's first run migrated the 10 raw `code:` literals in `packages/assets/src/images/decode.ts` to `Codes.*` constants with no emitted value changed |
 | 1.44 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-2 + P0-3: `WP-010-11` completed — `T-SWF-014`'s 10⁵-value fixed-point property test (writer extended with six encoders), `T-SWF-015`/`016` strengthened to their full contracts, and `T-SWF-017`/`SWF-R001` measured by the new named counter `allocationCounter` after three hot read paths (`float16`, `encodedU32`, `float32`/`float64`) were made allocation-free. P0's remaining items are the `UI32` disposition (`E-033`, a ruling) and the fresh closeout audit |
 | 1.45 | 2026-10-16 | **P0 Completed.** The `UI32` ruling (D1) was taken from the upstream SWF v19 Chapter 1 text the user supplied: upstream prints `0x456e7120` and its bytes with no decimal, so §8's Expected cell was our miscomputation and is corrected to 1164865824 (`E-033` closed, errata 2.25; doc 010 v1.12; the `ui32` vector pin removed). With §11's six criteria all evidenced (`audits/P0-CLOSEOUT-AUDIT.md`), roadmap §2 and §6 now read P0 Completed |
+| 1.46 | 2026-10-16 | Temporary P0–P6 close-out roadmap Wave 2: `WP-050-18` delivered — the canonical action-byte serializer (`frontend/serialize.ts`) closes P5's retained byte-round-trip gate (`T-AVM1-FE-034`, doc 050 §13 criterion 2). P5 stays **In progress** on its two externally gated criteria only: the second corpus reviewer (D2) and the FE-030 oracle (D3) |

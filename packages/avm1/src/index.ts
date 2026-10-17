@@ -83,6 +83,10 @@ export type { ActionSchedule, FrameScriptEntry, InitScriptEntry } from './fronte
 export { analyzeActionBlock, analyzeMovie } from './frontend/analyze.js';
 export type { AnalyzeBlockInput, AnalyzedBlock, AnalyzeMovieOptions, MovieAnalysis } from './frontend/analyze.js';
 
+// ---- serializer (WP-050-18) -----------------------------------------------------------------------------------
+export { checkCanonical, serializeBlock } from './frontend/serialize.js';
+export type { SerializeContext, SerializeNode } from './frontend/serialize.js';
+
 // ---- disassembly (WP-050-16) -----------------------------------------------------------------------------------
 export { disassembleBlock, disassembleMovie } from './frontend/disassemble.js';
 

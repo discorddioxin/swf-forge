@@ -77,13 +77,12 @@ not at the `packages/swf/test/fuzz/readers.*.test.ts` path roadmap §6 names —
 Sources: [`impl/transpiler/050-actions-and-avm1.md`](impl/transpiler/050-actions-and-avm1.md) §12–§13,
 [P5 audit](../audits/P5-AUDIT.md), [resolution](../audits/P5-AUDIT-RESOLUTION.md).
 
-- [ ] **Byte round trip — evidence only.** The lossless inverse format and byte-identity acceptance are
-      normative (`IMPL-050-R065`–`R069`, §5.7) and the package is scoped and estimated
-      (**`WP-050-18`**, 5 d, `frontend/serialize.ts`, `T-AVM1-FE-034`); nothing references
-      `T-AVM1-FE-034` yet. The `→ disassembly →` leg was removed from the byte-identity path by the
-      recorded scope decision, so `T-AVM1-FE-032` must not be cited here. Closes when canonical input
-      reproduces its bytes, non-canonical input is diagnosed rather than normalized, and
-      reserved/undefined codes refuse serialization and stay residual.
+- [x] ~~**Byte round trip — evidence only.**~~ — delivered 2026-10-16 by **`WP-050-18`**:
+      `packages/avm1/src/frontend/serialize.ts` + `packages/avm1/test/serialize.test.ts` wire
+      `T-AVM1-FE-034` (every defined opcode, all `Push` types, nested regions, branch recomputation;
+      non-canonical padding diagnosed as `SF0401` onto a second-generation fixed point;
+      reserved/undefined codes refuse and stay residual). `T-AVM1-FE-032` was not cited, per the
+      recorded scope decision (doc 050 v1.16, §13 criterion 2 closed).
 - [ ] **Two-reviewer screen on the open corpus.** C4-c exists (73 hash-pinned AVM1 conformance movies) and
       the tier report runs over it, but `registers/corpus.md` §4 item 3 records "one auditor at most", and
       no C4-t open title is admitted. Synthetic fixtures alone do not pass this criterion.

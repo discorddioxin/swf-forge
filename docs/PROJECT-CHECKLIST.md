@@ -169,13 +169,13 @@ Sources: [roadmap §2/§6](impl/000-roadmap.md) and the owning specs listed ther
 
 ## Cross-cutting items no phase table owns
 
-- [ ] `IMPL-120` §9's delivery markers are inconsistent: `WP-120-01`'s row carries no **Done** marker
-      although `packages/compile/src/pipeline.ts` shipped and `-02`…`-14` depend on it. A reader counting
-      the column gets a wrong phase state — which is how "13 of 14" was briefly read as "P6 nearly done".
-- [ ] Roadmap §6's fuzz row names `packages/swf/test/fuzz/readers.*.test.ts` while the delivered target is
-      `packages/swf/test/fuzz.test.ts`; and its `T-SWF-009` row is satisfied in substance by
-      `registers/corpus.md` + the round-trip lane but not by the id. Both need the row re-pointed (a doc
-      edit), not the work re-done.
+- [x] ~~`IMPL-120` §9's delivery markers are inconsistent~~ — fixed 2026-10-16 (doc 120 v1.17):
+      `WP-120-01`'s row now carries its **Done** marker. (The misreading it caused is recorded in the
+      temporary close-out roadmap, Wave 0.)
+- [x] ~~Roadmap §6's fuzz row names `packages/swf/test/fuzz/readers.*.test.ts`~~ — re-pointed 2026-10-16
+      (roadmap Draft 1.41, doc 010 v1.7) at the delivered `packages/swf/test/fuzz.test.ts`; §6's P0 fuzz
+      row now reads Delivered. The `T-SWF-009` half is *not* closed by this edit — it needs the id wired
+      to the inventory (P0-1 in the temporary close-out roadmap).
 - [ ] `--budget-strict` is accepted, gate-mapped and **non-decisive** at P6 by the recorded §7 decision; it
       becomes decisive when `WP-120-07` gives it something to decide about. Nothing today marks this
       provisional state in the CLI's own output beyond the gate row.

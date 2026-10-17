@@ -130,22 +130,22 @@ and rendering (`TECH-R004`); every such operation is an `analysis`/`project` cal
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-INS-101` | Open matrix: INS-§2 rows and `SF0901`–`SF0908` codes over the golden projects | F1 |
-| `T-INS-102` | Provenance classification incl. an `edited` generated file and a `rewritten` file | F1 |
-| `T-INS-103` | Index tiering: first paint before tier (b) completes; cancellation mid-tier leaves a usable UI | F2 |
-| `T-INS-104` | Source-map resolution: exact/approximate/unmapped classification over 50 fixture positions, `T-INS-003` at implementation level | F1 |
-| `T-INS-105` | Reference kinds: four labels, correct sets, on a resource handle and a character id | F1 |
-| `T-INS-106` | Timeline scrubber → frame script selection over a 600-frame sprite | F2 |
-| `T-INS-107` | AVM1 listing ↔ emitted expression side-by-side mapping for T0/T1/T2 fixtures (T2 shows `unmapped: residual`) | F1 |
-| `T-INS-108` | Worker budgets: a 300 MB adversarial project terminates the worker with `SF0906` and keeps the UI alive | F1 |
-| `T-INS-109` | Security: SEC-§7 corpus renders nothing as markup and makes no third-party request (`T-INS-006`) | F1 |
-| `T-INS-110` | Run view synchronisation and the `SF0905` blocked cases | F2 |
-| `T-INS-111` | Deep links + navigation history round-trip across views | F2 |
-| `T-INS-112` | Performance: INS-R033 budgets on the large synthetic project | F3 |
-| `T-INS-113` | Panels: diagnostics/rewrites/budgets filter, sort, jump-to-source and Markdown export; budget rows show flash-vs-clean when both outputs exist | F2 |
-| `T-INS-114` | Highlighting: every shipped grammar tokenises its fixture; recovered/synthesised markers match the provenance map; the large-file plain-view switch fires at the documented thresholds | F2 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-INS-101` | Open matrix: INS-§2 rows and `SF0901`–`SF0908` codes over the golden projects | F1 | P12 |
+| `T-INS-102` | Provenance classification incl. an `edited` generated file and a `rewritten` file | F1 | P12 |
+| `T-INS-103` | Index tiering: first paint before tier (b) completes; cancellation mid-tier leaves a usable UI | F2 | P12 |
+| `T-INS-104` | Source-map resolution: exact/approximate/unmapped classification over 50 fixture positions, `T-INS-003` at implementation level | F1 | P12 |
+| `T-INS-105` | Reference kinds: four labels, correct sets, on a resource handle and a character id | F1 | P12 |
+| `T-INS-106` | Timeline scrubber → frame script selection over a 600-frame sprite | F2 | P12 |
+| `T-INS-107` | AVM1 listing ↔ emitted expression side-by-side mapping for T0/T1/T2 fixtures (T2 shows `unmapped: residual`) | F1 | P12 |
+| `T-INS-108` | Worker budgets: a 300 MB adversarial project terminates the worker with `SF0906` and keeps the UI alive | F1 | P12 |
+| `T-INS-109` | Security: SEC-§7 corpus renders nothing as markup and makes no third-party request (`T-INS-006`) | F1 | P12 |
+| `T-INS-110` | Run view synchronisation and the `SF0905` blocked cases | F2 | P12 |
+| `T-INS-111` | Deep links + navigation history round-trip across views | F2 | P12 |
+| `T-INS-112` | Performance: INS-R033 budgets on the large synthetic project | F3 | P12 |
+| `T-INS-113` | Panels: diagnostics/rewrites/budgets filter, sort, jump-to-source and Markdown export; budget rows show flash-vs-clean when both outputs exist | F2 | P12 |
+| `T-INS-114` | Highlighting: every shipped grammar tokenises its fixture; recovered/synthesised markers match the provenance map; the large-file plain-view switch fires at the documented thresholds | F2 | P12 |
 
 ## 9. Work packages
 

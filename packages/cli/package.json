@@ -1,0 +1,30 @@
+{
+  "name": "@swf-forge/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "./src/main.ts",
+    "./dist/main.js"
+  ],
+  "main": "./dist/main.js",
+  "bin": {
+    "swfforge": "./dist/main.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@swf-forge/compile": "workspace:*",
+    "@swf-forge/swf": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

@@ -1,0 +1,3467 @@
+{
+  "buildCommand": "corepack pnpm build",
+  "command": "node tools/corpus-roundtrip.mjs run",
+  "corpusClasses": "C1 = every committed .swf plus the fuzz crashers; C1-fuzz = the crasher corpus; C4-c = the licensed external movies (--with-open only). C3, the reference title, is OPEN in registers/corpus.md §2, so §10.1 is not measurable by this lane.",
+  "exitCodePolicy": "CMP-R029: 0 ok, 1 error-severity diagnostics, 2 unreadable or bad usage, 3 AVM2 (SF1000), 4 threshold, 5 internal bug. An input may legitimately exit 1, 2 or 3; only 5 fails this lane, with drift between runs that must agree and an unclean verify on a project that reported no errors.",
+  "files": [
+    {
+      "bytes": 79,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21149
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0002": 1,
+          "SF0030": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 6,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/appendix-a.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "0d6dd29257c19a600402b385bde281c8c3eb83da01f2074822ba0d9f94813f5e",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21149
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0002": 1,
+          "SF0030": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 6,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0002": 1,
+          "SF0030": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 6,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 145,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21543
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/clip-mask.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "6e2530e1b216788acb25b97c85cab639c97664d5680884d264329bb3fef1f968",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21543
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 85,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/cxform-add.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "8b14f7f1523ceebcd14e2e7e91b25ef7fe17e858d6f6b6f188ef5d57967004d7",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 85,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/cxform-mult.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "9918c6e51506a99cde8cf5da38acb71effc07281f56e6ae6922024ea37600ec8",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 129,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21543
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/depth-order.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "8260076615fc51da947ea3d4326da5691214728162fe9b366b5d53690efb8c97",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21543
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21474,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 81,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/hairline-stroke.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "98fcbd565d3d255ba4a438ea6187191d90ab81e25fbe1be106a0ee3a5da5e47a",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 85,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0123": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 5,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/invisible-placement.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "aa4e1ed3481f9c58860e1abab76c6ce480b6b46648961feeedbe23282994de1d",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0123": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 5,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0123": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 5,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 90,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/matrix-rotate.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "6a02539a6452d61467a7aaea381c2a9b9b7044bb0d5a882554c71fa041970b6f",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 84,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/matrix-scale.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "4941ad98cfe6d634690e6649ab8a51ed5215f10f1638b4f88ab6d04e9ffc2c11",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 116,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21149
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/nonzero-hole.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "310fe975eb6bc0e73287dfe80de900ac81361441e1f077a0b58a1334efa82d63",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21149
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 86,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/quad-curves.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "7135b0bb7db102a46fe9649aa16c2e0faf06b83848ef11c8365ac70dd96f8a93",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 79,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21147
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/solid-rect.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "6c33546e2bdf5ce2910bac33d37d95460fa7546c7dd796191ae4c96497f1fadf",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21147
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21078,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 161,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 23154
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 23085,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/sprite-loop.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "e11ea4408b247c610903e8585091b549c17d32e70cfed942868ab6aaea4a4829",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 23154
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 23085,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 23085,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 138,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21940
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21871,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/sprite-nested.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "b23d97a5980f2d644a1c7a41edfe45c9ba037b819757d70e6b60be656117f902",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21940
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21871,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21871,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 490,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/stress-grid.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "522318809576d76e8f37d22b897f97dd9af89be8c82e8c886cf366c470d72809",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 84,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/stroke-bevel-join.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "c8d8b986f96fab604d71c9b5170706d67f4f530aa001c8f1308789fd23163e34",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 86,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/stroke-miter-join.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "c35f9a6d585a4513dd05ce17e0dbe4b4c05054f0e2e9f9ef53617e8900f1fc9e",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 84,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/stroke-round-caps.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "a3763306b3f2030df53434a81aeb9853c01ddad024f63161e181c497756ffb98",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 84,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/stroke-square-caps.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "3a103aa93afa5dfd28ca473c77ba29789b6d255700997b1a6cca57b13936f612",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0187": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 5,
+          "warnings": 4
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 110,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/timeline-frames.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "db3408b458091bc026c6b262c75777cf209ce029f15b3b59bdb4bf66db66fec4",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 106,
+      "class": "C1",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21148
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "fixtures/static/two-fills-hole.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "de516c5bf935034b073c76b9ab239fcf2ade792d02beb32872d96725c2229c13",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21148
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 4,
+          "warnings": 3
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21079,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 49,
+      "class": "C1-fuzz",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 22343
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0005": 1,
+          "SF0013": 4,
+          "SF0023": 1,
+          "SF0026": 1,
+          "SF0101": 1,
+          "SF0102": 1,
+          "SF0107": 1,
+          "SF0110": 2,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 13,
+          "warnings": 11
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 22274,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "packages/swf/test/fuzz/corpus/crash-001-truncated-body.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "d2c2845a14181fae09e4a6eb63655179542dbc0cdfaaeb0339cbba89a365bb6c",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 22343
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0005": 1,
+          "SF0013": 4,
+          "SF0023": 1,
+          "SF0026": 1,
+          "SF0101": 1,
+          "SF0102": 1,
+          "SF0107": 1,
+          "SF0110": 2,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 13,
+          "warnings": 11
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 22274,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0005": 1,
+          "SF0013": 4,
+          "SF0023": 1,
+          "SF0026": 1,
+          "SF0101": 1,
+          "SF0102": 1,
+          "SF0107": 1,
+          "SF0110": 2,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 13,
+          "warnings": 11
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 22274,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 26,
+      "class": "C1-fuzz",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 20752
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0013": 1,
+          "SF0023": 1,
+          "SF0030": 1,
+          "SF0102": 1,
+          "SF0104": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 4,
+          "total": 9,
+          "warnings": 5
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 20683,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "packages/swf/test/fuzz/corpus/crash-002-tag-length-past-eof.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "4c6fea8ec86219293b570fda3a16cb7bad7018d7f234315a7949eb9bd35d6d14",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 20752
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0013": 1,
+          "SF0023": 1,
+          "SF0030": 1,
+          "SF0102": 1,
+          "SF0104": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 4,
+          "total": 9,
+          "warnings": 5
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 20683,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0013": 1,
+          "SF0023": 1,
+          "SF0030": 1,
+          "SF0102": 1,
+          "SF0104": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 4,
+          "total": 9,
+          "warnings": 5
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 20683,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 43,
+      "class": "C1-fuzz",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21946
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0026": 1,
+          "SF0110": 1,
+          "SF0173": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 7,
+          "warnings": 6
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21877,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 0,
+        "json": true
+      },
+      "name": "packages/swf/test/fuzz/corpus/crash-003-sprite-missing-end.swf",
+      "plan": {
+        "exit": 0,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "64d996619d97ba869a0d77c06c150195b5858c9d55ea62fc4f7c1d4791fea40a",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21946
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0026": 1,
+          "SF0110": 1,
+          "SF0173": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 7,
+          "warnings": 6
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21877,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0026": 1,
+          "SF0110": 1,
+          "SF0173": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 1,
+          "total": 7,
+          "warnings": 6
+        },
+        "exit": 0,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21877,
+          "files": 12
+        }
+      }
+    },
+    {
+      "bytes": 17,
+      "class": "C1-fuzz",
+      "crashes": [],
+      "deep": null,
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0003": 1,
+          "SF0005": 1,
+          "SF0013": 3,
+          "SF0022": 1,
+          "SF0029": 1,
+          "SF0102": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 2,
+          "infos": 3,
+          "total": 10,
+          "warnings": 5
+        },
+        "exit": 1,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 0,
+          "files": 0
+        }
+      },
+      "inspect": {
+        "exit": 1,
+        "json": true
+      },
+      "name": "packages/swf/test/fuzz/corpus/crash-004-zlib-invalid-stream.swf",
+      "plan": {
+        "exit": 1,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": null,
+      "sha256": "6e40839d741ddfcc6fbd03923a146985dad43c7cd0898bb20f01ad71b34c89a5",
+      "stderrNoise": [],
+      "verify": null,
+      "warmCold": null,
+      "coldVsFresh": null,
+      "warm": {
+        "diagnosticCodes": {
+          "SF0003": 1,
+          "SF0005": 1,
+          "SF0013": 3,
+          "SF0022": 1,
+          "SF0029": 1,
+          "SF0102": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 2,
+          "infos": 3,
+          "total": 10,
+          "warnings": 5
+        },
+        "exit": 1,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 0,
+          "files": 0
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0003": 1,
+          "SF0005": 1,
+          "SF0013": 3,
+          "SF0022": 1,
+          "SF0029": 1,
+          "SF0102": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 2,
+          "infos": 3,
+          "total": 10,
+          "warnings": 5
+        },
+        "exit": 1,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 0,
+          "files": 0
+        }
+      }
+    },
+    {
+      "bytes": 52,
+      "class": "C1-fuzz",
+      "crashes": [],
+      "deep": {
+        "checks": 6,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 3,
+        "scannedBytes": 21149
+      },
+      "fresh": {
+        "diagnosticCodes": {
+          "SF0013": 92680,
+          "SF0107": 1,
+          "SF0189": 1,
+          "SF0190": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 8,
+          "warnings": 6
+        },
+        "exit": 4,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "inspect": {
+        "exit": 4,
+        "json": true
+      },
+      "name": "packages/swf/test/fuzz/corpus/crash-005-shape-edge-past-limit.swf",
+      "plan": {
+        "exit": 4,
+        "json": true,
+        "wroteProject": false
+      },
+      "reports": {
+        "agree": true,
+        "gates": 32,
+        "unowned": []
+      },
+      "sha256": "6dd74951889b07f61390689d3e46e9d8ab30c117e47427554ff9e57ca60559c4",
+      "stderrNoise": [],
+      "verify": {
+        "checks": 5,
+        "clean": true,
+        "exit": 0,
+        "findings": 0,
+        "json": true,
+        "notRun": 4,
+        "scannedBytes": 21149
+      },
+      "warmCold": {
+        "differing": [],
+        "identical": true
+      },
+      "coldVsFresh": {
+        "differing": [],
+        "identical": true
+      },
+      "warm": {
+        "diagnosticCodes": {
+          "SF0013": 92680,
+          "SF0107": 1,
+          "SF0189": 1,
+          "SF0190": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 8,
+          "warnings": 6
+        },
+        "exit": 4,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 4,
+          "unregistered": 2,
+          "cached": 1
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      },
+      "cold": {
+        "diagnosticCodes": {
+          "SF0013": 92680,
+          "SF0107": 1,
+          "SF0189": 1,
+          "SF0190": 1,
+          "SF0500": 1,
+          "SF0504": 1,
+          "SF0507": 1,
+          "SF0509": 1
+        },
+        "diagnostics": {
+          "errors": 0,
+          "infos": 2,
+          "total": 8,
+          "warnings": 6
+        },
+        "exit": 4,
+        "json": true,
+        "passes": 5,
+        "stages": {
+          "ran": 5,
+          "unregistered": 2
+        },
+        "status": "complete",
+        "written": {
+          "bytes": 21080,
+          "files": 12
+        }
+      }
+    }
+  ],
+  "generated": "2026-10-16",
+  "integrity": {
+    "crashes": [],
+    "jsonMissing": [],
+    "noDeterminism": [],
+    "nonSilentVerify": [],
+    "reportsDisagree": [],
+    "planWrote": [],
+    "stderrNoise": [],
+    "unverifiedProject": []
+  },
+  "protocol": "plan, inspect, a cold build in a fresh workspace, the same build again on a warm cache, the same build in a second workspace, then verify and verify --deep --against on what the first workspace wrote",
+  "schemaVersion": 1,
+  "syntheticSet": "C2 is the movies the fixture writers build in-process, and `IMPL-120` §10.3 counts them in \"the whole corpus\". They are round-tripped by the test lane — `packages/cli/test/cli.test.ts` (its four builders) and `packages/compile/test/verify.test.ts` (a sprite-and-action movie, emitted and verified) — not by this script, because the writers live in `test/support/` and no built module exports them. `registers/corpus.md` open item 4 (C2 is not enumerated as an artifact) is the register's to close.",
+  "summary": {
+    "classes": {
+      "C1": 21,
+      "C1-fuzz": 5
+    },
+    "diagnosticCodes": {
+      "SF0002": 1,
+      "SF0030": 2,
+      "SF0500": 26,
+      "SF0504": 26,
+      "SF0507": 26,
+      "SF0509": 26,
+      "SF0187": 5,
+      "SF0123": 1,
+      "SF0005": 2,
+      "SF0013": 92688,
+      "SF0023": 2,
+      "SF0026": 2,
+      "SF0101": 1,
+      "SF0102": 3,
+      "SF0107": 2,
+      "SF0110": 3,
+      "SF0104": 1,
+      "SF0173": 1,
+      "SF0003": 1,
+      "SF0022": 1,
+      "SF0029": 1,
+      "SF0189": 1,
+      "SF0190": 1
+    },
+    "diagnostics": {
+      "errors": 2,
+      "infos": 35,
+      "total": 139,
+      "warnings": 102
+    },
+    "exits": {
+      "0": 24,
+      "1": 1,
+      "4": 1
+    },
+    "files": 26,
+    "noProject": 1,
+    "projects": 25,
+    "stages": {
+      "ran": 130,
+      "unregistered": 52
+    },
+    "reportGates": 800,
+    "reportsAgree": 25,
+    "verify": {
+      "clean": 25,
+      "findings": 0,
+      "notRun": 100
+    },
+    "warmColdIdentical": 25,
+    "writtenBytes": 532155,
+    "writtenFiles": 300
+  },
+  "corpusScope": {
+    "C1": 21,
+    "C1-fuzz": 5
+  },
+  "openCorpus": {
+    "included": false,
+    "reason": "run with --with-open after pnpm corpus:fetch"
+  }
+}

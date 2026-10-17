@@ -130,6 +130,14 @@ function assertFramingInvariants(iteration: number, bytes: Uint8Array): ReturnTy
     if (record.end < record.offset || record.end > bytes.length) {
       fail(iteration, bytes, `record ${i} ends outside the byte stream at ${record.end}`);
     }
+    // R071: a region-bearing record owns bytes past its `Length`; the region is clamped to the stream.
+    if (record.regionEnd < record.end || record.regionEnd > bytes.length) {
+      fail(
+        iteration,
+        bytes,
+        `record ${i} region ends at ${record.regionEnd}, outside [${record.end}, ${bytes.length}]`,
+      );
+    }
     if (record.overrun || record.truncated) {
       if (i !== scan.records.length - 1) fail(iteration, bytes, 'fatal framing record was not last');
     } else {
@@ -137,7 +145,7 @@ function assertFramingInvariants(iteration: number, bytes: Uint8Array): ReturnTy
       if (record.end !== expectedEnd)
         fail(iteration, bytes, `record ${i} end ${record.end} != expected ${expectedEnd}`);
     }
-    cursor = record.end;
+    cursor = record.regionEnd;
   }
   if (scan.stoppedAt !== cursor) fail(iteration, bytes, `stoppedAt ${scan.stoppedAt} != consumed boundary ${cursor}`);
   if (scan.terminated !== scan.records.some((record) => record.code === 0)) {

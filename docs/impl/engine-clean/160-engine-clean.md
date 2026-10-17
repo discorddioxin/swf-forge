@@ -182,22 +182,22 @@ model dump + manifest) or a direct SWF, and MUST produce identical output for bo
 
 ## 10. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-CLN-101` | Vocabulary gate over the whole fixture corpus (`CLN-R005` #1, `CLN-R016`) | F1 |
-| `T-CLN-102` | Runtime budgets and treeshaking (per-module and core totals) | F1 |
-| `T-CLN-103` | Loop: fixed step, catch-up bound, pause/visibility, replay determinism | F1 |
-| `T-CLN-104` | Write-back: clean tree from `--from` and from SWF are identical (`IMPL-160-R003`) | F1 |
-| `T-CLN-105` | T-A/T-B/T-C fixtures produce the documented shapes; evidence recorded | F1 |
-| `T-CLN-106` | Rule idempotence + stable ordering of the rule set | F1 |
-| `T-CLN-107` | Refusal matrix: each blocking code → exit 6, report, flash target intact | F1 |
-| `T-CLN-108` | Event/state mapping over a 12-sprite fixture (load/enterFrame/press, fields, bags) | F1 |
-| `T-CLN-109` | Asset byte-identity with the flash target for shared payloads (`TECH-R006`) | F1 |
-| `T-CLN-110` | Byte determinism of the whole clean build incl. logs | F1 |
-| `T-CLN-111` | Side-by-side probes: `T-CLN-008` at implementation level, tolerances enforced | F2 |
-| `T-CLN-112` | Auditor pass: every rewrite entry has evidence and a rule id; every deviation has a probe | F1 |
-| `T-CLN-113` | Performance: `IMPL-160-R027` bounds, with the static-timeline early exit measured | F3 |
-| `T-CLN-114` | Output hygiene: clean `src/` compiles under `strict` with zero suppressions, contains no `any`, and is Prettier-clean in the project's config | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-CLN-101` | Vocabulary gate over the whole fixture corpus (`CLN-R005` #1, `CLN-R016`) | F1 | P13 |
+| `T-CLN-102` | Runtime budgets and treeshaking (per-module and core totals) | F1 | P13 |
+| `T-CLN-103` | Loop: fixed step, catch-up bound, pause/visibility, replay determinism | F1 | P13 |
+| `T-CLN-104` | Write-back: clean tree from `--from` and from SWF are identical (`IMPL-160-R003`) | F1 | P13 |
+| `T-CLN-105` | T-A/T-B/T-C fixtures produce the documented shapes; evidence recorded | F1 | P13 |
+| `T-CLN-106` | Rule idempotence + stable ordering of the rule set | F1 | P13 |
+| `T-CLN-107` | Refusal matrix: each blocking code → exit 6, report, flash target intact | F1 | P13 |
+| `T-CLN-108` | Event/state mapping over a 12-sprite fixture (load/enterFrame/press, fields, bags) | F1 | P13 |
+| `T-CLN-109` | Asset byte-identity with the flash target for shared payloads (`TECH-R006`) | F1 | P13 |
+| `T-CLN-110` | Byte determinism of the whole clean build incl. logs | F1 | P13 |
+| `T-CLN-111` | Side-by-side probes: `T-CLN-008` at implementation level, tolerances enforced | F2 | P13 |
+| `T-CLN-112` | Auditor pass: every rewrite entry has evidence and a rule id; every deviation has a probe | F1 | P13 |
+| `T-CLN-113` | Performance: `IMPL-160-R027` bounds, with the static-timeline early exit measured | F3 | P13 |
+| `T-CLN-114` | Output hygiene: clean `src/` compiles under `strict` with zero suppressions, contains no `any`, and is Prettier-clean in the project's config | F1 | P13 |
 
 ## 11. Work packages
 

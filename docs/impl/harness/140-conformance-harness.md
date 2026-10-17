@@ -17,8 +17,12 @@
    state-diff — exactly the TST-§5 definitions.
 4. Gate runner for C0/C1/C2 over the corpus, with per-metric reports and waivers.
 5. Golden management: generate, review, update, and reject flows, with provenance per golden.
-6. Fuzzers: container (doc 020), tags (all decoders), action streams (doc 050), and the emitted-output
-   verifier's own robustness.
+6. Fuzzers: container (doc 020), tags (all decoders), action streams (doc 050), the emitted-output
+   verifier's own robustness, and — **hosted here, owned by P0** — the raw primitive-reader target
+   (`WP-010-12`, `IMPL-010` §9). The reader target is written and gated inside
+   `packages/swf/test/fuzz/`; this deliverable is its *long-run and nightly hosting*, not its
+   ownership. Roadmap §4.1/§4.2 is the rule: an earlier phase's gate input is never supplied by a
+   later phase, so the harness consumes the target rather than defining it.
 7. Coverage accountability: which impl doc's codes/tests are exercised, so "written but never executed"
    specs are visible.
 
@@ -97,12 +101,12 @@ unknown-tag path (`SF0104`), so a fixture per *gap cluster* (3, 16, 25, 27, 29�
 **Appendix C — Screen Video v2 palette.** Compared entry-for-entry, order-sensitive, against the frozen
 tables shipped by `IMPL-110` §6 and `APP-§10.12`.
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-TST-101` | Appendix A writer round-trip: emit the file, byte-identical to the 79 bytes (all five lines) | F1 |
-| `T-TST-102` | Appendix A decode: header, tag sequence, shape walk and placement walk match the assertion table above | F1 |
-| `T-TST-103` | Appendix B equality: `APP-§2` = the appendix's 65 entries; each unassigned code skipped by length with `SF0104` | F1 |
-| `T-TST-104` | Appendix C equality: 128 palette values in appendix order, `IMPL-110` §6 = `APP-§10.12` | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-TST-101` | Appendix A writer round-trip: emit the file, byte-identical to the 79 bytes (all five lines) | F1 | P11 |
+| `T-TST-102` | Appendix A decode: header, tag sequence, shape walk and placement walk match the assertion table above | F1 | P11 |
+| `T-TST-103` | Appendix B equality: `APP-§2` = the appendix's 65 entries; each unassigned code skipped by length with `SF0104` | F1 | P11 (WP-140-11) |
+| `T-TST-104` | Appendix C equality: 128 palette values in appendix order, `IMPL-110` §6 = `APP-§10.12` | F1 | P11 (WP-140-11) |
 
 These four are cited by the design spec as `T-TST-004`–`006` (`TST-§3.2`); the ids above are this
 document's implementation-level obligations.
@@ -204,7 +208,7 @@ tools/conformance waive --metric <m> --reason <text> --scope <frames>
 | WP-140-04 | Metrics: SSIM, alpha RMS, null-RMS, clicks, drift, state diff | — | 6 | `metrics/*`, T-TST-001 |
 | WP-140-05 | Gate runner + waivers + report | WP-140-04 | 4 | `tools/conformance/*`, T-TST-002 |
 | WP-140-06 | Golden management (provenance, update flow, CI guard) | WP-140-05 | 3 | T-TST-003 |
-| WP-140-07 | Fuzzers: container, tags, actions | WP-140-01, doc decoders | 6 | `test/fuzz/*`, crasher corpus |
+| WP-140-07 | Fuzzers: container, tags, actions, **primitive readers (hosted)** | WP-140-01, WP-010-12, doc decoders | 6 | `test/fuzz/*`, crasher corpus; the bounded CI pass and the long run host `WP-010-12`'s reader target at `packages/swf/test/fuzz/readers.*.test.ts` |
 | WP-140-08 | `impl-status` tool: WP index, STATUS.md, code/test registries | docs/impl | 4 | `tools/impl-status` |
 | WP-140-09 | CI wiring: bounded fuzz, double-build determinism, gate selection | REPO-§8 | 3 | CI jobs |
 | WP-140-10 | Appendix A fixture: writer recipe, decoder assertions, committed bytes | WP-140-01, docs 010/020/030/060 | 2 | `fixtures/appendix-a.swf` + goldens, T-TST-101/102 |
@@ -229,3 +233,4 @@ tools/conformance waive --metric <m> --reason <text> --scope <frames>
 | --- | --- | --- |
 | 1.0 | initial | Harness specification derived from TST/SEC/REPO design specs; writer is the load-bearing component |
 | 1.1 | 2026-10-04 | Appendix pass: §2.1 added (Appendix A byte-exact fixture with the byte/field assertion table, Appendix B tag-index check, Appendix C palette check); `T-TST-101`–`104` defined; WP-140-10/11 added (48.5 d) |
+| 1.2 | 2026-10-13 | Roadmap §4.4 item 5 (D-P0-DEP-05): `WP-140-07` is amended to **host** the raw primitive-reader fuzz target, and §1 deliverable 6 names it — closing the ownership hole where `WP-010-12`'s deliverable pointed at a doc-140 integration point that did not exist. The `WP-140-01 → WP-010-12` edge is now declared in both documents, so the reciprocal coupling is machine-visible instead of living in prose; the target itself stays P0-owned and is re-sited into the gated tree (`IMPL-010` §9 v1.6) |

@@ -38,6 +38,8 @@ jobs:
 
       - name: Verify specification documents
         run: pnpm spec:verify
+      - name: Diagnostic-literal lint
+        run: pnpm code:lint
 
       - name: Test audit tooling
         run: pnpm test:audit
@@ -62,3 +64,89 @@ jobs:
 
       - name: Tag coverage report (P2 exit criterion 4)
         run: pnpm tag:coverage
+
+  # `R-P0-02` requires the browser half of `T-SWF-004` to run "in the pinned toolchain and CI" and
+  # that "the CI log identifies both jobs". This job executes the *same* vector definitions
+  # (`packages/swf/test/support/vector-table.ts`) as the `verify` job's Node lane, in a real
+  # headless browser engine. It is separate so a missing engine fails loudly here instead of
+  # silently shrinking the Node lane (`audits/P0-AUDIT.md` F-P0-01).
+  browser:
+    name: Browser lane - identical vectors in headless Chromium
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install browser engine (Playwright registry + system libraries)
+        run: pnpm exec playwright install --with-deps chromium
+
+      # Fails the job early, with the reason, when no engine is usable; prints the resolved engine
+      # identity as JSON so the log records the host the vectors ran on.
+      - name: Report resolved browser engine
+        run: pnpm browser:probe
+
+      - name: Run the browser lane
+        run: pnpm test:browser
+  # `IMPL-120` §10.3 and `T-CMP-003`, and the job `WP-120-12`'s `verify` left a promise in: the double build runs in
+  # CI. Three things happen here and each one fails for a different reason, which is the point of splitting them.
+  # The `check` step re-runs the corpus round trip (plan, inspect, a cold build, a warm build on the stage cache, a
+  # build in a second workspace, verify, verify --deep) over every committed `.swf` and diffs the report against
+  # `audits/P6-CORPUS-ROUNDTRIP.json`, so the evidence a reviewer reads cannot lag the code. The `diff -r` step is
+  # the literal check the test plan names, on the two same-relative-path builds. The last step asks the tool's own
+  # verifier to agree with the shell, because a green `diff` and a red `verify` would mean the check is wrong.
+  # The corpus cache (`pnpm corpus:fetch`) is deliberately not fetched here: this job must pass with no network
+  # access to the licensed corpus, and `corpus:roundtrip:open` is the hand-run half.
+  determinism:
+    name: Double-build determinism over the corpus
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.9
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Round-trip the corpus and check the committed report
+        run: node tools/corpus-roundtrip.mjs check
+
+      - name: Double build, then diff -r (T-CMP-003)
+        run: |
+          for side in a b; do
+            mkdir -p /tmp/double-build/$side
+            cp fixtures/appendix-a.swf /tmp/double-build/$side/input.swf
+            (cd /tmp/double-build/$side && node "$GITHUB_WORKSPACE/packages/cli/dist/main.js" build input.swf --out out --quiet)
+          done
+          diff -r /tmp/double-build/a/out /tmp/double-build/b/out
+
+      - name: The verifier agrees with the shell
+        run: node packages/cli/dist/main.js verify /tmp/double-build/a/out --deep --against /tmp/double-build/b/out

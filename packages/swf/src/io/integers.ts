@@ -65,7 +65,16 @@ export interface EncodedU32Result {
  *
  * The 5th byte contributes only 4 significant bits; the result is always an unsigned 32-bit number.
  */
-export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
+export interface MutableEncodedU32Result {
+  value: number;
+  bytesRead: number;
+  overlong: boolean;
+  overflow: boolean;
+  danglingContinuation: boolean;
+}
+
+/** `encodedU32`'s loop, filling a caller-owned scratch object (allocation-free hot path). */
+export function encodedU32Into(bytes: Uint8Array, at: number, out: MutableEncodedU32Result): void {
   let value = 0;
   let shift = 0;
   let count = 0;
@@ -97,9 +106,33 @@ export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
 
   // The encoding is longer than necessary when the value fits in fewer group bits
   // (e.g. `80 00` for zero, or `81 00` for one).
-  if (count > 1 && value < 2 ** (7 * (count - 1))) {
+  //
+  // Compare the *unsigned* result. `|=` yields a signed int32, so a 5th group with bit 31 set
+  // (`ff ff ff ff 0f`, the maximal `0xFFFFFFFF`) makes `value` negative here and would be
+  // misreported as overlong — emitting `SF0009` on an encoding that is minimal
+  // (`IMPL-010` §5.1, and the §8 `EncodedU32` `0xFFFFFFFF` row expects the value with no
+  // diagnostic). Regression covered by `packages/swf/test/io.test.ts` and the cross-lane
+  // `packages/swf/test/support/vector-table.ts` row `encoded-u32-max`.
+  const unsigned = value >>> 0;
+  if (count > 1 && unsigned < 2 ** (7 * (count - 1))) {
     overlong = true;
   }
 
-  return { value: value >>> 0, bytesRead: count, overlong, overflow, danglingContinuation };
+  out.value = unsigned;
+  out.bytesRead = count;
+  out.overlong = overlong;
+  out.overflow = overflow;
+  out.danglingContinuation = danglingContinuation;
+}
+
+export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
+  const out: MutableEncodedU32Result = {
+    value: 0,
+    bytesRead: 0,
+    overlong: false,
+    overflow: false,
+    danglingContinuation: false,
+  };
+  encodedU32Into(bytes, at, out);
+  return out;
 }

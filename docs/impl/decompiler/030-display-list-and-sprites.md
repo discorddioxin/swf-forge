@@ -390,24 +390,24 @@ Test-id band: `T-MOD-001`–`012` (v1.0) and `T-MOD-601`–`604` (the Ch.13 and 
 passes). The sprite/sound obligations originally occupied `T-MOD-013`–`015`, which is `IMPL-040`'s block
 (`013`–`036`); they were moved to `601`–`604` — errata `E-023` addendum.
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-001` | `PlaceObject` v1: with and without the trailing CXFORM tail; `CharacterId = 0` tolerance | F1 |
-| `T-MOD-002` | Move matrix: all three defined cases; `1/1` resets instance attributes | F2 |
-| `T-MOD-003` | Frame ops ordering: place + remove in one frame ends removed | F2 |
-| `T-MOD-004` | Clip-depth ranges: `(depth, clipDepth]` inclusive/exclusive boundaries | F2 |
-| `T-MOD-005` | All 8 filter layouts round-trip byte-for-byte from writer fixtures; FIXED/FIXED8 units asserted | F1 |
-| `T-MOD-006` | Unknown filter id/unknown blend mode preserved + reported | F1 |
-| `T-MOD-007` | CLIPEVENTFLAGS: SWF 5 (2-byte) and SWF 6+ (4-byte) layouts, every bit | F1 |
-| `T-MOD-008` | CLIPACTIONS framing: reserved, `AllEventFlags`, record sizes, key codes, both end-flag widths | F1 |
-| `T-MOD-009` | PlaceObject3 full field order incl. ClassName-before-CharacterId and backing fields | F1 |
-| `T-MOD-010` | Opaque-background RGBA read per E-008; HasVisible-only must not consume 4 bytes | F1 |
-| `T-MOD-011` | Sprite frame counts, empty sprites, missing `End` | F2 |
-| `T-MOD-012` | Model round-trip: assemble → serialise → re-assemble identical | F1 |
-| `T-MOD-601` | Sprite tag set: definition inside a sprite, out-of-list tags, missing `End`, declared-vs-observed frames | F2 |
-| `T-MOD-602` | Instance naming + `SetTarget` path grammar (`/abs`, `..`, relative, `""`) over a nested fixture | F1 |
-| `T-MOD-603` | Sprite streaming sound: spans recorded, mixed with the main stream, stops with the sprite | F2 |
-| `T-MOD-604` | Appendix A placement walk: `86 06` short header, flags `HasMatrix | HasCharacter`, depth 1, character 1, empty matrix byte `00` (`NTranslateBits` 0) | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-001` | `PlaceObject` v1: with and without the trailing CXFORM tail; `CharacterId = 0` tolerance | F1 | P2 |
+| `T-MOD-002` | Move matrix: all three defined cases; `1/1` resets instance attributes | F2 | P2 |
+| `T-MOD-003` | Frame ops ordering: place + remove in one frame ends removed | F2 | P2 |
+| `T-MOD-004` | Clip-depth ranges: `(depth, clipDepth]` inclusive/exclusive boundaries | F2 | P2 |
+| `T-MOD-005` | All 8 filter layouts round-trip byte-for-byte from writer fixtures; FIXED/FIXED8 units asserted | F1 | P2 |
+| `T-MOD-006` | Unknown filter id/unknown blend mode preserved + reported | F1 | P2 |
+| `T-MOD-007` | CLIPEVENTFLAGS: SWF 5 (2-byte) and SWF 6+ (4-byte) layouts, every bit | F1 | P2 |
+| `T-MOD-008` | CLIPACTIONS framing: reserved, `AllEventFlags`, record sizes, key codes, both end-flag widths | F1 | P2 |
+| `T-MOD-009` | PlaceObject3 full field order incl. ClassName-before-CharacterId and backing fields | F1 | P2 |
+| `T-MOD-010` | Opaque-background RGBA read per E-008; HasVisible-only must not consume 4 bytes | F1 | P2 |
+| `T-MOD-011` | Sprite frame counts, empty sprites, missing `End` | F2 | P2 |
+| `T-MOD-012` | Model round-trip: assemble → serialise → re-assemble identical | F1 | P2 |
+| `T-MOD-601` | Sprite tag set: definition inside a sprite, out-of-list tags, missing `End`, declared-vs-observed frames | F2 | P2 |
+| `T-MOD-602` | Instance naming + `SetTarget` path grammar (`/abs`, `..`, relative, `""`) over a nested fixture | F1 | P2 instance naming; P5/P7 path grammar (IMPL-050-R037) |
+| `T-MOD-603` | Sprite streaming sound: spans recorded, mixed with the main stream, stops with the sprite | F2 | P2 |
+| `T-MOD-604` | Appendix A placement walk: `86 06` short header, flags `HasMatrix | HasCharacter`, depth 1, character 1, empty matrix byte `00` (`NTranslateBits` 0) | F1 | P2 |
 
 ## 11. Work packages
 

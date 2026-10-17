@@ -71,7 +71,8 @@ describe('T-AVM1-FE-008 tier assignment: one fixture per reason', () => {
       label: 'malformed Try body tiling',
       tier: 2,
       expectedReasons: ['try-malformed'],
-      // Try header declares three empty bodies, but one trailing payload byte prevents exact tiling.
+      // Try header declares three empty bodies, but `Length` covers one byte past them: that byte
+      // belongs to no region, so the record does not tile (`SF0404`, R034/R071).
       bytes: block(rec(0x8f, [0, 0, 0, 0, 0, 0, 0, 0])),
     },
     {
@@ -95,7 +96,10 @@ describe('T-AVM1-FE-008 tier assignment: one fixture per reason', () => {
     {
       label: 'dynamic With object',
       tier: 1,
-      expectedReasons: ['dynamic-with'],
+      // `dynamic-stack` rides along: Enumerate makes the value dynamic, so the With body is entered
+      // at an unknown depth, and the block after the region is now a real join with that body as its
+      // predecessor (errata E-040) — the continuation's depth really is unknown here.
+      expectedReasons: ['dynamic-stack', 'dynamic-with'],
       // Enumerate makes its result dynamic; With encloses one Push and one Pop (9 bytes).
       bytes: block(pushString('s'), rec(0x46), withRegion(9, [...pushInt(1), ...rec(0x17)])),
     },

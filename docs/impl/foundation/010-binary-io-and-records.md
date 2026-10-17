@@ -535,24 +535,24 @@ applies).
 
 ## 8. Test obligations and vectors
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-SWF-001` | header/version/compression matrix (in doc 020) | F1 |
-| `T-SWF-003` | `RECORDHEADER` short/long boundary at 62/63 bytes (doc 020) | F1 |
-| `T-SWF-004` | primitive vectors below, exact equality | F1 |
-| `T-SWF-009` | two parses of every fixture produce identical offsets and values | F1 |
-| `T-SWF-013` | MATRIX rotation convention round-trip (E-005) | F2 |
-| `T-SWF-014` | property test: `writer → reader → writer` is a fixed point for 10⁵ random values | F1 |
-| `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 |
-| `T-SWF-016` | strict mode throws `SwfReadError` with the documented code and offset | F1 |
-| `T-SWF-017` | zero allocations from a warm cursor over 10⁶ reads (allocation counter) | F1 |
-| `T-SWF-024` | every registered diagnostic severity matches its owning implementation §8 table | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-SWF-001` | header/version/compression matrix (in doc 020) | F1 | P0 |
+| `T-SWF-003` | `RECORDHEADER` short/long boundary at 62/63 bytes (doc 020) | F1 | P0 |
+| `T-SWF-004` | primitive vectors below, exact equality | F1 | P0 |
+| `T-SWF-009` | two parses of every fixture produce identical offsets and values | F1 | P0 — **delivered**: `packages/swf/test/fixture-inventory.test.ts` asserts the checked-in C1 inventory (21 + 5 = 26) against the directory walk and the register's count, and repeat-parse identity over all 26 |
+| `T-SWF-013` | MATRIX rotation convention round-trip (E-005) | F2 | P0 |
+| `T-SWF-014` | property test: `writer → reader → writer` is a fixed point for 10⁵ random values | F1 | P0 — **delivered**: `packages/swf/test/io-property.test.ts` (100,000 seeded values over 12 reader kinds; counterexamples throw with kind, value and bytes) |
+| `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 | P0 — **delivered**: cited, and strengthened in `io-property.test.ts` (later values parse exactly after an invalid-width soft read and after an overlong `EncodedU32` mid-stream) |
+| `T-SWF-016` | strict mode throws `SwfReadError` with the documented code and offset | F1 | P0 — **delivered**: cited, and strengthened in `io-property.test.ts` (the thrown `SwfReadError` carries an `SFdddd` code and the exact offset, and the cursor has not moved) |
+| `T-SWF-017` | zero allocations from a warm cursor over 10⁶ reads (allocation counter) | F1 | P0 — **delivered**: `packages/swf/test/io-allocations.test.ts` measures `allocationCounter` (`io/counter.ts`) over 10⁶ warm reads per class; record readers carry their separately stated budget of exactly 1 object per read |
+| `T-SWF-024` | every registered diagnostic severity matches its owning implementation §8 table | F1 | P0 |
 
 ### Vector table
 
 | Value | Bytes (hex) | Expected | Source |
 | --- | --- | --- | --- |
-| `UI32` `0x456e7120` | `20 71 6e 45` | `1163342112` | Ch.1 |
+| `UI32` `0x456e7120` | `20 71 6e 45` | `1164865824` | Ch.1 (value and bytes printed verbatim upstream; the decimal is derived — an earlier printing of this cell miscomputed it, `E-033` closed) |
 | `UI16` `0xe712` | `12 e7` | `59154` | Ch.1 |
 | `UI24` `0x123456` | `56 34 12` | `1193046` | type table |
 | `FIXED` `7.5` | `00 80 07 00` | `7.5` | Ch.1 |
@@ -579,43 +579,131 @@ applies).
 | `STRING` legacy | `41 e9 00` (SWF 5, Windows-1252) | `"Aé"` + `SF0012` | IMPL-010-R023 |
 | `ARGB` | `ff 11 22 33` | `{r:0x11,g:0x22,b:0x33,a:0xff}` | Ch.1 |
 
+### Allocation and copy counters (normative contract)
+
+`T-SWF-017` says "zero allocations … (allocation counter)" and the roadmap's P0 row says "asserts
+allocation count", but neither named a mechanism — so no test could be written that was provably the
+right test, and `R-P0-06` correctly told the implementing agent to stop rather than guess. This
+subsection is that mechanism, and it is the one P4 already delivered and had accepted.
+
+**IMPL-010-R043** The allocation gate MUST be an **instrumented, explicitly counted** counter: the
+measured code path increments a counter at each allocation site, and the test snapshots it before and
+after the measured loop. The precedent is P4's `T-GFX-021` (`packages/gfx/src/render/stats.ts`,
+`stats.allocations += 1` at each steady-state allocation site). A `heapUsed`/RSS delta is permitted
+only as a coarse **secondary** guard and is never the proof: it cannot distinguish zero allocations
+from a net-zero allocation pattern, and it is noisy under GC. `TST-R016` sanctions counted CI
+counters; `R-P0-06` forbids the heap-delta substitution.
+
+**IMPL-010-R044** The measured interval and its exclusions MUST be stated in the test: the input and
+the cursor are constructed **before** measurement, the exact primitive read path is **warmed** first,
+the loop consumes a checksum so the work is observable and not optimised away, and returned values
+that the caller owns are excluded from the count.
+
+**IMPL-010-R045** The counted classes are enumerated **separately** for the two obligations, which
+measure different things and must not be conflated:
+
+| Obligation | Counted class | Bound |
+| --- | --- | --- |
+| `T-SWF-017` | objects, arrays, closures, and boxed values created per read on the warm steady-state path (`u8`…`u64`, `fixed`/`fixed8`, `float16/32/64`, `encodedU32`, `ub`/`sb`/`fb`, and the `RECT`/`MATRIX`/`CXFORM`/`ARGB` record readers) | **exactly 0** over 10⁶ warm reads. Records that must return a fresh object (`RECT`, `MATRIX`, `CXFORM`, `ARGB`) are counted in a separately stated budget, not folded into the primitive count |
+| `SWF-R001` (roadmap P0 row) | **payload-byte copies**: bytes copied out of the movie's single `Uint8Array` when a ≥5 MiB uncompressed `FWS` input is parsed | **one** payload copy for the whole movie. Views (`viewBytes`) must share the expected `ArrayBuffer` and byte range; intentional `takeBytes()`/`rest()` copies are classified and counted explicitly |
+
+The 5 MiB input is **generated in memory** by the writer and never committed (`REPO-R017`). The
+measurement may *drive* P1's completed container read paths — that is where payload ownership lives —
+and may not change their behaviour (roadmap §4.2).
+
+### Primitive-consumer register
+
+P0 owns this register (roadmap §4.1, supply-forward rule): it records which primitive readers have a
+consumer, which do not, and which later phase consumes each. A later phase **cites** this table; it
+does not supply it. This is what lets §10 items 3–4 close without waiting on an undeveloped phase.
+
+| Primitive | Production consumer(s) | Register note |
+| --- | --- | --- |
+| `FLOAT16` | `decodeFontAlignZones` — `packages/swf/src/tags/fonts.ts:599–600` (`AlignmentCoordinate`, `Range`) | **Item 3's answer is positive.** The consumer is `DefineFontAlignZones` (tag 73, SWF 8+, AVM1-era and in scope), specified by `IMPL-080-R035` (doc 080 → P3, Completed) and `specs/110`, decoded in production, and fixture-covered by `packages/swf/test/font-aux-tags.test.ts`. `E-004`'s "does not appear in any AVM1-era tag we parse" sentence is corrected; its bias-15 resolution is unaffected and is corroborated by the working decoder |
+| `UI24` (`u24()`) | **none** | The only 24-bit field in the encoded spec set is `VP6SWFALPHAVIDEOPACKET.OffsetToAlpha UI24` (`IMPL-110`, doc 110 → **P10**), unsigned and read by `u24()` per `IMPL-010-R004`. The reader exists ahead of its consumer; **P10 consumes this row** |
+| `SI24` | — | **Does not exist.** No `SI24` appears anywhere in the encoded set (Ch.1–Ch.15 + Appendices A–C), which is `IMPL-010-R004`'s premise and **item 4's negative answer**. `R004` already states the re-open condition: a future chapter showing one adds `s24()` |
+| `UI64` (`u64()`) | **none** | Listed in the type table but absent from AVM1-era tags (`IMPL-010-R005`), which is why the reader returns `bigint`. No consumer is expected before a chapter shows one |
+| `FLOAT64` (`float64()`) | **none** | Present on the reader surface for completeness; no field in the encoded set consumes it |
+| `FIXED`/`FIXED8`, `FLOAT32`, `UI8`…`SI32`, `EncodedU32`, `STRING` | many | Consumed across docs 020/030/040/060/070/080/090/100; not itemised here because no open item depends on them |
+
 ## 9. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-010-01 | Diagnostic sink + `SF` code registry | — | 1.5 | `diagnostics/{codes,sink}.ts`, dedupe + ordering tests |
-| WP-010-02 | `Cursor` core: position, bounds, soft/strict, sub-cursors | WP-010-01 | 3 | `io/cursor.ts` + T-SWF-015/016 |
-| WP-010-03 | Integer readers incl. `u24`, `u64`, `EncodedU32` | WP-010-02 | 2 | `io/integers.ts` + vectors |
-| WP-010-04 | Bit readers `ub`/`sb`/`fb`, alignment, padding policy | WP-010-02 | 2 | `io/bits.ts` + T-SWF-004 bit rows |
-| WP-010-05 | Fixed-point + float readers incl. `FLOAT16` | WP-010-02 | 1.5 | `io/real.ts` + E-004 vectors |
-| WP-010-06 | Strings: UTF-8 + legacy policy + caps | WP-010-02 | 2 | `io/strings.ts` + T-SWF-004 string rows |
-| WP-010-07 | Colour records + `LanguageCode` | WP-010-02 | 0.5 | `io/colour.ts` |
-| WP-010-08 | `RECT` | WP-010-04 | 0.5 | `io/records.ts` + T-SWF-004 rect row |
-| WP-010-09 | `MATRIX` + `decomposeMatrix` | WP-010-05 | 2 | `io/records.ts` + T-SWF-013 |
-| WP-010-10 | `CXFORM` / `CXFORMWITHALPHA` (shared impl) | WP-010-04 | 1 | `io/records.ts` + T-SWF-004 cxform rows |
-| WP-010-11 | Test writer + property tests + allocation test | WP-010-03…10 | 3 | `test-support/writer.ts`, T-SWF-014/017 |
-| WP-010-12 | Reader fuzz target (in-process, no I/O) | WP-010-02 | 1 | `tools/fuzz/readers.ts`, wired into doc 140's harness |
-| | **Total** | | **20** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-010-01 | Diagnostic sink + `SF` code registry | — | 1.5 | `diagnostics/{codes,sink}.ts`, dedupe + ordering tests | P0 |
+| WP-010-02 | `Cursor` core: position, bounds, soft/strict, sub-cursors | WP-010-01 | 3 | `io/cursor.ts` + T-SWF-015/016 | P0 |
+| WP-010-03 | Integer readers incl. `u24`, `u64`, `EncodedU32` | WP-010-02 | 2 | `io/integers.ts` + vectors | P0 |
+| WP-010-04 | Bit readers `ub`/`sb`/`fb`, alignment, padding policy | WP-010-02 | 2 | `io/bits.ts` + T-SWF-004 bit rows | P0 |
+| WP-010-05 | Fixed-point + float readers incl. `FLOAT16` | WP-010-02 | 1.5 | `io/real.ts` + E-004 vectors | P0 |
+| WP-010-06 | Strings: UTF-8 + legacy policy + caps | WP-010-02 | 2 | `io/strings.ts` + T-SWF-004 string rows | P0 |
+| WP-010-07 | Colour records + `LanguageCode` | WP-010-02 | 0.5 | `io/colour.ts` | P0 |
+| WP-010-08 | `RECT` | WP-010-04 | 0.5 | `io/records.ts` + T-SWF-004 rect row | P0 |
+| WP-010-09 | `MATRIX` + `decomposeMatrix` | WP-010-05 | 2 | `io/records.ts` + T-SWF-013 | P0 |
+| WP-010-10 | `CXFORM` / `CXFORMWITHALPHA` (shared impl) | WP-010-04 | 1 | `io/records.ts` + T-SWF-004 cxform rows | P0 |
+| WP-010-11 | Test writer + property tests + allocation test | WP-010-03…10 | 3 | `test-support/writer.ts` (extended v1.10), T-SWF-014 + T-SWF-017 delivered (v1.10/v1.11) — **Done** | P0 |
+| WP-010-12 | Reader fuzz target (in-process, no I/O) | WP-010-02 | 1 | `packages/swf/test/fuzz.test.ts` (+ `packages/swf/test/fuzz/corpus/`) — delivered at that re-sited home under `pnpm test:fuzz`; re-sited from `tools/fuzz/readers.ts` (v1.6), and the v1.7 changelog records that the delivered filename is `fuzz.test.ts`, not the `readers.*.test.ts` glob this row originally named: `tools/**` is outside both `eslint.config.js` and the root `tsconfig.json`, so the declared path would be neither linted nor typechecked (`REPO-R009`). Long-run hosting is doc 140's `WP-140-07` | P0 |
+| | **Total** | | **20** | | |
+
+The `Phase owner` column (added v1.6) matches docs 060/070/080/090 and gives this document the
+vocabulary to re-attribute a work package to a later phase instead of leaving a silent inversion in a
+`Depends` cell. Every row here is **P0**: this document has no later-phase work. `WP-010-12`'s
+*long-run harness hosting* is a **P11 forward** declared on doc 140's `WP-140-07`, not a P0
+dependency — the target itself is P0-owned, in-process, I/O-free, and runs in both the Node and
+browser lanes. The reciprocal edge `WP-140-01 → WP-010-12` is therefore a legal forward (P11
+consuming a P0 deliverable), and the undeclared cycle described in
+[`audits/P0-PHASE-DEPENDENCY-MAP.md`](../../../audits/P0-PHASE-DEPENDENCY-MAP.md) §3.5 is broken.
 
 ## 10. Open items to pin from the chapter text
+
+As of v1.6 this table is **empty of open rows**. That is a statement about chapter-text questions, not
+about acceptance: §11's done criteria are a separate list, and several are still open — the §8 vector
+matrix is incomplete until `WP-010-11`'s writer exists for the `RECT`/`MATRIX`/`CXFORMWITHALPHA` rows,
+every §8 row now carries its evidence (`T-SWF-009` closed v1.8; `T-SWF-014`/`017` delivered and `T-SWF-015`/`016` strengthened v1.10–v1.11; the `UI32` row's Expected cell corrected under ruling D1, v1.12).
+`docs/impl/registers/STATUS.md` counts the rows below, so "0 open items" here must not be read as P0
+being closeable (roadmap §2's status policy: code presence or a test citation alone does not close an
+obligation).
 
 | # | Item | Status |
 | --- | --- | --- |
 | 1 | `FLOAT16` exponent bias (E-004): implement IEEE (bias 15); re-check if a consuming structure appears | resolved, re-open on new evidence |
 | 2 | `MATRIX` rotation sign convention (E-005) | **resolved (v1.1)** — the chapter's rotation row (`ScaleX = cos`, `RotateSkew0 = sin`, `RotateSkew1 = -sin`, `ScaleY = cos`) with `x' = x*ScaleX + y*RotateSkew1`, `y' = x*RotateSkew0 + y*ScaleY` maps `(1,0)` to `(0,1)` at +90 deg, i.e. right -> down = **clockwise on screen** in SWF's y-down space: the chapter and our committed convention agree. Keep `T-SWF-013` as the regression check, extended with the +90 deg fixture asserting the on-screen direction (right -> down) |
-| 3 | Confirm no AVM1-era structure consumes `FLOAT16` | open (low risk) |
-| 4 | Confirm `SI24` does not exist (only `UI24[n]` appears in the type table) | open (low risk) |
+| 3 | Confirm no AVM1-era structure consumes `FLOAT16` | **resolved (v1.6) — the answer is positive, not negative.** `DefineFontAlignZones` (tag 73) consumes two `FLOAT16` fields (`AlignmentCoordinate`, `Range`); it is in scope (SWF 8+, AVM1-era), decoded in production (`packages/swf/src/tags/fonts.ts:599–600`, `IMPL-080-R035`) and fixture-covered (`font-aux-tags.test.ts`). Recorded in §8's primitive-consumer register; `E-004`'s risk sentence is corrected under its own re-open clause |
+| 4 | Confirm `SI24` does not exist (only `UI24[n]` appears in the type table) | **resolved (v1.6) — confirmed negative across the whole encoded set** (Ch.1–Ch.15 + Appendices A–C, all encoded per roadmap §9.1): no `SI24` exists, and the only 24-bit field anywhere is `VP6SWFALPHAVIDEOPACKET.OffsetToAlpha UI24` (doc 110 → P10), unsigned and served by `u24()` per `IMPL-010-R004`. Owned by §8's register, which **P10 consumes** rather than supplies — so this item never depended on P10 being written |
 | 5 | Ch.1 states `RECT` "must be byte aligned" — *starts* aligned with consumers aligning after | **resolved (v1.3)** — Appendix A's two rects (`FrameSize` 65+7 bits, shape bounds 61+3 bits) are byte-aligned at the start and zero-padded to the next byte boundary; `R028` is the rule, `T-TST-102` the check |
 
 ## 11. Done criteria
 
 1. Every vector in §8 passes with exact equality (F1) on Node and in the browser test runner.
+   **Browser half delivered 2026-10-13:** `pnpm test:browser` runs
+   `packages/swf/test/io-vectors.lanes.test.ts` over the shared §8 definitions in
+   `packages/swf/test/support/vector-table.ts`, in headless Chromium, as its own CI job (`browser`);
+   the Node lane collects the same file, so the two lanes cannot drift. Both reduce to one pinned
+   cross-engine fingerprint, which is what makes signed zero, NaN/±Infinity, `>>> 0` and
+   `TextDecoder('windows-1252')` equality *measured* rather than assumed. P11's three-engine matrix
+   remains an extension of this lane, not a replacement for it (roadmap §4.2).
+   **Still open:** vector *completeness* — the `RECT`, `MATRIX` and `CXFORMWITHALPHA` rows describe
+   bit layouts rather than bytes and need `WP-010-11`'s writer, and the `UI32` row is disputed
+   (`E-033`).
 2. Property tests pass at 10⁵ iterations with a fixed seed; failures print the counterexample bytes.
 3. `T-SWF-015` demonstrates recovery after a deliberately corrupted record with no exception.
-4. Zero-allocation assertion passes for steady-state reads.
+4. Zero-allocation assertion passes for steady-state reads, measured by the instrumented counter
+   contract in §8 (`IMPL-010-R043`–`R045`) — not by a heap or RSS delta.
 5. `codes.ts` contains every `SF00xx` literal; a lint rule fails the build on `SF\d{4}` outside it.
 6. This document's changelog records any divergence found while implementing, and errata entries are
    filed for anything that is upstream's fault rather than ours.
+
+## 11.5 Diagnostic-literal lint (scope ruling)
+
+Criterion 5's lint exists as `tools/check_codes.py` (`pnpm code:lint`, in CI). Its scope is ruled
+**production only** (`packages/*/src`, `apps/*/src`): tests assert literals, which is their job.
+Three rules: **R1** every `SFdddd` literal outside `codes.ts` must be registered there or in a §7
+allocation row (including the design-owned blocks the registry deliberately skips); **R2** no raw
+literal in a diagnostic object's `code:` property outside `codes.ts` — emission goes through a
+`Codes.*` constant (or a named module constant for a design-owned code); **R3** no computed
+`code:` value (template interpolation or concatenation) at an emission site. Comparison literals
+(`code === 'SF0250'`) and error-constructor arguments are covered by R1, not R2: they cannot mint
+a code the registry does not know, and the sink-facing `code:` property is where a computed or
+typo'd code would otherwise pass silently. Unit tests: `tools/test_check_codes.py`.
 
 ## 12. Changelog
 
@@ -627,3 +715,10 @@ applies).
 | 1.3 | 2026-10-04 | Appendix pass: Appendix A added as the independent corroboration of the `RECT` field order settled in `E-001` (the fixture `T-TST-102` doubles as the regression test) |
 | 1.4 | 2026-10-04 | Tech-spec pass: registry rows for the two new areas — `SF0800–0899` (clean engine, doc 160) and `SF0900–0999` (code inspector, doc 150); no existing range moved |
 | 1.5 | 2026-10-04 | Rule-id and cross-reference hygiene after the area pass: `IMPL-060`'s `R046`–`R052`, `IMPL-030-R007`, `IMPL-120-R015`; registry row for 080 corrected to `SF0270`–`0289` and the design-owned `SF0200`–`0239` block documented as not-free |
+| 1.6 | 2026-10-13 | Roadmap §4.4 follow-ups applied (supply-forward rule, `IMPL-000` 1.20): §8 gains the normative **allocation/copy counter contract** (`IMPL-010-R043`–`R045`, adopting P4's instrumented-counter precedent and separating `T-SWF-017`'s hot-read object count from `SWF-R001`'s payload-copy bound) and the **primitive-consumer register**; §10 items 3–4 close on that register — item 3 **positively** (`DefineFontAlignZones`, tag 73, consumes `FLOAT16`; `E-004`'s risk sentence corrected) and item 4 negatively (no `SI24` in the encoded set; the sole 24-bit field is doc 110's `OffsetToAlpha UI24`, which consumes the register rather than supplying it); §9 gains a `Phase owner` column (all rows P0) and `WP-010-12` is re-sited from the ungated `tools/fuzz/readers.ts` into `packages/swf/test/fuzz/`, with long-run hosting declared as a P11 forward on `WP-140-07`; §11 criterion 1 records the delivered browser lane and criterion 4 cites the counter contract; the §8 `UI32` row is annotated as disputed and filed as `E-033` rather than silently corrected |
+| 1.7 | 2026-10-16 | Temporary P0–P6 close-out roadmap, Wave 0: `WP-010-12`'s deliverable cell re-pointed at the delivered target (`packages/swf/test/fuzz.test.ts` + `fuzz/corpus/`, `pnpm test:fuzz`). The fuzz target was done in substance and mis-described in the ledger; no obligation changed |
+| 1.8 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-1: `T-SWF-009` delivered — `packages/swf/test/fixture-inventory.test.ts` carries the checked-in C1 inventory (the 21 committed fixtures + 5 crasher-corpus files the register counts), asserts the directory walk and `registers/corpus.md` §1's count against it, and asserts two parses of every file produce identical header values, tag offsets, dictionary entries and diagnostics. Adding a fixture without updating the inventory now fails a gated test |
+| 1.9 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the §11.5 diagnostic-literal lint delivered as `tools/check_codes.py` (`pnpm code:lint`, CI-wired, unit-tested), with its scope ruled production-only in the new §11.5 (R1 registry membership, R2 no raw `code:` literals, R3 no computed codes). Its first run found the 10 raw `code:` literals in `packages/assets/src/images/decode.ts`, now `Codes.*` constants (plus one named constant for design-owned `SF0203`); no emitted code value changed |
+| 1.10 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-2: `WP-010-11`'s writer/property half delivered — `ByteWriter` gains the six missing encoders and `packages/swf/test/io-property.test.ts` wires `T-SWF-014` (10⁵ seeded values, 12 kinds, byte fixed point with counterexample reporting) and strengthens `T-SWF-015`/`T-SWF-016` to their full contracts. `WP-010-11` stays open for `T-SWF-017`'s allocation counter only |
+| 1.11 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-3: `T-SWF-017` and the `SWF-R001` copy bound delivered. New `packages/swf/src/io/counter.ts` is the named deterministic counter (`IMPL-010-R043`); three hot paths were made allocation-free so the bound is honestly 0 — `float16` gained non-allocating `float16Value`/`float16Special` accessors, `encodedU32Into` fills a per-cursor scratch, and `float32`/`float64` share one per-cursor `DataView` created at warm-up. Record readers count exactly their one result object; `takeBytes`/`rest` count as classified payload copies and `viewBytes`/tag payloads are asserted to share the input buffer. `packages/swf/test/io-allocations.test.ts`: 0 primitive allocations over 10⁶ warm reads (byte- and bit-aligned), exactly 3 record objects per rect+matrix+cxform triple over 10⁴ reads, and ≤ 1 payload copy for a ≥ 5 MiB in-memory `FWS` parse. `WP-010-11` is Done |
+| 1.12 | 2026-10-16 | Ruling D1 applied (`E-033` closed): the upstream SWF v19 Chapter 1 text (user-supplied) prints `0x456e7120` and its bytes with no decimal, so §8's Expected cell — our own derivation — is corrected from `1163342112` to **1164865824** and the `ui32` pin is removed from the shared vector table. §11 criterion 1 is now fully evidenced; no reader code changed |

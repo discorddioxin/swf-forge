@@ -1,0 +1,536 @@
+{
+  "schemaVersion": 1,
+  "purpose": "Class C4 of docs/impl/registers/corpus.md: real ActionScript-bearing SWFs from a licensed upstream, for the P5 tier and determinism gates that the 26 committed inputs (zero action blocks) cannot exercise.",
+  "policy": "Never committed. IMPL-020-R038 sanctions three committed-binary roles and an externally sourced movie is none of them; .gitignore already forbids committing fixtures derived from copyrighted SWFs. Bytes live in the cacheDir and are verified against the sha256 pinned here.",
+  "cacheDir": ".forge-cache/corpus",
+  "tool": "tools/open-corpus.mjs",
+  "sources": [
+    {
+      "id": "ruffle-avm1",
+      "owner": "ruffle-rs",
+      "repo": "ruffle",
+      "upstream": "https://github.com/ruffle-rs/ruffle",
+      "commit": "2372a4e148a67d68efd796f4477b3cddd4f880cd",
+      "commitDate": "2026-10-12T20:22:26Z",
+      "licence": "Apache-2.0 OR MIT",
+      "licenceFile": "LICENSE.md",
+      "reuseBasis": "Ruffle's own AVM1 conformance suite: each test ships its ActionScript source (test.as/test.fla) and an expected trace (output.txt) beside test.swf, so the bytes are project-authored test data under the repository licence, not redistributed third-party content.",
+      "pathPrefix": "tests/tests/swfs/avm1/",
+      "selection": "Bounded by construct coverage, not by size: one or more tests per area doc 050 obligates (record framing, DefineFunction/2, Try/With, target paths, the SWF4-vs-5 result-type matrix, string encoding, Enumerate determinism, watch/dynamic properties, frame control).",
+      "entries": [
+        {
+          "name": "add",
+          "path": "add/test.swf",
+          "group": "record-framing",
+          "sha256": "32a5b6867fa51e0b1ca0013287eb969ceb68a4db4ee8a62d31cceda28a90df4e",
+          "bytes": 702
+        },
+        {
+          "name": "add2",
+          "path": "add2/test.swf",
+          "group": "record-framing",
+          "sha256": "46c9258d3e44810eee5a5adde5d31ea46f966b0fb86fd19b9f22e7e0f6ed71bc",
+          "bytes": 1953
+        },
+        {
+          "name": "action_to_integer",
+          "path": "action_to_integer/test.swf",
+          "group": "record-framing",
+          "sha256": "bec8cf67508652e31be6ff2fccac8fa93724b026b103c3a290dcd194e3423766",
+          "bytes": 641
+        },
+        {
+          "name": "string_coercion",
+          "path": "string_coercion/test.swf",
+          "group": "record-framing",
+          "sha256": "576afdf6bc8575c659b3f4e63b59c5ed2ec54f9c8f1d6c073029e1fbfae8bae2",
+          "bytes": 3165
+        },
+        {
+          "name": "function_as_function",
+          "path": "function_as_function/test.swf",
+          "group": "functions",
+          "sha256": "807812cdf54d06991e1a4066e1b1696894f741173217a141ae3d10e4fbae136a",
+          "bytes": 799
+        },
+        {
+          "name": "function_base_clip",
+          "path": "function_base_clip/test.swf",
+          "group": "functions",
+          "sha256": "7104880f138c4bdd1b7042339c25cc012f80030d8db100cbc693fe8f76340c43",
+          "bytes": 851
+        },
+        {
+          "name": "function_suppress_and_preload",
+          "path": "function_suppress_and_preload/test.swf",
+          "group": "functions",
+          "sha256": "c8548b3f7de70e022b8150028a550680842fb318d0e48391685a0bd4df3056ad",
+          "bytes": 453
+        },
+        {
+          "name": "extends_chain",
+          "path": "extends_chain/test.swf",
+          "group": "functions",
+          "sha256": "937f4831ed7853d4a5b66222c13990b9a3d790340677efbe63b182fcc5bee663",
+          "bytes": 1692
+        },
+        {
+          "name": "extends_native_type",
+          "path": "extends_native_type/test.swf",
+          "group": "functions",
+          "sha256": "56b5493d5f17b8b829a6ff4f06bf6165f038ca8b25572b9240133154f9bd4555",
+          "bytes": 501
+        },
+        {
+          "name": "call",
+          "path": "call/test.swf",
+          "group": "functions",
+          "sha256": "2dc4a455ff4614bc29c16e54bc9349aae5f46f5bc3529401d4ae03d083bc0047",
+          "bytes": 593
+        },
+        {
+          "name": "call_method_empty_name",
+          "path": "call_method_empty_name/test.swf",
+          "group": "functions",
+          "sha256": "447cd1de8035212ff171768e5669d50e99edfe809f2824003fe0065118427ed3",
+          "bytes": 93
+        },
+        {
+          "name": "try_catch_finally",
+          "path": "try_catch_finally/test.swf",
+          "group": "control-flow",
+          "sha256": "98a6c737f66def58991dd0230ea2d6927c51f252d0cc746b11cc4a564e8b7b8d",
+          "bytes": 1434
+        },
+        {
+          "name": "try_catch_stack",
+          "path": "try_catch_stack/test.swf",
+          "group": "control-flow",
+          "sha256": "f49c6fbc0385ec3bba3a0f506adcfcbe15df90a859da2b0236b815297c03d435",
+          "bytes": 467
+        },
+        {
+          "name": "try_finally_simple",
+          "path": "try_finally_simple/test.swf",
+          "group": "control-flow",
+          "sha256": "95a5d596d43af996fb67a8a8d844790e71e67401985196a069483c0811369008",
+          "bytes": 754
+        },
+        {
+          "name": "with",
+          "path": "with/test.swf",
+          "group": "control-flow",
+          "sha256": "edb0067a2c7723fd5eaa3d2f0b037d51af51c987f958e13d4677491037b34359",
+          "bytes": 541
+        },
+        {
+          "name": "with_return",
+          "path": "with_return/test.swf",
+          "group": "control-flow",
+          "sha256": "2244ca38981bd27ad0a6e5da9de98440217dde2d81ab821e020161abd18029ff",
+          "bytes": 645
+        },
+        {
+          "name": "with_variable_scopes",
+          "path": "with_variable_scopes/test.swf",
+          "group": "control-flow",
+          "sha256": "3cf2e9c0dc6a6869f3138d427ba4b2d852888b77911ce7ccad786ed88d42d46e",
+          "bytes": 1231
+        },
+        {
+          "name": "set_target_2_swf5",
+          "path": "set_target_2_swf5/test.swf",
+          "group": "target-paths",
+          "sha256": "79350f15e09095ef4877aaf97dc578f54792f0904d82196fa42129f0463b7981",
+          "bytes": 1112
+        },
+        {
+          "name": "set_target_2_swf6",
+          "path": "set_target_2_swf6/test.swf",
+          "group": "target-paths",
+          "sha256": "ca997e5f7d4f12f581ed34403d7e3595135e9b54a5382c1a209960c3f35c90ef",
+          "bytes": 1029
+        },
+        {
+          "name": "set_target_2_swf7",
+          "path": "set_target_2_swf7/test.swf",
+          "group": "target-paths",
+          "sha256": "e91fd92ea9b0e86b672e3d5542f48d5601bb74ea3d0a357ae717c15fbce6b95b",
+          "bytes": 1029
+        },
+        {
+          "name": "target_path",
+          "path": "target_path/test.swf",
+          "group": "target-paths",
+          "sha256": "2210a012ffb67c5f2d21cc544749701d1362316570946477f671f1b2241a54b2",
+          "bytes": 513
+        },
+        {
+          "name": "target_clip_swf5",
+          "path": "target_clip_swf5/test.swf",
+          "group": "target-paths",
+          "sha256": "55d3b78bb58182070b5c1865aa04a1f454b1249716f423a5f89ff3bb2dab98e4",
+          "bytes": 1712
+        },
+        {
+          "name": "target_clip_swf6",
+          "path": "target_clip_swf6/test.swf",
+          "group": "target-paths",
+          "sha256": "137709c09fe69528955f053aa1282df48801c8e896ec0a37d32a0a74e132dde7",
+          "bytes": 863
+        },
+        {
+          "name": "string_paths_basic",
+          "path": "string_paths_basic/test.swf",
+          "group": "target-paths",
+          "sha256": "8459f28ecc2b06af3480a442e21535c9fd2d45bcff8815fbc04a06058281a5a8",
+          "bytes": 1635
+        },
+        {
+          "name": "string_paths_eval",
+          "path": "string_paths_eval/test.swf",
+          "group": "target-paths",
+          "sha256": "5e7b9decad39b04086503d83c95718d185f0b26a1767cde574c25698fe670d4a",
+          "bytes": 873
+        },
+        {
+          "name": "string_paths_variable_scopes",
+          "path": "string_paths_variable_scopes/test.swf",
+          "group": "target-paths",
+          "sha256": "077776e525b3e4dafea5ae5cd959be2e940f6c4cba29392f186d4d5a4625c601",
+          "bytes": 876
+        },
+        {
+          "name": "string_paths_other",
+          "path": "string_paths_other/test.swf",
+          "group": "target-paths",
+          "sha256": "2610dc3d86511e864c8d25bf5a9c506d7eda241974ea70d9ce9e32dea50d9480",
+          "bytes": 1261
+        },
+        {
+          "name": "string_paths_hidden",
+          "path": "string_paths_hidden/test.swf",
+          "group": "target-paths",
+          "sha256": "356c1f5fae2e2b38c30139d355095e09bbf516215d585c668a69578dacc1aa08",
+          "bytes": 495
+        },
+        {
+          "name": "add_swf4",
+          "path": "add_swf4/test.swf",
+          "group": "version-semantics",
+          "sha256": "99322c6dcdf1489a915b14e5fac48df552ffd3acee822ff6c3e741a179b26b3a",
+          "bytes": 702
+        },
+        {
+          "name": "add_swf5",
+          "path": "add_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "23ed119c8253b757fdbefa56259e888d114fd493d66aad00e5dd076e49ab567a",
+          "bytes": 702
+        },
+        {
+          "name": "equals_swf4",
+          "path": "equals_swf4/test.swf",
+          "group": "version-semantics",
+          "sha256": "d36b947796beca081a94a7843bd367b47fe6d6015b25e036787177ac631d959c",
+          "bytes": 15766
+        },
+        {
+          "name": "equals_swf5",
+          "path": "equals_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "adbc0bc7d92b61a767d174adda4cca29cd7a9e88d911dc18673e756b1bcc66e9",
+          "bytes": 736
+        },
+        {
+          "name": "lessthan_swf4",
+          "path": "lessthan_swf4/test.swf",
+          "group": "version-semantics",
+          "sha256": "aa0289fac64dd59d1838c8004dfa412263c153b8cd98dd36999a7028a08041f9",
+          "bytes": 20788
+        },
+        {
+          "name": "lessthan_swf5",
+          "path": "lessthan_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "bef0fc4ce0af7c45ce29b7fd9a5f89b9fcdab3609a45f0394a57b94594231666",
+          "bytes": 866
+        },
+        {
+          "name": "greaterthan_swf5",
+          "path": "greaterthan_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "c82153caf7ba2a98f977b3fa9da58caf306590937261a10ed3c3c72cc9a80968",
+          "bytes": 192
+        },
+        {
+          "name": "swf4_actions_bool",
+          "path": "swf4_actions_bool/test.swf",
+          "group": "version-semantics",
+          "sha256": "b011f69ace8963df75f18360cb49bbe098e99260ff3a91b87b1231fe03e8a416",
+          "bytes": 1529
+        },
+        {
+          "name": "swf4_actions_coercion_order",
+          "path": "swf4_actions_coercion_order/test.swf",
+          "group": "version-semantics",
+          "sha256": "310fb86458b569264965d654eabd34bffdd800f16418cf5df738bba0d345d592",
+          "bytes": 2192
+        },
+        {
+          "name": "swf4_function_calls",
+          "path": "swf4_function_calls/test.swf",
+          "group": "version-semantics",
+          "sha256": "77dcba9aa9764a1445a2e8f8d914c97189f1984422609057e6220e3f9b250d1d",
+          "bytes": 227
+        },
+        {
+          "name": "swf4_vars",
+          "path": "swf4_vars/test.swf",
+          "group": "version-semantics",
+          "sha256": "e39a55e70b2a719ac2b03cfb78b58e55f1ed76220ac39cdf3754d54714020afe",
+          "bytes": 472
+        },
+        {
+          "name": "getproperty_swf4",
+          "path": "getproperty_swf4/test.swf",
+          "group": "version-semantics",
+          "sha256": "ae086f1c4800124dcb97aaaf35ef7560681c021a789827e7f28b19f038556465",
+          "bytes": 556
+        },
+        {
+          "name": "getproperty_swf5",
+          "path": "getproperty_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "efe1fb5435b35a77efc611ecbbef9bfb9e6bb6afc6316898127315797c4548e3",
+          "bytes": 556
+        },
+        {
+          "name": "this_swf5",
+          "path": "this_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "b192694c69a6926c3aa356843e2bda9bc3e88bd957de8204869e9b0be8a8db5e",
+          "bytes": 453
+        },
+        {
+          "name": "globals_swf5",
+          "path": "globals_swf5/test.swf",
+          "group": "version-semantics",
+          "sha256": "f6628b8ec9d691dfdd788841a27447b36fa8fffb74a9f3892fbe1d5471b559f7",
+          "bytes": 5740
+        },
+        {
+          "name": "globals_swf6",
+          "path": "globals_swf6/test.swf",
+          "group": "version-semantics",
+          "sha256": "6432ecbff366984d9c32f883a8a1bcb1e838cea82fce678d2fc54be33c7b7a98",
+          "bytes": 1474
+        },
+        {
+          "name": "globals_swf7",
+          "path": "globals_swf7/test.swf",
+          "group": "version-semantics",
+          "sha256": "64a8324c9316f0612eb1bb7a360fd69a75209eedfb2d2b48f372f636b7da7aa5",
+          "bytes": 1474
+        },
+        {
+          "name": "globals_swf8",
+          "path": "globals_swf8/test.swf",
+          "group": "version-semantics",
+          "sha256": "118ab4ab602ffe26dcca0895054bef4964a9689199e6d4f0b06c166dffb52046",
+          "bytes": 1474
+        },
+        {
+          "name": "global_swf5_6_7_8_9",
+          "path": "global_swf5_6_7_8_9/test.swf",
+          "group": "version-semantics",
+          "sha256": "21602822ee8571dd65c4137b30fac67788944ec4f7db1b8d30a454062b743a07",
+          "bytes": 1550
+        },
+        {
+          "name": "swf5_encoding",
+          "path": "swf5_encoding/test.swf",
+          "group": "strings-encoding",
+          "sha256": "af56d0966a96a3819ae0c4c66bc9be94a08a0eccfae881f4aac0bf15e12d4ee7",
+          "bytes": 111
+        },
+        {
+          "name": "string_methods",
+          "path": "string_methods/test.swf",
+          "group": "strings-encoding",
+          "sha256": "f1c43b532b8b074d7c795c86bc94cf1fcf6baf1aa6c545d9827e884a46279e88",
+          "bytes": 4881
+        },
+        {
+          "name": "string_methods_swfv5",
+          "path": "string_methods_swfv5/test.swf",
+          "group": "strings-encoding",
+          "sha256": "2e8d0309b97822171a328e99273d3ad888b944246af938907503ba1200d78d36",
+          "bytes": 8609
+        },
+        {
+          "name": "string_ops_swf6",
+          "path": "string_ops_swf6/test.swf",
+          "group": "strings-encoding",
+          "sha256": "4736047901af80560705ae16048eafb0a7b89faa22f8d9a5003f1be1ac1c97bc",
+          "bytes": 1189
+        },
+        {
+          "name": "undefined_to_string_swf6",
+          "path": "undefined_to_string_swf6/test.swf",
+          "group": "strings-encoding",
+          "sha256": "9bc1e54b3f89c813389cf54a7d1f0b34ac07a1cfb4423a501a91d69b2d16b955",
+          "bytes": 79
+        },
+        {
+          "name": "object_string_coerce_swf5",
+          "path": "object_string_coerce_swf5/test.swf",
+          "group": "strings-encoding",
+          "sha256": "3144d082d8165fb1b47a734f08fbf9649c0c510f9372352c98927a66c3767cb3",
+          "bytes": 1217
+        },
+        {
+          "name": "object_string_coerce_swf6",
+          "path": "object_string_coerce_swf6/test.swf",
+          "group": "strings-encoding",
+          "sha256": "f8e89d176a3531f808b448b2f1f208a53d30f3bfef658e4b28023776675b44cf",
+          "bytes": 400
+        },
+        {
+          "name": "enumerate",
+          "path": "enumerate/test.swf",
+          "group": "enumerate-determinism",
+          "sha256": "6776d079a427dbbb6fe8b0e82e412975e2396f9db8829538c38764728a59ff8f",
+          "bytes": 1662
+        },
+        {
+          "name": "prototype_enumerate",
+          "path": "prototype_enumerate/test.swf",
+          "group": "enumerate-determinism",
+          "sha256": "86124cb8366fc4d5823c3b4cf864bb82e66af0bd69b63cab19b82bc826e862b6",
+          "bytes": 714
+        },
+        {
+          "name": "prototype_properties",
+          "path": "prototype_properties/test.swf",
+          "group": "enumerate-determinism",
+          "sha256": "6fb98ae6c51d4d5c842f56155493667630d095d5486fc2f8a307965c4be227a2",
+          "bytes": 335
+        },
+        {
+          "name": "prototype_delete",
+          "path": "prototype_delete/test.swf",
+          "group": "enumerate-determinism",
+          "sha256": "45ffcaea5d58e764d0e1566b9746cbcaa3be2fb814afcc189ab8328037c557f8",
+          "bytes": 269
+        },
+        {
+          "name": "watch",
+          "path": "watch/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "7ab9a38d12fd4dd969faf882bc3403ad904237b584499956dde09d11ac7946cc",
+          "bytes": 1650
+        },
+        {
+          "name": "watch_virtual_property",
+          "path": "watch_virtual_property/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "05141819571e0b575208c375dd2a50eb12b4313695732d0d605413646818b4da",
+          "bytes": 1068
+        },
+        {
+          "name": "watch_proto_recursion",
+          "path": "watch_proto_recursion/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "9e866f10ced67d26f5bad80e24c52d30c34447937bd91b81ab5d4272fbb17e27",
+          "bytes": 281
+        },
+        {
+          "name": "watch_recursion_swf6",
+          "path": "watch_recursion_swf6/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "9a29a0cff618a430980aa89d303def2ecf9b075e8a854cb6bbb3bbd3ee5f0d81",
+          "bytes": 756
+        },
+        {
+          "name": "watch_recursion_swf7",
+          "path": "watch_recursion_swf7/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "e4472d9cb6111f7f093aea395d91b3fc46f030806d53d730416f3fabb5985769",
+          "bytes": 756
+        },
+        {
+          "name": "delete",
+          "path": "delete/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "f0295b5d80343a32b71c2787daf55ccab398361e4dce9b4120ccc925f4ac7148",
+          "bytes": 356
+        },
+        {
+          "name": "delete2",
+          "path": "delete2/test.swf",
+          "group": "dynamic-watch",
+          "sha256": "461ddb55478160edd5fbf324f0995390f0fa5e8e3f359b93e21ea61dab76a8b8",
+          "bytes": 1407
+        },
+        {
+          "name": "goto_frame2",
+          "path": "goto_frame2/test.swf",
+          "group": "frame-control",
+          "sha256": "9b752679d1feb00462a5549601eb3f1b9f611d08f89824a5ef5e066168fde9b8",
+          "bytes": 865
+        },
+        {
+          "name": "goto_label",
+          "path": "goto_label/test.swf",
+          "group": "frame-control",
+          "sha256": "2a6204df54d96df1a83f2ada7c7722dfe5037429abb402eb1bb489b64f41e9e8",
+          "bytes": 430
+        },
+        {
+          "name": "goto_execution_order",
+          "path": "goto_execution_order/test.swf",
+          "group": "frame-control",
+          "sha256": "ea14536fb2d7c5bc4cb4d18b676fa70e5f36f57a7730d855f3eba666c01cb0d1",
+          "bytes": 164
+        },
+        {
+          "name": "goto_both_ways1",
+          "path": "goto_both_ways1/test.swf",
+          "group": "frame-control",
+          "sha256": "b95a6b00d650991515434974917b5ed3b8a5f8573466bffa9c8b2f861cf559c8",
+          "bytes": 1513
+        },
+        {
+          "name": "goto_rewind1",
+          "path": "goto_rewind1/test.swf",
+          "group": "frame-control",
+          "sha256": "15eccfa81bf448837ce878b43c04cf55b8007a66ad9b5b6a7ea8cc121a53d6d8",
+          "bytes": 697
+        },
+        {
+          "name": "instanceof_coercions",
+          "path": "instanceof_coercions/test.swf",
+          "group": "coercion",
+          "sha256": "8f0df7e8275bfa7aeb57e160354a6d1555f44c56fac81459f5184bc04d4da84d",
+          "bytes": 1123
+        },
+        {
+          "name": "swf6_string_as_bool",
+          "path": "swf6_string_as_bool/test.swf",
+          "group": "coercion",
+          "sha256": "b01796980aebdac756f312778f770170571062a5a38e6ef09ace96dc3910e356",
+          "bytes": 541
+        },
+        {
+          "name": "string_relational_compare",
+          "path": "string_relational_compare/test.swf",
+          "group": "coercion",
+          "sha256": "bb93a967654ed64f8aa7c32d3a63a68f46cbbdc689ecb23556fc32a56a0dc779",
+          "bytes": 310
+        }
+      ]
+    }
+  ],
+  "pinned": "2026-10-14"
+}

@@ -19,6 +19,10 @@ export type { OpcodeSpec, PayloadSchema, VersionSensitive } from './frontend/opc
 
 // ---- framing (WP-050-01) ----------------------------------------------------------------------------
 export { scanRecords } from './frontend/record.js';
+
+// ---- region extents (WP-050-01, IMPL-050-R071) ------------------------------------------------------------------
+export { REGION_CODES, isRegionCode, regionExtent } from './frontend/extents.js';
+export type { RegionExtent } from './frontend/extents.js';
 export type { ActionRecord, Emit, ScanResult } from './frontend/record.js';
 
 // ---- operands (WP-050-03) -----------------------------------------------------------------------------
@@ -78,6 +82,10 @@ export type { ActionSchedule, FrameScriptEntry, InitScriptEntry } from './fronte
 // ---- orchestration -------------------------------------------------------------------------------------------
 export { analyzeActionBlock, analyzeMovie } from './frontend/analyze.js';
 export type { AnalyzeBlockInput, AnalyzedBlock, AnalyzeMovieOptions, MovieAnalysis } from './frontend/analyze.js';
+
+// ---- serializer (WP-050-18) -----------------------------------------------------------------------------------
+export { checkCanonical, serializeBlock } from './frontend/serialize.js';
+export type { SerializeContext, SerializeNode } from './frontend/serialize.js';
 
 // ---- disassembly (WP-050-16) -----------------------------------------------------------------------------------
 export { disassembleBlock, disassembleMovie } from './frontend/disassemble.js';

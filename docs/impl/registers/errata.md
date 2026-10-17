@@ -62,9 +62,30 @@ compatible.
 representation would be neither IEEE-compatible nor able to represent the documented range
 (max finite ≈ 65504, which requires `2^15`).
 **Resolution:** implement IEEE 754 binary16 (bias 15, subnormals `2^-14 × m/1024`, exponent 31 =
-Inf/NaN) and treat the "bias 16" sentence as a documentation error. `FLOAT16` does not appear in any
-AVM1-era tag we parse, so the risk is contained; if a future chapter shows a structure that consumes
-it, this entry gets re-opened and the consuming structure gets a fixture.
+Inf/NaN) and treat the "bias 16" sentence as a documentation error.
+
+**Re-opened and corrected 2026-10-13**, under this entry's own clause. The resolution originally
+continued: *"`FLOAT16` does not appear in any AVM1-era tag we parse, so the risk is contained; if a
+future chapter shows a structure that consumes it, this entry gets re-opened and the consuming
+structure gets a fixture."* That sentence is **wrong**, and the condition it set is met:
+
+- `DefineFontAlignZones` (tag 73, SWF 8+) carries `ZONEDATA` = `AlignmentCoordinate FLOAT16`,
+  `Range FLOAT16` (`specs/110`, `IMPL-080-R035` → doc 080, P3 **Completed**).
+- Tag 73 is inside the AVM1-era set this project parses — AVM2 content is rejected outright by
+  `SF1000` — and it is decoded in production: `packages/swf/src/tags/fonts.ts:599–600` calls
+  `c.float16()` twice inside `decodeFontAlignZones`.
+- The fixture the clause asked for already exists: `packages/swf/test/font-aux-tags.test.ts` writes
+  raw `FLOAT16` bit patterns and asserts `0x3C00 → 1.0`, `0x4000 → 2.0`.
+
+The **bias-15 resolution itself is unaffected**, and is now corroborated by a working decoder over real
+tag data rather than resting on the claim that nothing consumed the type. Recorded in `IMPL-010` §8's
+primitive-consumer register, which closes `IMPL-010` §10 item 3 (v1.6) — the answer is positive, the
+opposite of the expectation this entry was written against.
+
+One consequential note: `specs/110` §2 dispositions tag 73 as `I` ("ignore with an `info` diagnostic")
+while production decodes and records it verbatim per `IMPL-080-R035`, and `tools/tag_coverage.py`
+reports it `decoded`. That wording belongs to whichever document owns the claim; it does not affect the
+`FLOAT16` conclusion above.
 
 **Encoded by:** `T-SWF-004` includes `0x3C00 → 1.0`, `0x3E00 → 1.5`, `0x0001 → 2^-24`,
 `0x7C00 → +∞`, `0xFC00 → −∞`, `0x7E00 → NaN`, `0x8000 → −0`.
@@ -844,6 +865,696 @@ complete sound against the expected classifications.
 
 ---
 
+## E-033 — `IMPL-010` §8's `UI32` vector row contradicts its own bytes (closed 2026-10-16)
+
+**Found in:** `IMPL-010` §8, "Vector table", first row — on 2026-10-13, while building the shared
+cross-lane vector table for the browser lane (roadmap §4.2). This is the first time §8 was executed
+row by row against the readers rather than transcribed.
+
+**What it says:** `| UI32 0x456e7120 | 20 71 6e 45 | 1163342112 | Ch.1 |`
+
+**What is wrong:** the three cells cannot all be right. `20 71 6e 45` read little-endian is
+`0x456E7120` = **1164865824**, which agrees with the row's own hex label. The Expected cell prints
+**1163342112** = `0x45573120`, matching neither the bytes nor the label. Every other mechanically
+checkable row in §8 is self-consistent — `UI16`, `UI24`, `FIXED`, all four `EncodedU32`, `UB[4]`,
+`SB[4]`, `SB[7]`, `FB[19]`, all seven `FLOAT16`, `ARGB`, and both `STRING` rows — so the defect is
+isolated to this one cell rather than systemic.
+
+**Why it is not settled here:** deciding whether the *decimal* or the *bytes* are the transcription
+error needs the upstream Ch.1 text, which this repository does not contain. Two readings are possible
+and they are not equivalent: either our transcription of the decimal is wrong (the bytes and the hex
+label corroborate each other, which is what the in-repo evidence favours), or upstream's own worked
+example is internally inconsistent — the `E-025` class, where Appendix A's printed tables carry
+typesetting defects and its bytes are authoritative.
+
+**Provisional resolution (applied, entry stays open):** apply the rule `E-025` already established for
+upstream worked examples — **the bytes are authoritative** — which gives `1164865824`. That is the
+value the vector table encodes and both lanes assert. The §8 row is annotated `⚠ disputed, E-033` with
+the byte-derived value printed beside the transcribed one, so the transcription is preserved rather
+than silently overwritten and the disagreement stays visible in the document that carries it. If the
+upstream decimal is later confirmed as printed, then the bytes and hex label are the transcription
+error instead and the vector flips; that is a one-cell change, and this entry records which way it went.
+
+A second, **benign** difference was found in the same pass and is recorded so it is not mistaken for a
+disagreement: `FB[19]`'s Expected cell prints `3.0` where the canonical form of the same value is `3`.
+Not a defect; the vector table canonicalises it.
+
+**Closed 2026-10-16 (ruling D1, from the upstream text).** The user supplied the SWF File Format
+Specification v19 (Adobe, 2012; mirror at `open-flash.github.io/mirrors/swf-spec-19.pdf`), and its
+Chapter 1, "Integer types and byte order", was read directly: it prints *"The 32-bit value
+0x456e7120 is stored as 20 71 6e 45"* and *"The 16-bit value 0xe712 is stored as 12 e7"* — hex value
+and bytes, **no decimal**. So the upstream text corroborates the row's hex label and bytes exactly,
+and the wrong cell is ours: `1163342112` was a miscomputed Expected value in `IMPL-010` §8 (it
+equals `0x45573120`, a digit transposition of the correct `0x456e7120` = 1164865824), not an
+upstream `E-025`-class defect and not a byte transcription error. Resolution: `IMPL-010` §8's cell
+corrected to **1164865824**, the `ui32` pin removed from `VECTOR_TABLE_DISCREPANCIES` (the shared
+table's `docExpected` now equals its bytes-derived `expected`, so the mechanical discrepancy check
+passes with the pin gone), and the reader — which already implemented the byte-derived value — is
+unchanged. Noted beside it from the same reading: the same Chapter 1 text prints *"5 bits for the
+exponent, with an exponent bias of 16"* for `FLOAT16`, where IEEE 754 binary16 uses bias 15 and
+`E-004` settled bias 15 from the working decoder (tag 73 consumes it); upstream's "16" is a spec
+misprint, so doc 010's bias-15 reading stands and `E-004` is not re-opened.
+
+**Encoded by:** `packages/swf/test/support/vector-table.ts` — the `ui32` row carries the byte-derived
+value with the document's cell kept as `docExpected`, and `VECTOR_TABLE_DISCREPANCIES` records the
+pair. `docTableDiscrepancies()` derives the list mechanically from the rows, and
+`packages/swf/test/io-vectors.lanes.test.ts` asserts in **both** lanes that every derived discrepancy
+has a pinned disposition naming what the bytes require and what the document prints. Settling §8
+therefore forces the entry to be removed, and a new discrepancy forces it to be declared — neither can
+happen silently.
+
+---
+
+## E-034 — `DoAction`/`DoInitAction` payloads have no block-level length prefix, and our generator invented one (fixed)
+
+**Found in:** the open-corpus screen of 2026-10-13 (`IMPL-050` §13 criterion 3; roadmap §4.6 item B),
+running `analyze --tiers`
+over 73 licensed AVM1 conformance movies fetched from `ruffle-rs/ruffle@2372a4e1` — the first time the
+front end saw an action block from outside this repository. The committed corpus cannot catch this
+class of defect: all 26 of its inputs contain **zero** action blocks (`audits/P5-C4-CORPUS.json`
+records 0 action blocks, 0 functions, 0 tier entries).
+
+**What the format says:** `DoAction`'s payload *is* the `ACTIONRECORD` stream, and `DoInitAction`'s is
+`UI16 SpriteID` followed by that stream — and `decodeDoInitAction` consumes the id, so the
+`ActionBlockRef` the container hands over (`IMPL-030-R029`) already points at the first record byte in
+both cases. `IMPL-050-R003`'s `Length` is the *per-record* `UI16` that follows an `ActionCode` whose
+high bit is set. The only `UI32` size in this area is `CLIPACTIONRECORD.ActionRecordSize`, which
+belongs to clip actions.
+
+**What we did:** two mistakes that cancelled each other out inside the suite.
+`frontend/analyze.ts`'s `sliceBlock` started at `ref.offset + 4` and refused any ref shorter than four
+bytes, and `test-support/writer.ts`'s `actionBlock()` emitted a `UI32` length prefix for that slicer to
+skip — citing `IMPL-050-R003`/`R006`, which say no such thing. Generator and consumer agreed with each
+other, so 750 tests passed while every real file mis-parsed.
+
+**Measured effect** (`tests/tests/swfs/avm1/` in `ruffle-rs/ruffle@2372a4e1`):
+
+| Input | Before | After |
+| --- | --- | --- |
+| `call/test.swf` | 5 blocks, T0=1 **T2=4**, reasons `unknown-opcode:0x2f/0x72/0x6d`; a 726-byte script reported as a single `End` with 725 bytes dropped | 6 blocks, **T0=7 T2=0**, 1 function recovered |
+| `goto_frame2/test.swf` | 15 blocks, T0=4 **T2=11**, 11–19 residual bytes each | 15 blocks, **T0=20 T2=0**, 5 functions recovered by name (`gotoPlay`, `gotoStop`, `gotoPlayScene`, `gotoStopScene`) |
+| 73-file corpus | not runnable | 119 action blocks, 93 functions, T0=191 T1=3 T2=18, **0** `unknown-opcode` reasons |
+
+The phantom reasons were ASCII: `2f 2f 20 66 72 61 6d 65` is `// frame`, the tail of a
+`Push "// frame 3 A"` record read from its fifth byte.
+
+**Resolution:** one slicer for all five block kinds, starting at `ref.offset` with no minimum length —
+a block may legally be a single `End` — and `actionBlock()` emits records only. **Test:**
+`T-AVM1-FE-036` (`packages/avm1/test/block-refs.test.ts`) pins the generator's bytes, both ref kinds,
+and the one-byte block. Negative control: reverting either half of the fix fails 3 of its 4 cases
+(`[1,0,0,0,0]` against `[0]`, block start 6 against 2, init start 18 against 14).
+
+**Why it matters beyond P5:** `actionBlock()` is the AVM1 analogue of `IMPL-020-R038`'s "materialised
+output of a committed generator". A generator that encodes a defect makes every byte-exactness
+obligation leaning on it circular, which is the same failure mode `E-033` sits in.
+
+## E-035 — `DefineFunction`/`DefineFunction2` carry their `Code` body *past* the record's `Length` (fixed)
+
+**Found in:** the same screen, from the diagnostics rather than the tiers: `SF0400` (error, "action
+stream truncated mid-record") on **48 of 73** files and `SF0420` (warning, "missing/non-zero block
+terminator") on **49 of 73**. Toolchain output does not leave half its blocks unterminated, so the rate
+was itself the evidence.
+
+**Measurement** — an independent walk of every `DoAction`/`DoInitAction` payload in the corpus,
+decoding each record by its own `Length`:
+
+| Opcode | `headerLen == Length` (body outside) | `headerLen + codeSize == Length` (body inside) |
+| --- | --- | --- |
+| `0x9B` `DefineFunction` | **89** | **0** |
+| `0x8E` `DefineFunction2` | **57** | **0** |
+
+`headerLen` is `FunctionName` + `NumParams` + (`RegisterCount` + `Flags` for `0x8E`) + `Parameters` +
+`CodeSize` — the field order `frontend/functions.ts` already uses. All 146 records that decoded in sync
+agree, and neither opcode has a single counter-example. The 9 `0x9B` records that matched neither
+hypothesis were reached *after* the walker desynchronised and report `codeSize` values that are ASCII
+text (25972, 29811, 12656, and 111 = `o`), so they are artifacts of the bug rather than evidence
+against it. Worked example — `add/test.swf`, payload offset 219: `9b 05 00 | 00 | 00 00 | 0f 00`, i.e.
+`Length` 5 = empty name + `NumParams` 0 + `CodeSize` 15, and the 15 bytes that follow the record decode
+exactly as `Push pool[2]; Trace; Push 1; Return`.
+
+**What we do instead:** both decoders clamp to the record end (`bodyEnd = Math.min(to, pos + codeSize)`)
+and, on overrun, emit `SF0400`, call `markTruncated()` and return `bodyStart: to, bodyEnd: to` — an
+**empty function body**. The record walker then advances by `3 + Length`, so the body's records are
+decoded a second time as siblings of the function, and the block's real terminating `End` is consumed
+inside that second pass, which is what fires `SF0420`.
+
+**Consequence:** every function in real content is modelled as empty-bodied with its body duplicated
+into the enclosing block. Function bodies are the transpiler's unit of work, so this blocks `IMPL-050`
+§13 criterion 2 and the P6 plan built on it. `IMPL-050-R008` is the rule needing correction: a function
+body is closed by `codeSize` **and bounded by the enclosing block**, not by the record's `Length`.
+
+A third generator encodes the same assumption and so cannot catch it either:
+`tools/avm1-restart-probe.mjs` builds its `DefineFunction` as `name + UI16 0 + UI16 bodyLength + body`
+inside one `ACTIONRECORD`, i.e. with the body *inside* `Length`. Fixing this entry has to move that
+fixture too, or the probe will keep measuring a shape no toolchain emits.
+
+**Resolution (applied 2026-10-13, `IMPL-050-R071`).** `DecodeFunctionOptions` gained `limit` — the end of
+the enclosing *scan range*, which for a record inside a `With`/`Try` body is that region's end, not the
+block's — and both decoders now set `bodyEnd = min(limit, bodyStart + codeSize)`, emitting `SF0400`
+("overruns the enclosing block") only when the body really does run past it. The framing half is a new
+module, `frontend/extents.ts`: one context-free parser computes the region extent of all four
+region-bearing opcodes (see `E-036`), `ActionRecord` gained `regionEnd`, and the walker continues there,
+so a body is decoded exactly once and the block's `End` stays with its own block. The extent is
+`max(record end, header end + region size)`, which keeps an encoder that places the body inside `Length`
+parseable — that tolerance is why this repository's fixtures never exposed the bug. Both generators moved
+to the real shape: `packages/avm1/test/harness.ts`'s `defineFunction`/`defineFunction2` and
+`tools/avm1-restart-probe.mjs`'s `defineFunction`. `IMPL-050-R008` needed no correction — it already
+closes a block by `codeSize`; the rule that was wrong is R034 (`E-036`), and R006/R008/R032 now
+cross-reference R071.
+
+**Measured after the fix** (`pnpm corpus:report`, same 73 files, same pinned commit): `SF0400` **48 → 0
+files**, `SF0420` **49 → 0** (`E-037`), `SF0404` **5 → 0** (`E-036`), error-severity diagnostics **60 →
+15** — and all 15 are semantic, not framing (`SF0406` ×13 stack depth at a block join, `SF0405` ×2 branch
+target off a record boundary). Clean exits **21 → 59 of 73**. Entries 212 → 269, functions **93 → 150**
+(nested bodies are now visible at the right depth), tiers T0 191 → 123, **T1 3 → 121**, T2 18 → 25, with
+`SF0410` (`CONSTANT_POOL_DYNAMIC`, R022) reaching **132** warnings for the first time: a function body's
+pool reference really is dynamic, and until now no body was ever decoded to find out. The restart probe's
+artifact changed in 2 of 17 keys (`inputSha256`, `normalizedCliReportSha256` — the fixture moved);
+`directReportSha256` is byte-identical, so the same three functions still tier 0/1/2 for the same
+reasons. **Test:** `T-AVM1-FE-037`, wired in `packages/avm1/test/region-framing.test.ts`.
+
+## E-036 — `With` and `Try` own their bodies past `Length` too, and `IMPL-050-R034` said the opposite (fixed)
+
+**Found in:** the same screen, while generalising `E-035`. If `DefineFunction` puts its body outside
+`Length`, the other region-bearing opcodes are suspect by construction — and the tier report's
+`try-malformed` reason on 5 files was already pointing at it.
+
+**Measurement** — an independent walk of the corpus (not our decoders), classifying every region-bearing
+record by where its header ends:
+
+| Opcode | header ends at `Length` (body outside) | body inside `Length` | neither |
+| --- | --- | --- | --- |
+| `0x94` `With` | **3** (all with `Length == 2`) | 0 | 0 |
+| `0x8F` `Try` | **3** | 0 | 0 |
+
+Worked example — `try_catch_stack.swf`, block offset 138: `Length` 9 = `Flags` + three sizes + a
+two-byte catch name, and the 49 bytes the sizes declare (37/12/0) follow the record. Ruffle's reader
+agrees and says so in terms: `read_with(length)`/`read_try(length)` take `length` as an in-out parameter
+and do `*length += try_size + catch_size + finally_size` (`swf/src/avm1/read.rs`).
+
+**What we did instead:** `With` clamped its body to the record (`bodyEnd = min(to, bodyStart + size)`), so
+every `With` was modelled empty and emitted `SF0400` ("extends past the record (R032)"); `Try` asserted
+`headerEnd + trySize + catchSize + finallySize == record end`, so every real `Try` was `SF0404`
+("do not tile the payload") and residual. **`IMPL-050-R034` was the rule encoding the error** — "the
+three bodies tile the record" — which is why the code looked correct: it matched its specification.
+
+**Resolution (applied 2026-10-13).** R071 covers all four opcodes with one parser; `With`'s body is
+bounded by the enclosing scan range; R034 is restated so the bodies tile the *region*, with two `SF0404`
+arms that cannot both fire on one record (a region clamped by the block, reported while decoding; a
+`Length` that covers bytes past the header *and* the bodies, reported by `checkTryTiling`). R032 now says
+ outright that `Length` is 2. `SF0404` **5 → 0 files**, `try-malformed` **5 → 0** tier reasons, and the
+three real `Try` records in the corpus now report `malformed: false` with their bodies attached.
+**Test:** `T-AVM1-FE-038`.
+
+## E-037 — a function body is not `End`-terminated, so `SF0420` fired for every function in real content (fixed)
+
+**Found in:** `SF0420` staying pinned at **49 of 73 files** across the `E-035` fix. Before the fix the 49
+were empty function bodies; after it they were real ones — the same count from a different cause, which is
+what made it visible.
+
+**Measurement:** of **66** function bodies in the corpus (nested bodies included), **0** end with `End`
+and **64** contain at least one interior zero byte. `IMPL-050` §3.2's own terminator column already said
+so: a function body is terminated by its *byte count*, and a clip-event or button handler by its *record
+size*; only frame and init scripts are `End`-terminated. R006 carved out `With`/`Try` bodies but not
+function bodies, and `decodeFunctionBody` re-entered `analyzeActionBlock` with the default
+`requireEnd: true`.
+
+**Consequence:** one spurious `SF0420` per function — a warning, so it never changed an exit code, but it
+is the single loudest code in the corpus report and it taught readers to ignore `SF0420`, which is the
+diagnostic that *should* be noticed on a truncated frame script.
+
+**Resolution (applied 2026-10-13).** `analyzeActionBlock` picks its scan options from the block kind:
+`requireEnd`/`stopAtEnd` stay on for `timeline` and `init`, and both go off for `function`,
+`classMethod`, `clipEvent` and `button` — the same reading R008 already gave `With`/`Try` bodies.
+`stopAtEnd: false` matters independently of the diagnostic: with 64 of 66 bodies holding interior zero
+bytes, a body that stopped at one would truncate at a payload byte that happens to land on a record
+boundary. R006 now names the kinds an `End` closes. `SF0420` **49 → 0 files**; a `timeline` block with no
+`End` still reports it. **Test:** `T-AVM1-FE-039`.
+
+## E-038 — an error-severity region overrun left the block claiming tier 0 (fixed)
+
+**Found in:** writing `T-AVM1-FE-037`'s overrun case. A `DefineFunction` whose declared `CodeSize` runs
+past the end of the block emitted `SF0400` (error) and set `flags.truncated`, and the block still tiered
+**0** with an empty reason list.
+
+**Cause:** the reason pass read `flags.truncated` and `flags.overrun` only inside `if (scan.desync)`.
+A region overrun does not desynchronise the walk — R071 clamps the region and carries on — so the flag was
+set and then ignored. The block reported itself fully compilable while 40 bytes of its function body did
+not exist.
+
+**Consequence:** any truncated region produced an error diagnostic with no tier consequence, so the
+emitter would have been handed a T0 block whose function body was missing. R004's reading is the one that
+applies here: an overrun marks the enclosing function residual.
+
+**Resolution (applied 2026-10-13).** Both flags are honoured unconditionally. No existing fixture changed
+tier — the two flags were previously only ever set alongside a desync — and the overrun case now tiers 2
+with `record-truncated`. **Test:** `T-AVM1-FE-037`'s fourth case.
+
+## E-039 — a `Try`'s `catch` and `finally` bodies are decoded and then dropped from the IR (fixed)
+
+**Found in:** `T-AVM1-FE-038`'s `Try` case, once `E-036` made the regions readable at all.
+
+**Measurement:** a synthetic `Try` with `catchName: 'e'`, a `finally` flag and one `Push` in each of the
+three bodies. The framing is correct — no diagnostic, `malformed: false`, the region skipped by the
+walker, the try body's `Push` inline in the enclosing IR and also present in `tryBlocks`. But
+`catchBlocks` and `finallyBlocks` come back **empty arrays**, and the catch and finally `Push` records
+appear nowhere in the IR. The same emptiness reproduces with the bodies placed *inside* `Length` (the
+pre-`E-036` fixture shape), so the gap predates this register entry and is not a framing artifact: it
+sits in the region patch that buckets frames into a region's block groups (`frontend/stack.ts`'s
+`patchRegion`, keyed by the scope keys `frontend/control-flow.ts` computes).
+
+**Consequence:** `IMPL-050-R035` requires that "`try`/`catch`/`finally` become explicit nested regions in
+the IR … Emitters must be able to reconstruct the structure from the IR alone". They cannot: an emitter
+reading `catchBlocks` would emit no catch code at all, silently. `regions.test.ts` never caught it because
+its two assertions are `not.toBeNull()`, which an empty array satisfies, and `disassembly.test.ts`'s
+golden (`T-AVM1-FE-032`) had baked the emptiness in: it listed the catch and finally blocks with no
+instructions under them and every region body at `stack -1→-1`. Only three files in the C4-c corpus
+contain a `Try`, so the corpus report cannot size the impact either.
+
+**Cause (two, both in `frontend/stack.ts`'s depth fixpoint).** The first diagnosis above — that
+`patchRegion` lost the bucket — was wrong: the buckets were filled, with blocks that had never been
+simulated. Instrumenting the real pipeline showed the framing and the CFG were right all along
+(`buildBlockFrames` produced `catch:0:20` and `finally:0:30` scopes and `computeBodyScopeKeys` named them
+correctly). What was missing was an input depth:
+
+1. `bodyEntryFrame`, the map that seeds a region body's depth from its region op, was keyed by **region
+   record** and held one frame id. A `Try`'s three body scopes share one region record, so only the try
+   body's first frame was seeded. The catch and finally entry frames have no CFG predecessors — nothing
+   branches into them, they are entered by unwinding — so their `inDepth` never settled, they were never
+   simulated, and their blocks reached the IR with `ops: []`.
+2. Even the seeded body latched the wrong depth. The settle step read
+   `regionEntry.get(recordIndex) ?? 'unknown'` in the same iteration in which the region op's own block
+   was still waiting to be simulated, and `sim.in` is never revisited, so *every* region body — `With`
+   bodies included — carried `stackIn`/`stackOut` of `-1` for good.
+
+**Resolution (applied 2026-10-13).** `IMPL-050-R072`. `bodyEntryFrame` is keyed by `scopeKey`, so each of
+a `Try`'s three bodies is seeded, and a body-entry frame is left unsettled until the depth it depends on
+exists instead of latching `unknown`. Those depths are the player's: `action_try` records the stack size
+on entry, runs the try body on it, truncates back to it before the catch body and binds the thrown value
+with `set_variable`/`set_current_register` rather than pushing it, then runs the finally body with **no**
+truncation, on whatever the try or catch body left; `action_with` pops its operand before running the body
+(`ruffle-rs/ruffle` `core/src/avm1/activation.rs`, Apache-2.0 OR MIT). A finally body therefore takes the
+join of the try and catch scopes' exit depths, and where those disagree the depth is dynamic (T1
+`dynamic-stack`) rather than an `SF0406` mismatch — the same finally body really does run after both
+paths.
+
+Seeding the finally body at the `Try` entry depth instead — the obvious first attempt — was measured and
+rejected: it added three `SF0406` errors to the corpus (`try_catch_finally.swf` 2 → 4,
+`try_finally_simple.swf` 1 → 2), because real content pushes in the try body and pops in the finally.
+
+**Evidence.** `T-AVM1-FE-040` (`test/try-bodies.test.ts`, six cases: the three buckets filled; each body
+at the depth the player gives it; a finally depth that goes dynamic when try and catch disagree;
+`CatchInRegister`; a `Try` nested in a catch body; a `Try` in a function body). Negative control:
+reverting `frontend/stack.ts` fails 7 tests in 3 files, including `T-AVM1-FE-032`'s golden, which now
+prints the catch body's `Stop` and the finally body's `Play` and `stack 0→0` where it used to print
+`-1→-1`. C4-c re-run (`audits/P5-C4-CORPUS-EXTERNAL.json`): T0 123 → **124**, T1 121 → 120, T2 25 → 25;
+`call-dynamic-target` 9 → 3, `dynamic-args` 11 → 5, `dynamic-stack` 13 → 10; `SF0410` 132 → 145 warnings
+(constant-pool pushes inside catch and finally bodies that have no pool in effect — newly visible, and
+honest: `computePoolAt` walks the merged records in offset order, so a body inherits the pool set before
+its region op); **errors 15 → 15**; `SF0406` identical to `HEAD` file by file (13 items, 22 with repeat
+counts); exit codes `{0: 59, 1: 14}` and the integrity lists unchanged. `test:avm1-restart` still reports
+`directReportsIdentical` and `cliReportsIdentical`.
+
+Two defects this measurement exposed are filed separately and stay open: `E-040` (a region body's net
+stack effect never reaches the code after the region) and `E-041` (a diagnostic emitted inside a nested
+block carries a block-relative offset).
+
+## E-040 — a region body's net stack effect never reaches the code after the region (fixed)
+
+**Found in:** writing `T-AVM1-FE-040`'s function-body case, which ended the body with a `Return` after the
+`Try`, and then measuring the corpus's `SF0406` errors to size the `E-039` fix.
+
+**Measurement (synthetic).** A block whose records are a `Try` (three bodies, one `Push` each) followed by
+`Pop` (0x17) tiers **2** with reason `stack-mismatch` and one `SF0406` error, "operand stack underflow in
+block 0 at offset 0". The same region inside a `DefineFunction` body followed by `Return` (0x3E) tiers the
+*function* **2** with `tierReasons: [{reason: 'stack-mismatch', diagnostic: 'stack-depth mismatch at a
+block join', offset: null}]` and marks all four of its blocks residual, while the enclosing timeline block
+stays T0 with no reasons — that last part is `IMPL-050-R059` working as designed, not this defect. Both
+reproduce identically with `frontend/stack.ts` at the pre-`E-039` revision, so the gap predates that fix.
+
+**Measurement (corpus).** Of the C4-c corpus's 13 `SF0406` items (22 counting repeats), 11 are underflows
+and 2 are join mismatches. `inspect --actions` on `try_catch_finally.swf` shows the shape directly: inside
+one function body, `block 0 @ 0..69 stack 0→-1` holds `Push`/`Trace` and a `Try` whose try-body scope
+leaves a value (`block 1 @ 16..50 stack 0→1`), and the first action after the region is `Trace (stack)` —
+a pop against a stack the model believes is empty. `try_finally_simple.swf` is the same shape
+(`block 0 @ 0..457 stack 0→-1`, `Try catch (none) finally`, then a run of `Trace (stack)`). The other
+underflowing files are *not* this defect: `this_swf5.swf`'s is a `CallFunction`/`Pop`/`Pop` sequence and
+its two `With` bodies are balanced at `stack 1→1`, and `delete2.swf`'s is a `Delete2`/`Trace`/`Trace`
+sequence inside a function body.
+
+**Cause:** a region body is its own scope (`IMPL-050-R035`), so its frames are not CFG predecessors of the
+frame that follows the region op and their net depth never reaches it. The player does not work that way:
+`action_try` runs the try body and then the catch or finally body on one continuous stack, and
+`action_with` runs its body the same way, so whatever a body leaves is there for the next action.
+
+**Consequence:** a stack-consuming action directly after a `Try` or `With` region is reported as an
+underflow (`IMPL-050-R054`, `SF0406`, error), which tiers the block or the function body **2** with
+`stack-mismatch` and hands `WP-050-18`'s serializer a residual it must refuse. Two of the corpus's 15
+error diagnostics are this shape, so P5's tier report overstates how much real content is untranspilable —
+in the two `Try` files the affected function bodies are otherwise clean.
+
+**Fix (2026-10-13, `IMPL-050-R073`).** Two halves, because the measurement found a second, older defect
+underneath the first.
+
+1. `packages/avm1/src/frontend/control-flow.ts` — regions now have real CFG edges. A block holding a
+   `Try` or `With` record ends at that record and falls into the region body's first record; a body's
+   fallthrough goes to the region's `finally` body when it has one and otherwise to the record after the
+   region op, in the body's own scope first and then in the enclosing one. The continuation is therefore a
+   genuine join over the bodies' exits and reuses `IMPL-050-R072`'s join machinery: no re-simulation, no
+   special case in the stack pass. `With` has one path, so its exit applies directly; a `Try` whose try and
+   catch exits disagree leaves the continuation dynamic (T1 `dynamic-stack`) rather than inventing a depth.
+2. `packages/avm1/src/frontend/stack.ts` — the settle step treated a predecessor that never settled as a
+   permanent block on the join. That is a latent defect with nothing to do with regions: any unreachable
+   tail — code after a `Return` or `Throw` inside a body — held every block downstream of it unsettled, and
+   an unsettled block contributes no ops, so the code was simply absent from the IR. Once a fixpoint pass
+   makes no progress, dead predecessors are now ignored; if *all* of a block's predecessors are dead the
+   block stays unsettled, so genuinely unreachable code is still not simulated.
+
+**Evidence (synthetic).** `T-AVM1-FE-041` (`packages/avm1/test/region-flow.test.ts`, five cases): the
+`Pop`-after-`Try` fixture that opened this entry now tiers **0** with no diagnostics; the `With` case shows
+the leftover crossing the region boundary in the disassembly (`block 15..22 stack 0→1` for the body,
+`block 22..36 stack 1→1` for the continuation, whose `Pop` consumes what the body pushed); a `Try` with a
+`finally` enters the continuation from the finally body's depth (2), not from the `Try` record's (0);
+mismatched try and catch exits still report `SF0406` and tier 2 — `IMPL-050-R054` reports a mismatch, it
+never fixes one; and a dead tail inside a try body no longer drops the code after the region.
+Negative control: reverting only `control-flow.ts` fails **6 tests in 3 files** (four of the five
+`T-AVM1-FE-041` cases, `T-AVM1-FE-032`'s golden, `T-AVM1-FE-008`'s dynamic-`With` fixture). Two committed
+expectations were re-pointed, both at behaviour the fix corrected: the golden, which had recorded the
+region op as flowing straight past its bodies, and `tier.test.ts`'s dynamic-`With` fixture, which now also
+expects `dynamic-stack` because `Enumerate` makes the body's entry depth unknown and the continuation is a
+real join.
+
+**Evidence (oracle).** Ruffle's own `try_catch_stack` test settles the semantics from the player's side.
+Its `test.as` pushes "The stack was not preserved!", enters a `try` that pushes "The stack was preserved!"
+and throws, and its expected `output.txt` traces "The stack was **not** preserved!" from inside the catch —
+so the player discards the try body's pushes on a throw, exactly as `action_try`'s `truncate_stack` does
+and as `IMPL-050-R072` states. The same source then runs `Trace; Pop; Pop` after the catch with one value
+on the stack, so the underflow this fix now reports there is the content's own, and the player tolerates it
+because AVM1 does not check the stack.
+
+**Evidence (corpus, C4-c re-run).** **T0=124 T1=120 T2=25 → T0=119 T1=130 T2=23**, error-severity
+diagnostics **15 → 14**, functions **150 → 153**, clean exits **59 → 60 of 73**, `SF0406` **13 items (22
+with repeats) → 12 (20)**, `SF0410` warnings 145 → 161. The two files this entry named are cleared:
+`try_catch_finally.swf` T2 2 → **0** and exit 1 → **0**, `try_finally_simple.swf` T2 1 → **0** and exit
+1 → **0**. `try_catch_stack.swf` moved the other way, T0 → **T2**, and that is the fix working: its
+continuation was absent from the IR before (the disassembly grows 63 → 120 lines) and the content really
+does pop past empty.
+
+The T0 → T1 moves are recovered IR, not lost fidelity. `inspect --actions` line counts, pre-fix → post-fix:
+`string_coercion` 119 → **654**, `swf4_actions_coercion_order` 77 → **444**, `string_paths_other`
+107 → **391**, `delete2` 126 → **396**, `enumerate` 35 → **261**, `watch` 396 → **588**,
+`watch_virtual_property` 159 → **200**, `prototype_enumerate` 46 → **56**. Every one of those files gains
+`dynamic-stack`/`dynamic-args`/`call-dynamic-target` reasons for statements that were previously dropped
+outright, and each is genuinely dynamic (`Enumerate` and `With` results are unknowable statically) — which
+is what a T1 verdict exists to say.
+
+**Rejected alternative.** Marking every frame after a region op as depth-unknown (three lines, no CFG
+change). It is honest and would have removed the false `SF0406`s, but it stops all stack verification after
+the first region in a frame — most timeline scripts in the corpus have one — and it leaves the
+dropped-IR half untouched.
+
+## E-041 — a diagnostic emitted inside a nested block carries a block-relative offset (open)
+
+**Found in:** reading the `E-040` measurements: `try_catch_finally.swf` reports
+`SF0406 error @0 x4 operand stack underflow in block 0 at offset 0` — four times, at the same offset.
+
+**Measurement.** `analyzeActionBlock` takes an `offsetBase`, uses it for the IR's `byteRange`
+(`{start: offsetBase, end: offsetBase + bytes.length}`) and for the `fn_<hex>` block id, and the nested
+call for a function body passes `offsetBase: this.input.offsetBase + shell.bodyStart`
+(`frontend/analyze.ts:359-365`). Every `emit` *inside* an analysis, though, passes a frame- or
+record-relative offset straight through — `SF0406`'s is `frame.firstOffset` (`frontend/stack.ts:682`) —
+while the diagnostics the outer pass emits *about* a nested body add the base (`SF0409` at
+`analyze.ts:344` and `:354`). One file therefore mixes coordinate systems. A synthetic `DefineFunction`
+whose body starts at file offset 10 and underflows reports `offset: 0` while its own IR says
+`byteRange: {start: 10, end: 41}`; the four `SF0406` items above are four different function bodies, each
+reporting its own block 0.
+
+**Consequence:** a diagnostic offset cannot locate the problem in the file for any block that does not
+start at 0 — every function body, clip-event handler, button handler and `DoInitAction` script, and every
+`DoAction` past the start of the tag stream. Tools that group by `(code, offset)` also collapse distinct
+diagnostics into one line with a repeat count, which is how four separate underflows became `x4` in
+`inspect` and a single item in `audits/P5-C4-CORPUS-EXTERNAL.json`. That is why neither the corpus report
+nor `E-040`'s measurement can attribute an `SF0406` to a file position.
+
+**Resolution direction (not yet applied):** wrap `emit` once at the top of `analyzeActionBlock` so every
+diagnostic leaves with `input.offsetBase` added, keep block-relative offsets inside the IR (where
+`byteRange` and `residual` already disambiguate them), and state the coordinate system in the rule that
+owns diagnostics so the two cannot drift again. **Test:** to be declared with the fix.
+
+## E-042 — the CMP design spec's acceptance table and doc 120's test table give the same `T-CMP-*` ids different meanings (open)
+
+**Found in:** starting P6 (`WP-120-01`). The first thing a new phase has to know is which obligation its
+tests satisfy, and the two documents that name P6's obligations disagree about six of them.
+
+**Measurement.** `docs/specs/foundation/020-compiler-pipeline.md` §13 (`CMP-R041`) and
+`docs/impl/transpiler/120-compiler-and-emitter.md` §8 both mint `T-CMP-*` ids:
+
+| Criterion the design spec meant | id | CMP §13 (design spec) | doc 120 §8 (impl doc) |
+| --- | --- | --- | --- |
+| Determinism | `T-CMP-001` | two clean builds byte-identical | name assignment stable across 100 shuffled dictionary orders |
+| Emitted TS quality | `T-CMP-002` | zero suppressions, zero `any` | forbidden-construct lint over emitted output |
+| Diagnostics | `T-CMP-003` | every `risk`/`warning` carries a decision or requirement id | double build → `diff -r` empty |
+| Residual reporting | `T-CMP-004` | every T2 function has a reason string and byte range | exit codes per failure class |
+| Verify pass | `T-CMP-005` | `verify` clean on all C1 fixture builds | cache equivalence, cold vs warm |
+| Build time | `T-CMP-006` | ≤ 90 s for a 5 MiB SWF, warm cache | cancellation inside an asset encode |
+| Name conflicts | `T-CMP-007` | cited by `CMP-D02` for the `_2`/`_3` suffix rule | `verify --deep` detects injected drift |
+
+Only the second row means nearly the same thing in both documents. (The comparison leads with the
+criterion rather than the id on purpose: `tools/audit_dev.py`'s `check_sources()` treats a table row whose
+first cell is a bare test id as a definition, and a register may not define one.) The machine ledger is
+*not* ambiguous:
+`tools/audit_dev.py` attributes all nine ids to doc 120 alone, because CMP §13 puts the id in a table
+*cell* rather than an id column, so it is never parsed as a declaration — `python3 tools/audit_dev.py
+--json` reports `declared_in: ['docs/impl/transpiler/120-compiler-and-emitter.md']` for every one. The
+defect is for a human reader, and it is on the critical path of the phase that has to write the tests.
+
+**Cause:** the design spec was drafted first and sketched its acceptance criteria with the ids it expected
+the impl doc to use; doc 120 then assigned the band from scratch, in its own order, and roadmap §4.6 item D
+extended it with `T-CMP-009`. Nobody re-read §13 afterwards.
+
+**Resolution (documents, applied with this entry):** the impl doc owns impl test ids. CMP §13's table no
+longer mints them — each criterion now names the doc 120 obligation that actually carries it, and the two
+criteria that no obligation carries are marked as gaps rather than silently re-pointed:
+
+- "every `risk`/`warning` carries a decision ID or requirement ID" — `IMPL-120` §10 criterion 5 carries
+  the reporting half (`porting-notes.json` names every diagnostic); the `requirement` half cannot be
+  carried at all until `E-043` is fixed.
+- "≤ 90 s for a 5 MiB SWF on the CI baseline runner, warm cache" — **no owner in any impl document**. It is
+  a CI property rather than a compiler output, so the recommended home is P11's budget/CI lane; until a
+  work package takes it, it is an unowned design-spec target and this entry is its record.
+
+**Test:** none — this is a document defect. Its regression pin is that the design spec cites no specific
+id from the band after the fix: `grep -c 'T-CMP-0' docs/specs/foundation/020-compiler-pipeline.md` is **0**
+(the two remaining `T-CMP-*` mentions are the wildcard, in the sentence that says the band belongs to
+`IMPL-120` §8 and in the changelog row).
+
+## E-043 — the implemented diagnostic model has three severities and no `requirement` field; CMP §9 specifies four and one (open)
+
+**Found in:** starting P6 (`WP-120-01`), wiring `diagnostics.failOn` from `CMP` §3's config shape.
+
+**Measurement.** `CMP` §9.1 declares `severity: 'error' | 'warning' | 'risk' | 'info'` plus `detail`,
+`scope`, `requirement`, `hints` and `docs` on every diagnostic, and §9.2's policy table gives `risk` its
+own build outcome ("compiles, but a known fidelity risk exists; counted in `risk.json`; `--fail-on=risk`
+promotes"). `packages/swf/src/diagnostics/types.ts` — the model `IMPL-010` §7 owns and every phase
+consumes — has `Severity = 'error' | 'warning' | 'info'` and `Diagnostic` with `offset`, `context`,
+`characterId`, `tagCode`, `decision`, `count`: no `risk`, no `requirement`, no `hints`, no `scope`.
+`grep -rn "'risk'" packages/*/src apps/*/src` returns nothing, so no code can produce one.
+
+**Consequence.** Three P6 contracts depend on a severity that cannot exist: `IMPL-120-R029` and `CMP-R029`
+(`--budget-strict` and `--fail-on=risk`), `CMP-D05` (`--fail-on=risk` is the default in CI for `main`), and
+`CMP` §13's diagnostics criterion. A config that sets `failOn: 'risk'` would be accepted and then honoured
+by nothing — precisely the silent-ignore failure `CMP-R005` makes unknown keys an error to prevent. P6's
+report stage (`WP-120-11`) also cannot write `requirement` into `porting-notes.json` per diagnostic.
+
+**Resolution applied now (P6 side):** `resolveForgeConfig` accepts the enum member `CMP` §3 declares but
+rejects `'risk'` with a `ConfigError` naming this entry, so the value fails loudly today instead of being
+silently unhonourable. `packages/compile/test/pipeline.test.ts` pins that.
+
+**Resolution direction (not yet applied, P0 side):** the model is `IMPL-010` §7's (`IMPL-010-R041`) and the
+registry is the single place a diagnostic's shape is defined, so extending `Severity` with `'risk'` and
+`Diagnostic` with `requirement?`/`hints`/`docs?` is P0-owned work that P6 consumes — the same supply
+direction as every other model field. It is small (a union member, three optional fields, the sink's
+severity ordering, and `CMP-R030`'s sort) but it touches every package that emits, so it wants its own work
+package and its own gate re-run rather than a drive-by edit inside P6. Until it lands, `risk.json`,
+`--fail-on=risk` and `CMP-D05`'s CI default are unimplementable, and P6's budget gating stays at
+`--budget-strict` (`IMPL-120-R029`'s exit 5), which needs no new severity.
+
+**Test:** `packages/compile/test/pipeline.test.ts` (the rejection). The P0-side extension is unwired and
+must not be named in a test file until it exists.
+
+## E-044 — `WP-050-10`'s name-recovery pass discards the export map it documents, and its synthetic names embed a byte offset, so neither `AVM1-R036`'s order nor `IMPL-120-R011`'s determinism holds (open)
+
+**Found in:** implementing `WP-120-05`, doc 120 §3's name-assignment pass, which has to produce a symbol table
+that is closed and stable *before* emission. `AVM1-R036` gives that table's three-step order — export name,
+then declared name, then a synthesised one — and step (1) is P5's job.
+
+**Measurement,** over all 73 licensed corpus titles (`audits/P5-C4-CORPUS-EXTERNAL.json`'s lane), read from
+the analysed IR of each movie:
+
+| measurement | value |
+| --- | --- |
+| functions given a recovered name | 149 |
+| …whose synthetic name embeds a byte offset | **96 (64 %)** |
+| recovered classes reported (`MovieAnalysis.names.classes`) | **0**, in all 73 |
+| exported characters available (11 movies carry `ExportAssets`) | 20 |
+| export names appearing among the 149 recovered names | **0** |
+
+Three separate defects sit behind those numbers, all in `packages/avm1/src/frontend/names.ts`:
+
+1. **The export map is discarded.** `IMPL-050-R062` requires the pass to run over "the IR plus the
+   dictionary's export map"; `analyze.ts:758` obligingly passes `model.exported`, and `recoverNames` throws
+   it away — `void exportMap;` at `names.ts:71`. The comment above that line says the map "is kept in the
+   result for the report", which is doubly wrong: it is neither kept nor reported, and `RecoveredNames` has
+   no field to carry it. (Same failure mode as the `sanitiseName` docstring found while writing
+   `WP-120-05`: the prose describes an intention the code abandoned. Check which of the two is wrong before
+   "fixing" the code to match.)
+2. **The synthetic name embeds a position.** `syntheticName` yields `avm1_fn_<hex offset>_<base36>`, so 96 of
+   149 real function names change when an unrelated tag earlier in the file grows by a byte. A recovered
+   name is a *user-facing* output (`IMPL-120-R011`: "instability across runs is a bug"), and the pass's
+   determinism argument — sort by (offset, id) — makes the *order* stable while leaving the *string*
+   unstable, which is precisely the gap `T-CMP-001` exists to close.
+3. **Class recovery is dead code in production.** `detectClasses` (`names.ts:82`) is exported from the
+   package root and exercised by `movie.test.ts:208`, but the only other reference is its own declaration:
+   no caller. `recoverNames` returns a `classes` map it never populates, so `IMPL-050-R063`'s "MUST … be
+   recorded in the report" is unimplemented by construction — not flakily, always, hence the 0.
+
+**Why no existing test sees this.** `T-AVM1-FE-012` is specified as "100 shuffles of dictionary order", but
+the test shuffles the *candidate array* with an **empty** export map, and the candidate order is what the
+sort key already fixes; the dictionary it should be permuting is the one argument the code ignores. Permuting
+the dictionary is also the only construction that moves byte offsets at all, and P6's version therefore
+deals the definition tags into slots interleaved between the control tags and asserts that the resulting
+top-level `DoAction` offsets really take several distinct tuples — without that guard the claim is vacuous.
+`movie.test.ts:190` goes further and *pins* the offset form (`expect(names.get('fn03')).toBe('avm1_fn_12c_3')`
+— "synthetic: offset 0x12c, index 3"), so P5's suite currently requires the defect.
+
+**Evidence from the other side.** Registering `WP-120-05`'s table against a deliberately offset-bearing
+synthetic name fails exactly two tests in `packages/compile/test/names.test.ts` — the permutation-stability
+test and the check that no name leaks a hex offset — and reverting makes all 28 pass. That is
+`IMPL-120-R033`'s third leg measured rather than argued.
+
+**Resolution.** P6 does **not** patch P5's pass. It builds its own closed table in
+`packages/compile/src/passes/names.ts`, consulting the export name at its own seam (`CMP-D-CMP-N1`,
+doc 120 §3.1) and never embedding a position (new `IMPL-120-R033`). The P5-side work, which this entry
+leaves open:
+
+- `WP-050-10`: make `recoverNames` implement step (1) over `model.exported`, and change the synthetic base to
+  `IMPL-120-R008`'s `<kind><CharacterId>_<n>` shape; update `movie.test.ts:190`'s pin in the same commit, or
+  the suite will defend the old form.
+- `WP-050-11`: give `detectClasses` a caller in `analyze.ts` so `MovieAnalysis.names.classes` means something,
+  or delete it and drop `R063`'s reporting clause to a later phase — a unit-tested function nothing runs is
+  the worse of the two.
+- re-specify `T-AVM1-FE-012` as a permutation of the *export dictionary* with non-empty maps, so it tests the
+  clause `R062` actually states.
+
+**Status:** open, owned by P5 (doc 050 §13 criteria 2 and 3 are the gates that would notice). P6 is not
+blocked: its table is correct either way, and when the P5 fix lands the consulted name arrives through
+`recoveredName` instead of through this pass's own dictionary lookup.
+
+## E-045 — the AVM1 IR's requirement groups carry a 14th value that AVM1-§8.1's table cannot name (open)
+
+**Found in:** implementing `WP-120-04`, the requirement-shake pass, whose sole input is
+`ActionIR.requirements` and whose output is the list of runtime modules the emitter will include.
+
+**What the documents say:** `docs/specs/language/040-avm1-to-typescript.md` §8.1 enumerates **13** host-API
+groups — core-objects, movie-objects, events, sound, loading, data, drawing, bitmap, geometry, filters,
+colour, misc-system, legacy-as1 — and `IMPL-120-R006` says the pass selects "the union of `HostApiGroup`
+values over kept blocks", which presumes the IR's vocabulary and the spec's table are the same set.
+
+**What is wrong:** they are not. `HostApiGroup` in `packages/avm1/src/frontend/requirements.ts` has **14**
+values; the extra one, `timeline`, covers the frame-control and `_currentframe`/`_totalframes` surface that
+§8.1 files inside the "Movie objects" row without giving it a group of its own. Nothing is *unsound* about
+that — the IR is allowed a finer partition than the spec's module list — but a consumer that reads
+`requirements` as a module list, which is exactly what `R006` instructs, is handed a name with no runtime
+module behind it.
+
+**Measurement**, over the 73 licensed corpus titles (`pnpm corpus:verify` passes on all of them):
+
+| measurement | value |
+| --- | --- |
+| action blocks analysed | 119 |
+| …naming `timeline` | **17 (14 %)**, in 11 of 73 movies |
+| …naming `timeline` but *not* `movie-objects` | 6 |
+| group frequency | core-objects 115, movie-objects 87, misc-system 84, timeline 17, loading 7, legacy-as1 6, events 1, sound 1, colour 1 |
+
+So the mismatch is not a corner of one malformed file: it reaches a seventh of the corpus's blocks, and for
+6 blocks `timeline` is the *only* group in the movie-object pair, which is where a naive fold-into-nothing
+would drop a module something still calls. The frequency row is also why `T-CMP-013`'s fixtures are synthetic:
+five groups (data, drawing, bitmap, geometry, filters) are named by **no** block in the licensed corpus, so no
+real file can show a drop happening.
+
+**Resolution:** P6 folds `timeline` into `movie-objects` at its own boundary — `GROUP_FOLD` in
+`packages/compile/src/passes/shake.ts`, a total map over all 14 values, with one decision entry per entry
+point saying so (`IMPL-120-R006`). The fold is the *interim* shape; the durable fix is one line either way:
+
+- P5/`specs/040`: either add a "Timeline" row to §8.1 (and let `WP-120-07`'s runtime layout grow a 14th module),
+  or rename the IR value `movie-objects` and delete the fold. Which of the two is a spec decision, not a P6
+  one, because §8.1's row list is also what doc 120's emission order (`IMPL-120-R008`) is indexed against.
+- Whichever way it goes, `GROUP_FOLD` and this entry's test are deleted in the same change, not left as a
+  second source of truth.
+
+**Encoded by:** `packages/compile/test/shake.test.ts`, "folds the IR-only timeline group into the spec row that
+owns those APIs (`E-045`)", which asserts the raw IR names `timeline`, that `SPEC_GROUPS` does not contain it,
+that the selection contains `movie-objects`, and that the fold is reported rather than silent.
+
+---
+
+## E-046 — three payloads a dead-code proof cannot read, one of them from our own reader (open)
+
+**Found in:** implementing `WP-120-03`, whose rule is that a character is prunable only when *every* payload
+that could name it has been read. `IMPL-040`/`IMPL-120-R005` list the reference sites; three of them turn out
+not to exist in the model P2 publishes, and one is not detectable at all.
+
+1. **`DefineFont2`/`3` bitmap glyphs.** With `HaveBitmaps` set, every glyph outline in the font carries a
+   `BitmapCharacterID` naming a `DefineBitsJPEG`-family character. `DefineFontModel`
+   (`packages/swf/src/tags/fonts.ts:46–64`) decodes glyphs, codes, metrics and kerning and has **no** field for
+   it — `grep -i bitmap packages/swf/src/tags/fonts.ts` returns nothing, so the flag is neither recorded nor
+   reported. A bitmap pruned out from under such a font draws as nothing, with no diagnostic anywhere in the
+   build.
+2. **`DefineVideo4`'s `DeblockCharacterID`.** Same shape of hole, bigger: `CharacterModel` carries no video
+   payload field at all, so the tag's own trailing character id cannot be read by any consumer.
+3. **A payload our reader over-ran.** A `DefineShape` whose declared size is smaller than its content is the
+   case the proof most needs to catch, and it is invisible. Measured on a 3-byte body: the tag spans
+   `[0, 5)`, `buildMovieModel` returns `kind: 'shape'` with a non-null `vectorShape` and `quarantined`
+   **unset**, and the only signal is `SF0013` — a *warning*, at offset **7**, which is inside the *next* tag's
+   span. Two consequences follow. A partial payload is indistinguishable from a complete one, so a proof over
+   the model is not a proof. And no rule can attribute the diagnostic: the cursor position of an over-read
+   lands past the tag that caused it, so both "nearest preceding tag" and any slack window are guesses. What
+   is sound is the narrow version: an **error**-severity diagnostic whose offset falls inside a definition tag's
+   span (`headerOffset … headerOffset + length`) means that payload was interrupted — which is what P6 uses.
+
+**Measurement**, over the 73 licensed titles (67 characters in total): 2 `DefineFont2` characters in 2 movies,
+0 video characters, 0 `unknown` kinds, 0 quarantined shapes. The font block therefore disables pruning for
+**2 of 73 movies** — cheap on this corpus, and the honest direction for a real one, where a bitmap font is
+normal.
+
+**Resolution:** P6 fails closed, and says so. `font2`/`font3`/`video` are reported as incomplete referencers
+(`font` v1, `font4`, bitmap, sound, `binaryData`, `imported` and `missing` are *not* — their payloads contain no
+character id, and the tests pin that half too, because a rule that blocked on every font would be quietly
+unusable); an unresolvable placement id, a text run with no readable `fontId`, and edit text naming no font by
+id or export name are each incomplete; and a character whose payload was interrupted is treated as an
+incomplete *referencer*, which disables pruning movie-wide rather than for that one character. The
+interruption list is derived in the `model` stage and carried on the artifact
+(`ModelArtifact.readInterruptions`), never read from the live diagnostic sink — see `IMPL-120-R035`. The three
+underlying gaps are P2's:
+
+- `WP-020-*`: record `HaveBitmaps`' per-glyph character ids on `DefineFontModel`, and a `DefineVideo4` payload
+  view with its `DeblockCharacterID`, so a reference a file makes is a field a consumer can read.
+- `WP-020-*`: an over-read must mark the payload it truncated. `quarantined` is the existing field for "this
+  payload is not trustworthy"; reusing it for a soft truncation needs no new model type, and it makes every
+  downstream proof — not just this one — able to fail closed.
+- `WP-020-*`: if `SF0013` keeps a warning severity for an over-read that changes what a payload *contains*,
+  then severity is carrying information the model does not otherwise expose. Either promote the over-read to an
+  error, or expose the truncation as a field; a consumer should not have to infer model state from diagnostic
+  severity.
+
+**Encoded by:** `packages/compile/test/dead-code.test.ts`, "what a payload can hide (`E-046`)" — both the
+blocking and the non-blocking kinds, plus the movie-wide disable driven from a real `DefineFont2` tag that is a
+root (a dead referencer cannot hold anything alive, which is why the first version of that fixture proved
+nothing) — and "PINS a gap: a silently truncated payload still reads as complete", which asserts the *wrong*
+side on purpose so the suite fails when the reader starts marking partial payloads.
+
+---
+
 ## Changelog
 
 | Version | Date | Change |
@@ -865,3 +1576,380 @@ complete sound against the expected classifications.
 | 2.5 | 2026-10-09 | `E-032`: `IMPL-090-R013` assigned `SF0328` two severities, which a single registered code cannot carry, so the implementation emitted `error` for both arms — reporting 165 of 643 real ADPCM sounds (26%) as malformed over a 1–6 frame, sub-0.28 ms shortfall. The decoder distinguishes a partial final packet from a truncated earlier packet; `SF0328` remains for missing headers and incomplete earlier packets. Initial corpus replay measured false errors 25.7% -> 0%; a stricter final-packet-position check was added afterward and its non-final case is regression-pinned, but the ephemeral corpus was unavailable for another replay |
 | 2.6 | 2026-10-09 | C5 exit-readiness refinement to `E-032`: only a shortfall inside the packet at `floor((N-1)/4096)*4096` is benign; a first-packet code truncation with <4096 samples left remains `SF0328` (T-AUD-102 unit and asset-dump regressions). Corrected residual count to 165 raw tags / 163 distinct measurements, 1–6 frames. Replayed corpus is not present to rerun the newer predicate |
 | 2.2 | 2026-10-09 | `E-028`: `MORPHGRADIENT` is a single Ch.7-style `GRADIENT` header byte — `IMPL-070-R025` (`UI8` count) and `specs/110` §10.7 (count *then* flags) were both wrong, the latter consuming a byte too many and shifting every later morph fill style; `IMPL-070-R028`'s per-state modes withdrawn. `E-029`: the erroneous `FFD9FFD8` pair occurs anywhere before the frame header, is not version-gated, and must be removed from the `JPEGTables` payload and the merged stream as well as the image |
+| 2.7 | 2026-10-13 | `E-004` re-opened under its own clause and corrected: `FLOAT16` **is** consumed by an AVM1-era tag we parse — `DefineFontAlignZones` (tag 73), decoded at `packages/swf/src/tags/fonts.ts:599–600` with a fixture in `font-aux-tags.test.ts`; the bias-15 resolution is unaffected and better corroborated. `E-033` filed (open): `IMPL-010` §8's `UI32` row prints `1163342112` while its own bytes `20 71 6e 45` and hex label `0x456E7120` give `1164865824`; provisional resolution applies `E-025`'s bytes-authoritative rule, the §8 row is annotated rather than overwritten, and both test lanes assert the discrepancy stays pinned until settled. Found by executing §8 row-by-row for the first time |
+| 2.8 | 2026-10-13 | `E-034` (fixed): `DoAction`/`DoInitAction` payloads carry no block-level length prefix, but `sliceBlock` skipped four bytes and `test-support`'s `actionBlock()` emitted a `UI32` prefix for it to skip — self-consistent, and both wrong, so 750 tests passed while every real file mis-parsed. Found by the open-corpus screen (`IMPL-050` §13 criterion 3; roadmap §4.6 item B) over 73 licensed AVM1 movies from `ruffle-rs/ruffle@2372a4e1`: `goto_frame2` went from T0=4/**T2=11** with phantom `unknown-opcode:0x2f` reasons to T0=**20**/T2=0 with five named functions; the corpus yields 119 blocks, 93 functions, T0=191 T1=3 T2=18 and zero phantom reasons. Pinned by `T-AVM1-FE-036` with a reverting negative control. `E-035` filed (open): `SF0400` on 48 of 73 and `SF0420` on 49 of 73 led to a measurement showing `DefineFunction` (89 records) and `DefineFunction2` (57) both place `Code[CodeSize]` **past** the record's `Length` — 146 of 146 in-sync records, no counter-example — while our decoders clamp the body to the record end and return an empty body, then re-decode those bytes as siblings. Blocks `IMPL-050` §13 criterion 2; `IMPL-050-R008` needs the correction |
+| 2.9 | 2026-10-13 | `E-035` fixed (`IMPL-050-R071`, `frontend/extents.ts`, `T-AVM1-FE-037`) and three defects found while fixing it: `E-036` (`With`/`Try` own their bodies past `Length` too; `IMPL-050-R034` said the opposite — fixed, `T-AVM1-FE-038`), `E-037` (a function body is not `End`-terminated, so `SF0420` fired 49 times — fixed, `T-AVM1-FE-039`), `E-038` (an error-severity region overrun left the block at tier 0 — fixed), and `E-039` (**open**: a `Try`'s catch/finally bodies are decoded and then dropped from the IR, `T-AVM1-FE-040`). Corpus lane after the fixes: `SF0400` 48→0 files, `SF0420` 49→0, `SF0404` 5→0, errors 60→15 (all semantic), clean exits 21→59 of 73, functions 93→150, T1 3→121. |
+| 2.10 | 2026-10-13 | `E-039` fixed (`IMPL-050-R072`, `frontend/stack.ts`, `T-AVM1-FE-040`): a region body's entry frame was seeded one per region *record*, so a `Try`'s catch and finally bodies were never simulated and reached the IR with no ops, and the seeded body latched `unknown` before its region op had run. Each body now takes the depth the player gives it — the `Try` entry for the try and catch bodies, the join of the try and catch exits for the finally — and the C4-c re-run is diagnostic-neutral on errors (15 → 15) with T0 123 → 124. Two defects the measurement exposed are filed: `E-040` (a region body's net stack effect never reaches the code after the region, so a pop after a `Try` is a false `SF0406` and a false T2) and `E-041` (diagnostics emitted inside a nested block carry block-relative offsets, so four distinct underflows report `@0`) |
+| 2.11 | 2026-10-13 | `E-040` fixed (`IMPL-050-R073`, `frontend/control-flow.ts` + `frontend/stack.ts`, `T-AVM1-FE-041`): a region op now falls into its body, a body falls into the region's `finally` and then into the record after the region, so the continuation is a real join over the bodies' exits; and a predecessor that never settled no longer blocks a join forever, which had been dropping every block downstream of unreachable code from the IR. Corpus: T0 124 → 119, T1 120 → 130, T2 25 → **23**, errors 15 → **14**, functions 150 → **153**, clean exits 59 → **60 of 73**, with `string_coercion`'s disassembly growing 119 → 654 lines of recovered IR. `E-041` stays open |
+| 2.12 | 2026-10-14 | P6 started (`WP-120-01`, `@swf-forge/compile`) and the first two documents it had to read disagreed with each other or with the code: `E-042` (CMP §13's acceptance table and doc 120 §8 give six `T-CMP-*` ids different meanings — the impl doc owns the band, CMP §13 stops minting ids, and two of its criteria are recorded as gaps, one with no owner anywhere) and `E-043` (the implemented diagnostic model has three severities and no `requirement` field, while CMP §9 specifies four and one, so `--fail-on=risk`, `risk.json` and `CMP-D05` are unimplementable; P6 now rejects `failOn: 'risk'` loudly, and the model extension is dispositioned to P0) |
+| 2.13 | 2026-10-14 | `E-044` recorded while implementing `WP-120-05` (doc 120's name-assignment pass): P5's `recoverNames` discards the export map its own rule requires (`void exportMap;` under a comment claiming the opposite), 96 of 149 corpus function names embed a byte offset, and `detectClasses` has no production caller so class recovery reports zero everywhere by construction. Measured across all 73 licensed titles and pinned from both sides; dispositioned to `WP-050-10`/`WP-050-11` rather than patched from P6, which builds its own closed table under the new `IMPL-120-R033` |
+## E-047 — `ActionIR` records no def site for some values it binds, and no offsets for the ops inside a block, so a statement-level emitter cannot be total (open)
+
+**Found in:** implementing `WP-120-08`. The emitter's contract is that every statement it prints is attributable
+to something the IR actually says, and two places the IR stops short of that.
+
+1. **A pushed value with no `result`.** Handlers record the temp they bind under a field named `result` —
+   `binop`, `call` (`stack.ts:901`), and the rest — but `GetTime` (`stack.ts:1166-1169`), `PushDuplicate` and
+   `Enumerate` push an id without recording it anywhere. Measured across the 73 licensed titles: **17 of 93
+   T0 root blocks read a temp that no op in the movie binds** (28 distinct ids). An emitter that prints
+   `t = <expr>` per op therefore has a use with no declaration for those blocks, and the emitted project's own
+   `strict` build — the one the emitter writes — would reject it. The `enumerate` case is the one a reader can
+   see coming: the enumeration cursor is *iteration state*, and `Enumerate`'s `1→k+1` stack effect means the
+   number of temps pushed is a property of the runtime value, not of the bytes (37 occurrences across root and
+   nested IRs in the corpus).
+2. **No per-op offsets.** `BasicBlock` carries `firstOffset`/`endOffset`; the ops inside it carry nothing. So
+   `CMP-R014`'s statement-level source maps cannot be built: the finest mapping available is
+   *statement → the whole block's byte range*, which is a map that attributes a line to an offset it did not
+   come from. That is worse than no map, because a debugger using it lies with confidence.
+
+**P6's resolution (in code, this phase).** A block is lowered only when its temp uses and def sites reconcile:
+`lower.ts`'s `bindImplicitDefs`/`unboundDiagnosis` walk the ops in order, hand each op with a declared push but
+no recorded `result` the next unbound id, and **refuse the block when the counts do not match** — more unbound
+ids than implicit pushes, or an id read before the push that would have bound it. A refused block is reported
+per block with its reason and deferred to `WP-120-09`'s residual-blob path, so no movie silently loses a
+statement. `Enumerate`/`Enumerate2` are refused outright rather than lowered into an invented `avm1.nextKey()`
+loop, because the cursor belongs to the interpreter. For the maps, the stage emits **no** `.map` file and
+reports `SF0504` (warning) naming what is missing and why, rather than writing a file whose granularity is a
+lie. `lower.ts`'s header states the rule so a reader of the emitter finds it there too.
+
+**Asked of P5 (owner: `WP-050-*`, the stack model).** Record a `result` for every value a handler pushes, so
+"which temp does this op bind" is a question `ActionIR` answers without reconstruction; the three handlers above
+are the whole gap. Adding per-op offsets is *not* asked for here — `CMP-R014` needs a decision about map
+granularity first, and it is doc 020's to make, not P6's to assume.
+
+| 2.14 | 2026-10-14 | `E-045` and `E-046`, both from `WP-120-03`/`WP-120-04`: `E-045` (open) — `HostApiGroup` carries a 14th value `timeline` that AVM1-§8.1's 13-row table cannot name, reaching 17 of 119 corpus blocks in 11 of 73 movies, so `requirements` cannot be read as a module list; P6 folds it and reports it, and §8.1 owns the durable fix. `E-046` (open) — three reference sites the model cannot answer (`DefineFont2/3` bitmap glyph ids, `DefineVideo4`'s `DeblockCharacterID`, and a reader that over-ran its tag: `SF0013` is a warning at an offset inside the *next* tag, `quarantined` unset, so a partial payload is indistinguishable from a complete one and no offset rule can attribute it); P6 fails closed on all three and moves the derived signal onto the stage artifact under the new `IMPL-120-R035` |
+## E-048 — `CMP-R018`'s worked example contradicts doc 120 §4's tree, `IMPL-120-R017`'s signature, and doc 130's contract module (open)
+
+**Found in:** implementing `WP-120-08`, which has to write the very file the example shows. Four lines of
+`// src/movies/Main.actions.ts (generated)`, and each disagrees with a normative rule:
+
+| The example says | The rule says | What P6 emitted |
+| --- | --- | --- |
+| path `src/movies/Main.actions.ts` | doc 120 §4's tree: `src/frames/movie.ts`, one module per timeline | the tree's path |
+| `frame12Actions(self, root, _global)` | `IMPL-120-R017`: `frame<N>(vm, target, frame)`-shaped functions | `(vm: Vm, target: Clip, frame: FrameCtx)` |
+| `import type { Clip } from '@swf-forge/avm1'` | doc 130 owns the runtime contract module; `@swf-forge/avm1` is the front end | `@swf-forge/runtime/contract` |
+| `$.getTimer()` | `AVM1-R035` names a script's four inputs and no timer accessor; `GetTime` is the op that needs one | `avm1.getTime()`, recorded as a proposal in `emit/surface.ts` |
+
+**Why the example cannot simply be followed.** Two of the four disagreements are not stylistic. `AVM1-R035`'s
+three extra parameters are redundant state: the runtime owns the scope chain, the root and `_global` per
+activation, so passing them alongside `vm` lets a caller hand a script a root from another movie — a
+miscompilation the generated project should be unable to express. And the import line does not resolve: `Clip`
+is not in `@swf-forge/avm1`'s public surface (`grep -rn "export type Clip\b|export interface Clip\b"
+packages/avm1/src` returns nothing), so copying the example emits a project that fails its own `tsc`.
+
+**Resolution for P6 (in code, this phase).** The normative rules win, and the reasoning is written where a
+reader of the emitter will find it — doc 120's new §4.1 — including the mapping from `AVM1-R035`'s four inputs
+onto the delivered parameter set (`frame.scope`, `frame.root`, `frame.global`, `target` as self). `$.getTimer`
+is the one place the emitter needed a name the specs do not carry, so it became a labelled proposal in the
+surface contract rather than an invented runtime method.
+
+**Asked of the spec owners.** `CMP` §5's example restated against the tree and signature doc 120 owns (or the
+two rules changed to match the example) — a joint decision for doc 020 and doc 120, not P6's. The runtime half
+(`Clip`'s home, the timer accessor, whether `$` reaches globals) belongs to `WP-120-10`'s contract review,
+which is where the surface list gets either ratified or corrected.
+
+## E-049 — "residual" is defined twice, by tier in `IMPL-050-R057` and by lowering outcome in `IMPL-120-R018`, and on the corpus the two differ by 68 blocks (open)
+
+**Found in:** implementing `WP-120-09`, which has to decide, for every block, whether a blob exists.
+
+`IMPL-050-R057` makes `ActionIR.residual` — the block-relative slices an interpreter enters — a **tier-2** field,
+null otherwise. `IMPL-120-R018` makes the blob the answer to "a block this phase cannot lower", and the emitter's
+refusals are not tier verdicts. Over the 73 corpus inputs (119 root blocks) the two readings disagree on most of
+the set:
+
+| Measure | Count |
+| --- | --- |
+| blocks tiered T2, which is what `R057` gives a `residual` list for | 19 |
+| blocks the emitter refuses and therefore writes a blob for (`R018`'s set) | 87 |
+| refused T0/T1 blocks whose `ir.residual` is `null` | 68 |
+| refusal reasons behind those 87 | `unmodeled-op` 68, `tier-2` 19 |
+
+Neither number is wrong; they answer different questions, and the specs let a report line mean either. A runtime
+sized by the tier verdict — which is what `AVM1-D03` ("ship the interpreter only if something is residual") and
+`IMPL-050-R060`'s `forbid` failure both read against — would see 19 functions while the build that ships carries
+87, and `AVM1-R071`'s per-function tier entry in `divergence.json` is written from one of them.
+
+**Resolution for P6 (in code, this phase).** The emitter keeps both answers and states which it used: slices are
+recomputed from the CFG for every block (the only way the 68 get a blob at all), the front end's `residual` list is
+a cross-check whose disagreement is `SF0505` rather than the source of truth, and `state.emit.residual` carries
+bytes plus reason per entry so the `CMP-R026` line can name the set it is counting. `IMPL-120-R018`'s wording is
+what `emit/residual.ts` implements.
+
+**Asked of the spec owners.** `IMPL-050-R057` should widen `residual` to "tier 2, **or** a block whose lowering was
+refused": the field is already derived from the CFG, so dropping the tier condition costs nothing and removes a
+second derivation from the emitter. `IMPL-120-R018` should then say which of the two sets `--vm.residual=forbid`
+gates, since `CMP-R026`'s "a T2 function MUST be accompanied by…" is written against the tier set while the flag
+is what makes a build fail. A joint decision for doc 050 and doc 120, not P6's.
+## E-050 — two mandated artifacts cannot be written as their specs print them: `CMP-R013`'s header opens with a suppression, and `AST` §6 asks the manifest for stage settings no input carries (open)
+
+**Found in:** implementing `WP-120-10`, the package that writes a generated header on every artifact and a
+manifest whose `movie` section `AST` §6 specifies two fields deeper than anything the pipeline can source.
+
+| The spec asks for | What the inputs and the neighbouring rules say | What P6 emitted |
+| --- | --- | --- |
+| `CMP-R013`'s generated header, whose first line is `/* eslint-disable */` | `IMPL-120-R014` and `REPO-R011` allow **no suppressions** in emitted code, and `IMPL-120-R015` exists so the emitted project's own build sees the ban list. A header that mutes ESLint in every generated file makes `WP-120-12`'s forbidden-construct lint a no-op on exactly the files it was written for | the header without the disable line — provenance plus the regenerate command. A test asserts no emitted file contains `eslint-disable` at all, header included |
+| `AST` §6's `movie.scaleMode` and `movie.align` (`CMP` §5's example puts the same pair under `stage`, a second disagreement about where they live) | the SWF file carries neither. Stage scale and alignment are player settings: `RT-R040`'s `fscommand` table maps `allowscale` onto a `Stage.scaleMode` adjustment. `ForgeConfig` names no key for them either | the two fields are absent from the manifest, and `AST-R044`'s "loadable independently" is what makes that safe. Defaulting them to `showAll`/`center` would put a player setting in the movie's data, where it shadows the `fscommand` that exists to change it |
+
+**Why P6 cannot patch either one.** The header line belongs to `CMP` §5's example and its own rule; deleting it
+from the spec is the spec owners' call, and adding it to the output would break the phase gate that follows. The
+two stage fields belong to `AST` §6 and to whichever component owns player parameters; a P6-side default would be
+a value the runtime has to *un*-choose when a game calls `fscommand("allowscale", "false")` on frame one, which is
+the sequence `080`'s table exists to describe.
+
+**Resolution for P6 (in code, this phase).** Both omissions are visible rather than silent, and writing the pair
+exposed a third case in the same family: the emitter had been prefixing its JSON artifacts with the `//` header it
+uses on sources, which only `tsc`'s JSONC reader tolerates. `emit/scaffold.ts` now puts `package.json`'s
+provenance in a `"//"` field — an npm-ignored key, where a comment is a parse error — and `forge.manifest.json`,
+which the app shell imports as data (`CMP` §5's example), carries no provenance comment at all; `tool` and
+`movie.sha256` are its provenance. A printer test parses every emitted `.json` strictly, so the rule that is true
+for one reader and false for another cannot be asserted globally again.
+
+**Asked of the spec owners.** `CMP-R013`: drop the `/* eslint-disable */` line from the example header, or scope it
+to files the emitted lint does not cover. `AST` §6 and `CMP` §5: pick one home for `scaleMode`/`align` — the
+player parameters `RT-R040` already routes, or a config key `WP-120-13`'s CLI could set — and mark the two fields
+optional in the schema, so a manifest that says nothing about them is valid rather than incomplete. The two
+documents should also agree on the nesting (`movie.*` versus `stage.*`), which is the part a code generator
+cannot guess.
+
+| 2.15 | 2026-10-14 | `E-047`, from `WP-120-08`: the IR binds some pushed values without recording a `result` (`GetTime`, `PushDuplicate`, `Enumerate`), leaving 17 of 93 corpus T0 root blocks reading a temp nothing defines, and it carries no per-op offsets, so statement-level source maps are unavailable. P6 reconciles the def sites and refuses a block it cannot account for (`WP-120-09` takes the blob), refuses `Enumerate` rather than invent an iteration cursor, and reports `SF0504` for the withheld maps instead of writing a block-granular one |
+| 2.16 | 2026-10-14 | `E-048`, from `WP-120-08`: `CMP-R018`'s worked example contradicts doc 120 §4's output tree, `IMPL-120-R017`'s frame-script signature, and doc 130's contract module — and it imports `Clip` from `@swf-forge/avm1`, which publishes no such type, so copying the example emits a project that fails its own build. P6 follows the normative rules, records the resolution in doc 120's new §4.1, and leaves the example to the spec owners; the timer accessor the example assumes became a labelled proposal in `emit/surface.ts` |
+## E-051 — the report files have four holes the specs cannot paper over: `ARCH-R003` is defined twice, `IMPL-120-R021` names a gate flag that exists nowhere, the porting notes have two homes, and "every diagnostic" cannot survive a cache hit (open)
+
+**Found in:** implementing `WP-120-11`, whose three artifacts are defined almost entirely by cross-references —
+`IMPL-120-R021` for `build-info.json`, `CMP` §4.9 for the divergence schema, `ARCH-R003` for the tier claim, and
+doc 120 §4's Done criterion 5 for the porting notes.
+
+| The spec asks for | What the inputs and the neighbouring rules say | What P6 emitted |
+| --- | --- | --- |
+| `ARCH-R003`, the rule requiring the tier claim, as cited by `CMP` §4.9 and doc 120 §4 | the id is **defined twice** in `000-architecture.md`: §4's "a capability MUST belong to exactly one component" and §6's "a build MUST state its tier in `reports/porting-notes.md`". `tools/verify_docs.py` §14's duplicate-definition check covers the impl docs and only the two design specs that share their numbering (`120`, `130`), so no gate can see the collision, and a citation of `ARCH-R003` names two rules at once | the report cites the second one by quoting it and naming its section, and the tier is stated as data (`{ "tier": …, "backing": […] }`) so a reader never has to guess which `ARCH-R003` a row answers to. Renumbering is the spec owners' call, and `IMPL-120-R019`'s lesson applies: an id two rules share is not a citation |
+| `IMPL-120-R021`: build-info records "the state of every gate flag (`--video-native`, `--vm.residual`, …)" | `--video-native` exists nowhere else in the repository — not a `ForgeConfig` key, not a flag in `IMPL-120` §6's CLI surface, not a rule in any design spec. Video gating is a P3/P10 subject (`WP-110-06`'s decode path), and the two documents that could own it name no flag | the gate list is a walk of `ForgeConfig` and `RunSwitches`, so it states every gate that exists and invents none; a test asserts the flattened set equals an independent walk of the config object. Either the flag gains an owner and a config key, or the example is replaced by a flag that exists |
+| the porting notes as one file: doc 120 §4 writes `porting-notes.json` at the project root, `CMP` §4.9 and `ARCH-R003` write `reports/porting-notes.md` | `INS-R022` reads the **JSON** to populate the inspector's diagnostics panel and `T-TST-003` reads the run summary, while `ARCH-R003`'s backing-claim review is a human act over the **markdown**; the two consumers are not the same reader, and neither path is wrong | both, with the markdown generated from the same object as the JSON, so the pair cannot contradict each other (`IMPL-120-R025`'s `--json` rule for a terminal, applied to a file). The pick of *which* is normative is the spec owners': the tree and §4.9 should say "and its projection" rather than disagree |
+| "every diagnostic" in the porting notes (doc 120 §4's table, Done criterion 5) | the sink is **not** part of a cache hit — the repo's own `ModelArtifact.readInterruptions` comment says so, and `CMP-R040` forbids a hit changing output bytes — so a report listing what the run reported is a file whose bytes move with cache state, which `T-CMP-003`'s `diff -r` covers. Worse, that same attribution rule is by offset span, and a container-level diagnostic carries an offset in the *input file*, so an error about the file can be attributed to whichever dictionary entry starts at zero | the report is written from stage artifacts only and says so (`diagnosticsScope`), each row carries its `origin`, and the sink's extra cold-only rows (an `SF0406`, measured in `T-CMP-016`) stay in the terminal. Closing the gap needs a small change outside P6's files: the sink to record the stage that spoke, or a cacheable stage to store its diagnostics with its outcome — asked of `WP-120-14`, whose determinism work owns the equivalence |
+
+**Why P6 cannot patch either one.** Renumbering a design-spec rule id and defining a video gate are both spec
+edits, and the emitter inventing a `videoNative` config key would create the third thing a gate flag has to be
+recorded from while leaving P3 and P10 with a knob nobody reads. Moving diagnostics onto the cacheable outcome is a
+change to `WP-120-01`/`WP-120-02`'s machinery (the sink and the codec), which the report stage may not reach into
+without changing what a cache entry means for every other stage.
+
+**Resolution for P6 (in code, this phase).** `stages/report.ts` reads only artifacts and echoes their
+provenance (`origin` per row, `diagnosticsScope` per file); `gatesOf` is a walk, not a list; both note files are
+written and the markdown is a projection of the JSON's own object; and the tier, the pin register, the `[verify]`
+items and the divergence declarations are stated as withheld with a reason (`SF0509`) whenever the caller did not
+supply them, so a gap in the build never reads as a clean bill of health.
+
+**Asked of the spec owners.** `000-architecture.md`: renumber the two `ARCH-R003`s, or fold the tier rule into the
+reporting section it belongs to and update `CMP` §4.9's and doc 120's citations. `CMP` §4.9 and doc 120 §4: agree on
+where the porting notes live (root JSON, `reports/` markdown, or both with one named canonical). `IMPL-120-R021`:
+replace `--video-native` with a gate that exists, or point it at `WP-110-06`'s owner and give `ForgeConfig` the key.
+`IMPL-120` §2/§3 and `CMP-R040`: decide whether a stage's diagnostics belong to its cacheable outcome — until they
+do, "every diagnostic" in a build artifact is unachievable and the report says so.
+
+
+## E-052 — `CMP` §4.10's `verify` table asks for three checks an emitted project cannot answer, and `T-CMP-009`'s anchor half has nothing to bite (open)
+
+**Found in:** implementing `WP-120-12`, whose checks are `IMPL-120-R024`'s list and whose failure semantics are `CMP`
+§4.10's table.
+
+**What the specs ask, and what an emitted project contains.** Three of §4.10's seven rows are not properties of the
+bytes `verify` is given, at this phase or at any: "Emitted project compiles under `tsc --strict` | error in CI" is a
+*build* of the project, and a table for a pure checker that lists a compiler run alongside four text scans invites an
+implementation that shells out to `tsc` from a function whose contract is a file map (and then must explain why its
+diagnostics are not diagnostics). "Declared budgets are within TST-§7 targets | warning" reads `budgets.json`, which
+`IMPL-120-R028` gives to `WP-120-07` and which no P6 build writes. And "Every `assets/` file is referenced by the
+manifest and vice versa" has an empty left side in P6, because the emitter writes no `assets/**` at all — the
+manifest's nine asset sections are absent for the reason §4.3 states (`SF0507`). The fourth problem is a term, not a
+row: "Every resource handle referenced by `src/**` exists" names no construct. In an emitted project a handle reaches
+code through the manifest — asset paths are manifest string values (§4.3), and `src/**` contains no `assets/`
+literal, no `import()`, no URL — so the row either duplicates `checkManifestAssets` or has to be read as something
+else, and what it is *not* is a check on the SWF's own references. `T-CMP-009`'s first half has the same shape from
+the other side: it asks for output "for a fixture carrying `NamedAnchor` and scene data" to contain no `location`
+read, and while the decoder models both (`decodeFrameLabel`'s anchor byte, `sceneLabelEntries`), the emitter never
+addresses them — anchors arrive in the manifest and are consumed by the runtime — so the assertion is an absence,
+and it passes as readily for a movie with no anchor as for one with three.
+
+**Resolution for P6 (in code).** `verify` runs the four checks that are functions of the project's bytes and reports
+the other three as `notRun` rows, each naming the work package that can run it, rather than returning an empty
+finding list for a check that looked at nothing (`IMPL-120`'s new §4.5 states the rule). The resource-handle row is
+implemented as the dangling-reference check — a relative import that resolves to no emitted file, or to a file that
+does not export the name it is asked for — which is the only handle form `src/**` has, and it is also the cheap static
+form of the `tsc` row, so a porter sees the two failure modes that actually happen (a module the emitter renamed, a
+symbol it stopped exporting) without a compiler. `T-CMP-009` is wired as written — anchor fixture emitted, verified
+clean, then one injected `window.location.hash` read reported — with this entry alongside so the row is not later
+read as proof that anchor addressing was checked.
+
+**Asked of the spec owners.** `CMP` §4.10: name the referent of "resource handle", or replace the row with the
+reference the emitter really writes; move the `tsc --strict` and budget rows into `IMPL-120` §6 as CLI/CI
+obligations, where running a compiler belongs; and scope the asset rows "from `WP-120-07` onward", since until then
+the left side of "every `assets/` file" is empty by construction. `T-CMP-009`: say what an anchor or a scene is
+expected to *produce* in emitted output; if the answer is "nothing, it is carried in the manifest", then the decode
+half belongs to P2's tests and P6's half is the injected-`location` case — which is what this phase wired.
+
+## E-053 — `IMPL-120-R026`'s exit table contradicts `CMP-R029`, the CLI's design-spec citation names a document that does not exist, and five flags in `CMP` §8 have no config home (open)
+
+**Found in:** implementing `WP-120-13`, whose contract is the flag table in `CMP` §8, the exit codes in `CMP-R029`,
+and the rule list in `IMPL-120` §6 — the three of which do not agree with each other.
+
+**What is wrong.** Four separate things, all of them the kind a CLI inherits silently.
+
+1. `IMPL-120-R026` and `CMP-R029` give different meanings to the same three numbers. `CMP-R029` is
+   `0` ok, `1` error, `2` input unreadable, `3` AVM2, `4` budget or threshold, `5` internal; `R026` says `1` is
+   "build failure (our bug)", `4` is "external tool missing" and `5` is "budget exceeded under `--budget-strict`".
+   `apps/decompiler/src/exit.ts` already implements `CMP-R029`, so the repository had two exit tables before this
+   package existed, and the impl doc's version would have made a third.
+2. `IMPL-120`'s header cites `MS-§2 (CLI surface)` as a design spec. The spec map in `docs/specs/README.md` runs
+   `ARCH` 000 … `CLN` 130 and has no `MS` document; the flag table that the section describes is `CMP` §8.
+3. `IMPL-120-R025` requires the `--json` schema to be "versioned under `REPO-§7`", and `REPO` §7 is the testing
+   section: it names no schema, no version, and no field.
+4. `CMP-R028` states that every flag MUST have a matching `forge.config.json` field, and five entries in `CMP` §8's
+   own table cannot satisfy it: `--jobs` (there is no parallel encode before `WP-120-07`), `--fail-on=risk` (the
+   diagnostic registry defines `error`, `warning`, `info`, and `E-043` is open on the missing severity),
+   `--sourcemap` (the emit stage consumes it as a *stage option*, and `E-047` withholds the maps themselves), and
+   `--budget-strict` (a run switch, recorded in the report's gate map, with no budget table to fail). Beside them,
+   the report stage's four withheld inputs — `pins`, `verifyItems`, `tier`, `divergences` — have neither a flag nor
+   a config key, which is precisely why `SF0509` can only state them as gaps: there is nothing for a project to set.
+
+5. Finally, a name. `REPO-§2`'s layout spells the compiler package `packages/compiler` · `@swf-forge/compiler`,
+   and the repository has delivered `packages/compile` · `@swf-forge/compile` — the name `WP-120-01` chose and
+   nine packages now import. `IMPL-150-R001` cites the spec spelling, so an inspector package written to that rule
+   would declare a dependency that does not exist. The divergence is harmless until someone renames a directory to
+   close it, which is why it is recorded rather than fixed here.
+
+**Our resolution.** `swfforge` follows `CMP-R029`, because it is the design spec, because `apps/decompiler`
+implements it, and because two commands in one repository cannot mean different things by exit `1`; `R026` is
+reworded to that table with the precedence the table omits written into `packages/cli/src/exit.ts`. The
+"budget exceeded" meaning `R026` wanted for `5` becomes a threshold in `4` — which is what `CMP`'s own row says —
+and `--budget-strict` therefore has a class even though it has no data yet. The header's `MS-§2` citation is
+corrected to `CMP-§8`. `IMPL-120` §6 now says plainly that the CLI carries the `schemaVersion: 1` envelope field
+until a spec owns it. The four unmatched flags are accepted, applied where a consumer exists, and *reported as
+inert with a reason* on every run, so a user is never left to discover by experiment that `--jobs 8` changed
+nothing; `forge.config.json` gained a copy in the output tree (`CMP-R004`) that §4's own file list had forgotten.
+
+**Asked of the spec owners.** `REPO-§2`: either correct the layout tree to the delivered `@swf-forge/compile` or
+order the rename, and fix `IMPL-150-R001`'s citation to match whichever answer is given.
+`CMP` §8: either add `jobs`/`sourcemap`/`failOn`-with-`risk` to the §3 config schema
+or drop them from the flag table, and give `report`'s four withheld inputs a home (a `forge.config.json` field for
+the pins register and the divergence declarations would let `verify` and `report` check a project without the CLI
+supplying them). `IMPL-120-R025`: name the document that owns the `--json` schema version, or delete the `REPO-§7`
+pointer. `CMP-R029`: state the precedence between the classes, because `2` and `4` can both be true of one run and
+the CLI has to choose which one a caller sees.
+
+## E-054 — a clean `swfforge build` output is not clean under `swfforge verify`: eight of the project's own exports are referenced by nothing (closed by `WP-120-14`)
+
+**Found in:** wiring `WP-120-13`'s `verify` over the directory `build` had just written, with no edits by anybody.
+
+**What happens.** `IMPL-120-R024`'s symbol check reports every exported name in `src/**` that no other emitted file
+references, unless the emitter lists it as intentionally public. On a one-frame movie the check warns eight times —
+`src/classes/index.ts#classes`, `src/frames/movie.ts#frameScripts`, `#residualEntries`, `#frame_01`, `#frame_1`,
+`src/symbols.ts#exportedAssets`, `#characterByName`, `#characterIdByName` — and each warning tells the porter to
+"either wire it, or list it as intentionally unreferenced". `EMITTED_PUBLIC_EXPORTS` is the emitter's own list and
+does not contain these names, though `WP-120-12` built the list for exactly this reason.
+
+**Why it is not this package's fix.** There are two explanations and they want opposite edits. Either those symbols
+are host-facing, in which case the list is incomplete by one line per name and the emitted project is correct; or
+they are internal, in which case the emitter has a hole worth more than a warning — a project that writes
+`frames/movie.ts` and `symbols.ts` and *never imports either* has no entry point that binds its own tables, and
+`CMP` §4's layout claims the runtime is handed one (`REPO-R021`'s boot claim, `WP-120-14`'s CI job). Silencing the
+eight warnings in `WP-120-13` — by teaching `verify` to ignore them, or by the CLI passing them in
+`unreferencedAllowed` — would choose the first explanation and make the second invisible. A checker that is laxer
+than the config it checks is the mistake `WP-120-12` already corrected once, and `verify`'s escape hatch belongs in
+the project's own emitted list, not in a caller's argument.
+
+**Our resolution.** `WP-120-13` ships `verify` unchanged in severity terms: warnings warn, errors fail, and a clean
+build therefore exits `0` with eight findings visible in `--json`'s `findings` array and in the printed table.
+`WP-120-14` decides which explanation is true: if the emitted project needs a bootstrap module, that is an emitter
+change (`emit/files.ts`, with `R019`'s manifest pair re-checked); if it does not, the eight names join
+`EMITTED_PUBLIC_EXPORTS` and this entry closes with a test that runs `verifyProject` over a real build and expects
+zero findings. Either way the check that "the emitted project is self-consistent" is worth keeping able to fail.
+
+**Closed by `WP-120-14` (2026-10-15).** The first explanation is the true one, and the decision procedure this
+entry itself set out is what said so: doc 120 §4's emitted tree contains **no bootstrap module** — no `src/main.ts`,
+no entry file — and §4.1 constrains what emitted code may name to the runtime contract, so `src/symbols.ts`,
+`src/frames/*`, `src/classes/*`, `src/buttons/*`, `src/residual/*` and `src/assets/index.ts` are addressed from
+*outside* the project by design. Nothing inside a table-only project can import a table, and the absence of an
+importer is therefore not a hole. `EMITTED_PUBLIC_EXPORTS` grew from one name into a declaration of that surface in
+the two shapes the emitter can state honestly: `src/x.ts#name` for a fixed module, and a trailing-slash directory
+for a family whose file count is a property of the movie — `src/frames/sprite_<id>.ts` cannot be enumerated by
+anybody writing a list, and a whole-module entry for `src/frames/` would have been the sloppier fix. The arm still
+fires where it means something: `packages/compile/test/verify.test.ts` asserts both halves on a real emitted project
+— zero `symbols` findings, and two findings on a porter-authored module that the project's own list then silences,
+one entry per export. `swfforge verify` over a clean `swfforge build` now prints `clean` and nothing else, which is
+the state the eight warnings were hiding, and `tools/corpus-roundtrip.mjs` proves it on 85 projects rather than on
+one fixture. The second explanation — that the project is missing its entry point — is not closed by this: it is
+`WP-120-07`/`WP-130-01`'s app-shell seam, doc 120 §4.10's `strict-build` row names its owner, and if a bootstrap
+module ever lands it will *shrink* this list, not grow it.
+
+## E-056 — `CMP` §8's `--graphics.max-draw-calls` default of 700 shipped as 200, and nothing in the repository could tell (closed on our side by `WP-120-14`; the spec ask is open)
+
+**Found in:** starting `WP-120-07`, whose job is budget accounting — the first work in the phase that has a reason to
+*read* the budget defaults rather than carry them.
+
+**What happens.** `CMP-§8` prints `| --graphics.max-draw-calls <n> | 700 | Batch budget target (GFX-§16) |`, and
+`packages/compile`'s `DEFAULT_FORGE_CONFIG.graphics.maxDrawCalls` was `200`. `WP-120-13`'s commit record *claimed* the
+default had been aligned to 700; the change that actually landed in that commit aligned `diagnostics.maxWarnings` to
+the table's 200 and left the draw-call row alone. So a number in an emitted `build-info.json` gate map, in a porter's
+`forge.config.json` echo, and in the roadmap's own account of the phase was wrong by a factor of 3.5 for three
+commits, and every gate stayed green the whole time.
+
+**Why nothing saw it.** The relation nobody asserted. `CMP-R028` says every flag MUST have a matching
+`forge.config.json` field, and `packages/cli/test/cli.test.ts` enforced exactly that — name to path. The
+*value* the table prints beside a flag had no test, and `maxDrawCalls` is a number no P6 code reads, because there
+is no renderer to count draw calls and no `budgets.json` to compare them against: a default that nothing consumes is
+a default nothing can notice. Two of the repo's own rules were therefore both satisfied and jointly useless, which
+is the shape `REPO-R019` warns about — a check that passes because it tests the plumbing and not the claim.
+
+**Closed on our side.** The default is now `700` with the citation beside it, and the CLI's `CMP-R028` describe block
+grew a test that transcribes `CMP-§8`'s Default column — seven rows, each asserting the flag exists, that it names
+the config path the pairing implies, and that an invocation with no flags resolves to the table's value there. Three
+rows the table prints and the config cannot hold are asserted where they actually live (`DEFAULT_RUN_SWITCHES` for
+the two `off` flags, the gate map for `--budget-strict`, which is *recorded* rather than announced inert because
+`WP-120-14` left it non-decisive), so the test covers all thirteen table rows and none of them by omission. The
+emitted project's byte-for-byte behaviour did not move: the corpus lane reports the same 85 projects, the same 0
+findings and the same 2,720 agreeing gate rows before and after, which is the honest scope of a default that nothing
+reads — and the reason the pin matters anyway, because `WP-120-07` will be the first consumer and should inherit the
+table's number rather than discover this one.
+
+**Asked of the owners.** `CMP-§8` should mark which of its defaults are *targets recorded for another phase* (the
+draw-call and per-frame budgets) as distinct from bounds this phase enforces, so `700` is not read as something a P6
+build can fail on. Recorded here rather than fixed in the design spec: `REPO-R013` forbids P6 restating `CMP`'s
+table in its own voice.
+
+## E-055 — `CMP` §8's "Fail after n warnings" does not say what a warning is, and the sink's dedupe makes the difference four orders of magnitude (open)
+
+**Found in:** `WP-120-14`'s first full-corpus round trip, on `packages/swf/test/fuzz/corpus/crash-005-shape-edge-past-limit.swf`.
+
+**What happens.** That file is 52 bytes. Its shape-edge loop reads past the declared bounds, the reader's soft mode
+emits `SF0013` per attempt, and the sink folds the repeats into **one row carrying `count: 92680`**. The build
+printed `6 warning(s)`, treated `--max-warnings 200` as satisfied, and exited **0**.
+
+**Why the two readings exist.** `CMP-§8` gives the flag the description "Fail after n warnings" and never says
+whether `n` counts *occurrences* or *distinct rows*, and the summary the sink exposes counts rows: `DiagnosticSummary`
+is `{errors, warnings, infos, total: items.length}`, which is what the decompiler's report prints and what
+`IMPL-010`/`IMPL-020` describe. A CLI reading the summary implements one rule; a CLI reading the items implements
+another. Every hand-written fixture in the repository has one diagnostic per class, so the fork is invisible until
+something feeds the tool a crasher.
+
+**Our resolution.** A **budget** is measured in occurrences (`sum(count ?? 1)` per severity), because `CMP-§8`'s
+default of 200 is a tolerance for flooding and 92,680 identical warnings are the flood whether or not a table
+collapses them for printing. The **summary** keeps row semantics: it is a presentation contract doc 010/020 own, the
+decompiler reads the same field, and moving it would change two other phases' output to satisfy a rule neither
+claimed. `exitForRun` states both numbers — `--max-warnings=200 exceeded (92680 occurrence(s) in 1 row(s))` — so
+nobody has to reconcile the printed table with the verdict by guesswork. `crash-005` now exits 4 and is the only
+input in the corpus that does: the other 25 exit 0 or 1, `--fail-on=risk` remains inert, and the occurrence rule
+cannot be reached at all until something warns 201 times. `packages/cli/test/cli.test.ts` pins the arithmetic
+(including that one row without a counter is one occurrence, so ordinary builds are unaffected) and
+`packages/cli/test/corpus.test.ts` pins that the corpus actually produces the case.
+
+**Asked of the owners.** `CMP-§8` should say which count `--max-warnings` gates, and doc 010's diagnostics section
+should name its summary a *row* tally so the next reader does not pick the other arm. Recorded rather than resolved
+here: neither table is P6's, and `REPO-R013` forbids quietly restating another phase's document.
+
+| 2.17 | 2026-10-14 | `E-049`, from `WP-120-09`: the residual set is the tier-2 set in `IMPL-050-R057` and the lowering-refusal set in `IMPL-120-R018`, and on the corpus 68 of 87 refused blocks are T0/T1 with `residual: null` — the emitter recomputes slices from the CFG and treats the front end's list as a cross-check (`SF0505`), while `AVM1-D03`, `IMPL-050-R060` and `AVM1-R071` all read a number the specs never pin down |
+| 2.18 | 2026-10-14 | `E-050`, from `WP-120-10`: `CMP-R013`'s mandated generated header begins with `/* eslint-disable */`, a suppression `IMPL-120-R014`/`REPO-R011` forbid in emitted code and that would mute the very lint `WP-120-12` exists to run; and `AST` §6 asks `forge.manifest.json` for `movie.scaleMode`/`movie.align`, which no SWF field, model record or config key carries (`RT-R040` routes the equivalent through `fscommand`), while `CMP` §5 puts the same pair under `stage` — P6 emits neither, writes `package.json` as strict JSON with a `"//"` provenance field instead of a comment, and asks the spec owners to name one home and one nesting for the two fields |
+| 2.19 | 2026-10-15 | `E-051`, from `WP-120-11`: `ARCH-R003` is defined twice in `000-architecture.md` and no gate can see it (`verify_docs` §14 checks only impl docs and the two colliding design specs); `IMPL-120-R021` requires the state of a `--video-native` gate that exists in no config, CLI surface or design rule; doc 120 §4's root `porting-notes.json` and `CMP` §4.9/`ARCH-R003`'s `reports/porting-notes.md` are two homes for one file, so P6 writes both with the markdown as a projection of the JSON; and "every diagnostic" cannot be listed by a report at all, because the sink is not part of a cache hit (`CMP-R040`) and its span attribution can attach a container-level error to a dictionary entry — P6's report is artifact-sourced, says so per row and per file, and asks `WP-120-14` to decide whether diagnostics belong on a stage's cacheable outcome |
+| 2.20 | 2026-10-15 | `E-052`, from `WP-120-12`: `CMP` §4.10's `verify` table asks for a compiler run, a budget file and an asset directory that an emitted P6 project does not have, and its "resource handle" row names no construct `src/**` can contain; `T-CMP-009`'s `NamedAnchor` half asserts an absence the emitter cannot violate, because anchors reach the runtime through the manifest. `verifyProject` runs the four checks that are functions of the project's bytes, reports the other three as `notRun` rows with their owners, implements the handle row as the dangling-import check, and wires `T-CMP-009` with this entry beside it |
+| 2.21 | 2026-10-15 | `E-053`, from `WP-120-13`: `IMPL-120-R026`'s exit table contradicts `CMP-R029` on the meanings of `1`, `4` and `5` while `apps/decompiler` already implements the latter; doc 120's header cites `MS-§2`, a document that is not in the spec map, for the CLI surface `CMP` §8 owns; `IMPL-120-R025` sends the `--json` schema version to `REPO-§7`, a testing section; `CMP-R028`'s "every flag has a config field" fails for `--jobs`, `--fail-on=risk`, `--sourcemap` and `--budget-strict`, and `report`'s four withheld inputs have no flag or field either; and `CMP-R004`'s `forge.config.json` is missing from doc 120 §4's own output tree, and `REPO-§2` spells the compiler package `@swf-forge/compiler` while the repository has delivered `@swf-forge/compile`, a name `IMPL-150-R001` also cites; `swfforge` follows `CMP-R029`, accepts the unmatched flags and reports them inert with a reason, writes the config copy the tree forgot, and reads only `./forge.config.json` so the copy it wrote cannot become its own input |
+| 2.22 | 2026-10-15 | `E-054`, from `WP-120-13`: `swfforge verify` over the output of a clean `swfforge build` warns eight times about exports nothing references, because `EMITTED_PUBLIC_EXPORTS` omits them or the emitted project has no module that imports them, and the two readings want opposite fixes; `WP-120-14` owns the decision, and `verify` keeps reporting what it sees rather than being given a suppression list by the CLI that calls it |
+| 2.23 | 2026-10-15 | `E-055`, from `WP-120-14`: `CMP-§8`'s "Fail after n warnings" does not say whether `n` counts occurrences or sink rows, and the 52-byte fuzz crasher that warns 92,680 times in one row exited 0 under a 200 budget; budgets are now counted in occurrences, the summary keeps its row semantics (doc 010/020's contract, read by the decompiler), the exit-4 line prints both numbers, and `E-054` closes in the same package — doc 120 §4 emits no bootstrap module, so the outward tables are declared as the emitter's own surface (`path#name` where a module is fixed, a trailing-slash directory where the file count is a property of the movie), `swfforge verify` over a clean build reports zero findings, and the dead-export arm still fires on a porter-authored module |
+| 2.24 | 2026-10-15 | `E-056`: `CMP-§8`'s `--graphics.max-draw-calls` default of 700 shipped as 200 for three commits and no gate could see it, because `CMP-R028`'s pairing was tested as name-to-path and never as value; found while starting `WP-120-07`, closed on our side by aligning the default and pinning every row of the table's Default column in `packages/cli/test/cli.test.ts`, with the ask to `CMP` left open |
+| 2.25 | 2026-10-16 | `E-033` **closed** by ruling D1 from the upstream SWF v19 Chapter 1 text (supplied by the user): upstream prints the hex value and the bytes and no decimal, so `IMPL-010` §8's `1163342112` was our own miscomputed Expected cell, corrected to 1164865824; the `ui32` discrepancy pin is removed. The same reading notes upstream's FLOAT16 "bias of 16" misprint against `E-004`'s settled bias 15. 15 entries remain open |

@@ -1,6 +1,6 @@
 # REPO — Repository Layout, Packages, and Toolchain
 
-**Doc ID:** REPO · **Status:** Draft 1.1 · **Normative:** yes
+**Doc ID:** REPO · **Status:** Draft 1.2 · **Normative:** yes
 
 ---
 
@@ -136,7 +136,7 @@ Rules:
 | --- | --- | --- |
 | Package bundling | `tsup` (esbuild) → ESM + `.d.ts` | CLI ships a Node build; browser packages ship ESM only |
 | Type checking | `tsc --build` project references | CI runs `tsc -b --force` |
-| Unit tests | `vitest` (node + jsdom + browser mode) | Browser-mode for GFX/AUD |
+| Unit tests | `vitest` (node + jsdom + browser mode) | Browser-mode for GFX/AUD, and for the P0 `IMPL-010` §8 vector lane (`*.lanes.test.ts`, run identically in both lanes) |
 | Visual tests | Playwright + custom image diff | TST-§6 |
 | Audio tests | `OfflineAudioContext` in Chromium via Playwright | AUD-§9 |
 | Lint/format | ESLint (flat config) + Prettier | Import boundaries, no-`any`, unused-exports |
@@ -202,7 +202,7 @@ sorted by handle name; timeline modules in character-id order.
 | `lint` | ESLint, Prettier check, API Extractor | zero errors |
 | `types` | `tsc -b --force` | zero errors |
 | `unit` | vitest node | 100% of tagged unit requirements |
-| `browser` | vitest browser mode + Playwright smoke | zero failures |
+| `browser` | vitest browser mode + Playwright smoke. **Delivered 2026-10-13 in its P0-owned minimal form**: the shared §8 vector table in headless Chromium, as its own CI job. P11 extends this stage to the three-engine matrix (`TST-§8`) | zero failures. A missing engine is a **hard failure with a named fix**, never a skip — an absent browser lane that reports green is the failure mode `audits/P0-AUDIT.md` F-P0-01 records |
 | `conformance` | oracle harness on the conformance fixture set | TST-§6 thresholds |
 | `perf` | perf harness on a fixed scene set | TST-§7 budgets, ≤ 5% regression vs. main |
 | `emit` | build a fixture game, verify it compiles with zero suppressions and boots | C0 gate |
@@ -224,3 +224,4 @@ sorted by handle name; timeline modules in character-id order.
 | --- | --- | --- |
 | 1.0 | initial | First draft |
 | 1.1 | 2026-10-04 | Decision `REPO-D06` (asset deduplication: one file per unique payload, many manifest entries) added; it resolves the `REPO-D09` citation that `IMPL-120` R020 carried |
+| 1.2 | 2026-10-13 | Roadmap §4.4 item 9 (D-P0-DEP-06): §10's `browser` stage is recorded as delivered in its P0-owned minimal form (the shared `IMPL-010` §8 vector table in headless Chromium, as its own CI job), with P11's three-engine matrix as the named extension; the gate now states that a missing engine fails loudly instead of skipping. §6's unit-test row names the `*.lanes.test.ts` cross-lane convention |

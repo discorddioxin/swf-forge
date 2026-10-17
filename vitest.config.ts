@@ -13,6 +13,7 @@ export default defineConfig({
       '@swf-forge/gfx/test-support': r('packages/gfx/src/test-support/index.ts'),
       '@swf-forge/gfx': r('packages/gfx/src/index.ts'),
       '@swf-forge/avm1': r('packages/avm1/src/index.ts'),
+      '@swf-forge/compile': r('packages/compile/src/index.ts'),
     },
   },
   test: {

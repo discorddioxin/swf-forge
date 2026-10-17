@@ -4,6 +4,11 @@
  * A record is either a single sub-0x80 opcode byte, or `0x80+` code + 16-bit little-endian
  * `Length` + payload (`IMPL-050-R003`). Helpers assemble the common payloads (Push pairs, pools,
  * branches, `Try`/`With` bodies, `DefineFunction2`) so the tests read like pseudocode.
+ *
+ * The four region-bearing helpers (`withRegion`, `tryRegion`, `defineFunction`, `defineFunction2`)
+ * place their region bytes **past** `Length`, as real content does and as `IMPL-050-R071` requires
+ * (`E-035`, `E-036`). They originally placed them inside `Length`, which matched the decoders' wrong
+ * reading and so proved nothing — the same self-consistent-fixture trap as `E-034`.
  */
 
 import {
@@ -149,9 +154,9 @@ export function getURL(url: string, target: string): number[] {
 
 // ---- regions ----------------------------------------------------------------------------------------------
 
-/** A `With` record: `Size UI16` then `Size` body bytes. */
+/** A `With` record: `Length` is 2 (`Size UI16`), and the `Size` body bytes follow past it (R071). */
 export function withRegion(size: number, body: readonly number[]): number[] {
-  return rec(0x94, [size & 0xff, (size >> 8) & 0xff, ...body]);
+  return [...rec(0x94, [size & 0xff, (size >> 8) & 0xff]), ...body];
 }
 
 export interface TrySpec {
@@ -167,7 +172,8 @@ export interface TrySpec {
 /**
  * A `Try` record: one flag byte (Reserved UB[5] + CatchInRegister UB[1] + Finally UB[1] +
  * Catch UB[1]), TrySize/CatchSize/FinallySize (all UI16, always present), then catch name
- * (register flag 0) or register (register flag 1), then the three bodies tiled.
+ * (register flag 0) or register (register flag 1). `Length` covers exactly that header; the three
+ * bodies tile the region **past** the record (R034/R071).
  */
 export function tryRegion(spec: TrySpec): number[] {
   const flags =
@@ -177,16 +183,15 @@ export function tryRegion(spec: TrySpec): number[] {
   const trySize = spec.try.length;
   const catchSize = spec.catch?.length ?? 0;
   const finallySize = spec.finally?.length ?? 0;
-  const body: number[] = [flags];
-  body.push(trySize & 0xff, (trySize >> 8) & 0xff);
-  body.push(catchSize & 0xff, (catchSize >> 8) & 0xff);
-  body.push(finallySize & 0xff, (finallySize >> 8) & 0xff);
+  const header: number[] = [flags];
+  header.push(trySize & 0xff, (trySize >> 8) & 0xff);
+  header.push(catchSize & 0xff, (catchSize >> 8) & 0xff);
+  header.push(finallySize & 0xff, (finallySize >> 8) & 0xff);
   if (spec.catch !== undefined) {
-    if (spec.catchInRegister === true) body.push(spec.catchRegister ?? 0);
-    else body.push(...nul(spec.catchName ?? ''));
+    if (spec.catchInRegister === true) header.push(spec.catchRegister ?? 0);
+    else header.push(...nul(spec.catchName ?? ''));
   }
-  body.push(...spec.try, ...(spec.catch ?? []), ...(spec.finally ?? []));
-  return rec(0x8f, body);
+  return [...rec(0x8f, header), ...spec.try, ...(spec.catch ?? []), ...(spec.finally ?? [])];
 }
 
 // ---- DefineFunction2 (0x8e) ------------------------------------------------------------------------------------
@@ -206,32 +211,34 @@ export function defineFunction2(spec: DF2Spec): number[] {
   const regCount = spec.registerCount ?? 0;
   const flags = spec.flags ?? 0;
   const code = spec.body;
-  const body: number[] = [];
-  body.push(...nul(spec.name ?? '')); // FunctionName STRING
-  body.push(params.length & 0xff, (params.length >> 8) & 0xff); // NumParams UI16
-  body.push(regCount & 0xff); // RegisterCount UI8
-  body.push(flags & 0xff, (flags >> 8) & 0xff); // Flags UI16
+  const header: number[] = [];
+  header.push(...nul(spec.name ?? '')); // FunctionName STRING
+  header.push(params.length & 0xff, (params.length >> 8) & 0xff); // NumParams UI16
+  header.push(regCount & 0xff); // RegisterCount UI8
+  header.push(flags & 0xff, (flags >> 8) & 0xff); // Flags UI16
   // REGISTERPARAM[NumParams]: Register UI8, ParamName STRING
   for (let i = 0; i < params.length; i += 1) {
-    body.push((spec.paramRegisters?.[i] ?? 0) & 0xff);
-    body.push(...nul(params[i] ?? ''));
+    header.push((spec.paramRegisters?.[i] ?? 0) & 0xff);
+    header.push(...nul(params[i] ?? ''));
   }
-  body.push(code.length & 0xff, (code.length >> 8) & 0xff); // CodeSize UI16
-  body.push(...code);
-  return rec(0x8e, body);
+  header.push(code.length & 0xff, (code.length >> 8) & 0xff); // CodeSize UI16
+  // `Length` covers the header alone; `Code[CodeSize]` follows past the record (R071).
+  return [...rec(0x8e, header), ...code];
 }
 
-/** A `DefineFunction` (0x9b): name, NumParams UI16, param names, CodeSize UI16, body. */
+/**
+ * A `DefineFunction` (0x9b): `Length` covers `FunctionName`, `NumParams UI16`, the param names and
+ * `CodeSize UI16`; `Code[CodeSize]` follows **past** the record (R071).
+ */
 export function defineFunction(spec: { name?: string; params?: readonly string[]; body: readonly number[] }): number[] {
   const params = spec.params ?? [];
   const code = spec.body;
-  const body: number[] = [];
-  body.push(...nul(spec.name ?? ''));
-  body.push(params.length & 0xff, (params.length >> 8) & 0xff);
-  for (const p of params) body.push(...nul(p));
-  body.push(code.length & 0xff, (code.length >> 8) & 0xff);
-  body.push(...code);
-  return rec(0x9b, body);
+  const header: number[] = [];
+  header.push(...nul(spec.name ?? ''));
+  header.push(params.length & 0xff, (params.length >> 8) & 0xff);
+  for (const p of params) header.push(...nul(p));
+  header.push(code.length & 0xff, (code.length >> 8) & 0xff);
+  return [...rec(0x9b, header), ...code];
 }
 
 // ---- diagnostics ----------------------------------------------------------------------------------------

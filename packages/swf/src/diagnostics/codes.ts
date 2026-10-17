@@ -5,7 +5,8 @@
  * Ranges (owner in brackets): `SF0001`–`SF0019` IO (010) · `SF0020`–`SF0049` container (020) ·
  * `SF0100`–`SF0109` tag stream/dictionary (020) · `SF0110`–`SF0129` placements (030) ·
  * `SF0130`–`SF0139` buttons (100) · `SF0150`–`SF0179` control/metadata (040) · `SF0180`–`SF0195` shapes (060) · `SF0250`–`SF0269` images (070) · `SF0270`–`SF0289` fonts/text (080) ·
- * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF1000+` fatal (050).
+ * `SF0300`–`SF0309`/`SF0324`–`SF0332` audio (090) · `SF0500`–`SF0509` compile pipeline (120) ·
+ * `SF1000+` fatal (050).
  */
 
 import type { Severity } from './types.js';
@@ -216,6 +217,17 @@ export const Codes = {
   SOUND_LATENCY_SEEK_MISMATCH: 'SF0330',
   SOUND_ZERO_BLOCK: 'SF0331',
   SOUND_MONO_ENVELOPE_MISMATCH: 'SF0332',
+  // ---- compile pipeline (120) -----------------------------------------------------------------
+  STAGE_UNIMPLEMENTED: 'SF0500',
+  CACHE_DRIFT: 'SF0503',
+  SOURCEMAP_WITHHELD: 'SF0504',
+  RESIDUAL_DESCRIPTOR_INVALID: 'SF0505',
+  RESIDUAL_FORBIDDEN: 'SF0506',
+  MANIFEST_SECTIONS_WITHHELD: 'SF0507',
+  MANIFEST_UNSERIALIZABLE: 'SF0508',
+  REPORT_INPUTS_WITHHELD: 'SF0509',
+  DIVERGENCE_DECLARATION_INVALID: 'SF0510',
+  REPORT_HOST_LEAK: 'SF0511',
   // ---- fatal (050) ---------------------------------------------------------------------------
   AVM2_CONTENT: 'SF1000',
 } as const;
@@ -694,6 +706,60 @@ const REGISTRY: Record<string, CodeInfo> = {
   },
   SF0331: { code: 'SF0331', severity: 'info', meaning: 'empty MP3 stream block advances the timeline without samples' },
   SF0332: { code: 'SF0332', severity: 'info', meaning: 'mono sound envelope has differing L/R levels and is averaged' },
+  SF0500: {
+    code: 'SF0500',
+    severity: 'info',
+    meaning: 'a pipeline stage has no implementation in this build; the run report names it',
+  },
+  SF0503: {
+    code: 'SF0503',
+    severity: 'warning',
+    meaning: 'a cached stage output did not match a recomputation (--verify-cache); the entry was evicted',
+  },
+  SF0504: {
+    code: 'SF0504',
+    severity: 'warning',
+    meaning: 'an emitted-output artifact a switch asked for was not written; the run report names which and why',
+  },
+  SF0505: {
+    code: 'SF0505',
+    severity: 'warning',
+    meaning:
+      'a residual entry descriptor did not validate against its blob, so no blob was written and the block stays deferred',
+  },
+  SF0506: {
+    code: 'SF0506',
+    severity: 'error',
+    meaning: '--vm.residual=forbid and the movie has a tier-2 function; the build fails and every one is listed',
+  },
+  SF0507: {
+    code: 'SF0507',
+    severity: 'warning',
+    meaning:
+      'the manifest was written without the sections whose inputs this phase does not have; the report names them',
+  },
+  SF0508: {
+    code: 'SF0508',
+    severity: 'error',
+    meaning: 'no manifest was written, because a value it would have carried has no JSON spelling',
+  },
+  SF0509: {
+    code: 'SF0509',
+    severity: 'warning',
+    meaning:
+      'a report input the build was not given, so the report states the gap instead of a value: pin register, [verify] items, fidelity tier, or divergence declarations',
+  },
+  SF0510: {
+    code: 'SF0510',
+    severity: 'error',
+    meaning: 'a divergence declaration did not validate against CMP-§4.9, so the harness was not told to expect it',
+  },
+  SF0511: {
+    code: 'SF0511',
+    severity: 'error',
+    meaning:
+      'a report value would have leaked build-host identity (an absolute path, a host name, or a wall-clock timestamp), so no report file was written (IMPL-120-R021)',
+  },
   SF1000: { code: 'SF1000', severity: 'error', meaning: 'AVM2 content (DoABC) — hard error, exit 3' },
 };
 

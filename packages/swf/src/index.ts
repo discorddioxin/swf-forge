@@ -14,6 +14,7 @@ export type { Diagnostic, DiagnosticInput, DiagnosticSummary, Severity } from '.
 
 // ---- binary IO (`IMPL-010`) ---------------------------------------------------------------------
 export { Cursor } from './io/cursor.js';
+export { allocationCounter, resetAllocationCounter, type AllocationCounter } from './io/counter.js';
 export { SwfReadError } from './io/errors.js';
 export { fixed8_8, fixed16_16, float16 } from './io/real.js';
 export { maskFor, signExtend } from './io/bits.js';
@@ -151,6 +152,16 @@ export type {
   StartSoundModel,
   TimelineSoundEvent,
 } from './tags/sounds.js';
+
+// ---- video extents (`IMPL-110` §3, WP-110-12) -----------------------------------------------------
+export {
+  DEFINE_VIDEO_STREAM_BYTES,
+  VIDEO_FRAME_BYTES,
+  readVideoFrameExtent,
+  readVideoStreamHeader,
+  summariseVideoStreams,
+} from './video/extent.js';
+export type { VideoExtentSummary, VideoFrameExtent, VideoStreamExtent, VideoStreamHeader } from './video/extent.js';
 
 // ---- model (`CMP` §3, `IMPL-030` §7/§8, `IMPL-040` §5) ------------------------------------------
 export { assembleTimeline, buildMovieModel, fallbackId, openTagCursor } from './model/index.js';

@@ -48,6 +48,7 @@ reusable if a future phase accepts `.flv` input; the SWF path never sees an FLV)
 
 ```
 packages/swf/src/video/
+  extent.ts                    DefineVideoStream header + summed VideoFrame byte extents (WP-110-12, P6)
   define-video-stream.ts   DefineVideoStream (60): flags, codec id, declared size
   video-frame.ts           VideoFrame (61): FrameNum ordering, duplicate/overrun checks
   video-model.ts           VideoStreamModel, availability + display indices, codec routing
@@ -365,41 +366,43 @@ Codes `SF0240`–`SF0249` are this document's primary block; the Screen Video v2
 
 ## 8. Test obligations
 
-| ID | Test | Level |
-| --- | --- | --- |
-| `T-MOD-901` | Screen Video v2 palette update mid-stream (v1 `IMAGEBLOCK`) + default-palette fallback | F1 |
-| `T-MOD-902` | transcode verification: output decodes, frame count/dimensions/alpha match | F2 |
-| `T-MOD-903` | display index: contiguous frames, missing frames (freeze), overrun frames | F1 |
-| `T-MOD-904` | determinism: two transcodes produce identical bytes (all pinned flags) | F1 |
-| `T-MOD-905` | Screen Video hostile block headers/zlib failures rejected, previous frame retained | F1 |
-| `T-MOD-906` | alpha preservation (VP6-alpha source, premultiplied → straight) | F2 |
-| `T-MOD-907` | coded-vs-declared dimensions: scale + smoothing filter selection recorded | F2 |
-| `T-MOD-908` | missing-ffmpeg path: streams reported, build still succeeds | F1 |
-| `T-MOD-909` | H.263 packet header: version, size table incl. both custom forms, `UB[16]` ≠ `UI16`, disposable frames | F1 |
-| `T-MOD-910` | Screen Video v1: grid math, partial edge blocks, BGR order, unchanged block (`DataSize 0`) | F1 |
-| `T-MOD-911` | Screen Video v2 15/7-bit stream (mixed 1-/2-byte pixels); all 128 palette entries equal Appendix C in appendix order (`T-TST-104`) | F1 |
-| `T-MOD-912` | Screen Video v2 diff blocks (row ranges) and zlib priming incl. the non-primed fallback | F1 |
-| `T-MOD-913` | `CodecID` dispatch: 2/3/4/5/6, `SF0290` for 6, `SF0240` for 0/1/7+ | F1 |
-| `T-MOD-914` | `Ratio`-driven display vs `FrameNum` availability (incl. duplicate/non-monotonic) | F1 |
-| `T-MOD-915` | VP6-alpha: `OffsetToAlpha` bounds, dual-stream decode with `MIN` clamp, keyframe pairing | F2 |
-| `T-MOD-916` | deblocking level + smoothing flag round-trip into the manifest | F1 |
+| ID | Test | Level | Phase owner |
+| --- | --- | --- | --- |
+| `T-MOD-901` | Screen Video v2 palette update mid-stream (v1 `IMAGEBLOCK`) + default-palette fallback | F1 | P10 |
+| `T-MOD-902` | transcode verification: output decodes, frame count/dimensions/alpha match | F2 | P10 |
+| `T-MOD-903` | display index: contiguous frames, missing frames (freeze), overrun frames | F1 | P10 |
+| `T-MOD-904` | determinism: two transcodes produce identical bytes (all pinned flags) | F1 | P10 |
+| `T-MOD-905` | Screen Video hostile block headers/zlib failures rejected, previous frame retained | F1 | P10 |
+| `T-MOD-906` | alpha preservation (VP6-alpha source, premultiplied → straight) | F2 | P10 |
+| `T-MOD-907` | coded-vs-declared dimensions: scale + smoothing filter selection recorded | F2 | P10 |
+| `T-MOD-908` | missing-ffmpeg path: streams reported, build still succeeds | F1 | P10 |
+| `T-MOD-909` | H.263 packet header: version, size table incl. both custom forms, `UB[16]` ≠ `UI16`, disposable frames | F1 | P10 |
+| `T-MOD-910` | Screen Video v1: grid math, partial edge blocks, BGR order, unchanged block (`DataSize 0`) | F1 | P10 |
+| `T-MOD-911` | Screen Video v2 15/7-bit stream (mixed 1-/2-byte pixels); all 128 palette entries equal Appendix C in appendix order (`T-TST-104`) | F1 | P10 |
+| `T-MOD-912` | Screen Video v2 diff blocks (row ranges) and zlib priming incl. the non-primed fallback | F1 | P10 |
+| `T-MOD-913` | `CodecID` dispatch: 2/3/4/5/6, `SF0290` for 6, `SF0240` for 0/1/7+ | F1 | P10 |
+| `T-MOD-914` | `Ratio`-driven display vs `FrameNum` availability (incl. duplicate/non-monotonic) | F1 | P10 |
+| `T-MOD-915` | VP6-alpha: `OffsetToAlpha` bounds, dual-stream decode with `MIN` clamp, keyframe pairing | F2 | P10 |
+| `T-MOD-916` | deblocking level + smoothing flag round-trip into the manifest | F1 | P10 |
+| `T-MOD-917` | `DefineVideoStream` header (character id, frame count, width/height, codec id, deblocking/smoothing flags) and the summed `VideoFrame` payload extents decode deterministically, with no packet payload parsed and no codec validation attempted | F1 | P6 |
 
 ## 9. Work packages
 
-| WP | Title | Depends | Est | Deliverable |
-| --- | --- | --- | --- | --- |
-| WP-110-01 | `DefineVideoStream` + `VideoFrame` + display/availability indices | WP-020-05 | 4 | `video/*`, T-MOD-903/914 |
-| WP-110-02 | Transcoder driver + pinned args + provenance | WP-110-01, REPO tooling | 3 | `transcode.ts` |
-| WP-110-03 | Determinism hardening (`-fflags +bitexact`, mtime=0, args hash) | WP-110-02 | 2 | T-MOD-904 |
-| WP-110-04 | Screen Video v1 native decoder (grid, partial blocks, BGR) | WP-110-01 | 4 | `screenvideo1.ts`, T-MOD-910 |
-| WP-110-05 | Screen Video v2 decoder (palette, 15/7-bit, diff/prime blocks) | WP-110-01 | 5 | `screenvideo2.ts`, `palette.ts`, T-MOD-901/911/912 |
-| WP-110-06 | Packet-header validation for H.263/VP6 (+ alpha pairing) | WP-110-01 | 3 | `format.ts`, `alpha.ts`, T-MOD-909/915 |
-| WP-110-07 | Emission: WebM/MP4 + display index + alpha handling | WP-110-02, WP-110-06 | 4 | `emit.ts`, T-MOD-906 |
-| WP-110-08 | Output verification step | WP-110-07 | 2 | `verify.ts`, T-MOD-902 |
-| WP-110-09 | Runtime contract (`frameToSource` seek/play, policy-blocked retry) | WP-110-07, RT | 3 | RT-R058 wiring |
-| WP-110-10 | Licensing/attribution report entries | WP-110-02 | 1 | SEC-§5 integration |
-| WP-110-11 | Video corpus: synthetic streams per codec + App C palette fixture | WP-110-05 | 3 | CI fixtures, `inspect --video`, T-MOD-916 |
-| | **Total** | | **34** | |
+| WP | Title | Depends | Est | Deliverable | Phase owner |
+| --- | --- | --- | --- | --- | --- |
+| WP-110-01 | `DefineVideoStream` + `VideoFrame` bodies + display/availability indices | WP-020-05, WP-110-12 | 4 | `video/*`, T-MOD-903/914 | P10 |
+| WP-110-02 | Transcoder driver + pinned args + provenance | WP-110-01, REPO tooling | 3 | `transcode.ts` | P10 |
+| WP-110-03 | Determinism hardening (`-fflags +bitexact`, mtime=0, args hash) | WP-110-02 | 2 | T-MOD-904 | P10 |
+| WP-110-04 | Screen Video v1 native decoder (grid, partial blocks, BGR) | WP-110-01 | 4 | `screenvideo1.ts`, T-MOD-910 | P10 |
+| WP-110-05 | Screen Video v2 decoder (palette, 15/7-bit, diff/prime blocks) | WP-110-01 | 5 | `screenvideo2.ts`, `palette.ts`, T-MOD-901/911/912 | P10 |
+| WP-110-06 | Packet-header validation for H.263/VP6 (+ alpha pairing) | WP-110-01 | 3 | `format.ts`, `alpha.ts`, T-MOD-909/915 | P10 |
+| WP-110-07 | Emission: WebM/MP4 + display index + alpha handling | WP-110-02, WP-110-06 | 4 | `emit.ts`, T-MOD-906 | P10 |
+| WP-110-08 | Output verification step | WP-110-07 | 2 | `verify.ts`, T-MOD-902 | P10 |
+| WP-110-09 | Runtime contract (`frameToSource` seek/play, policy-blocked retry) | WP-110-07, RT | 3 | RT-R058 wiring | P10 |
+| WP-110-10 | Licensing/attribution report entries | WP-110-02 | 1 | SEC-§5 integration | P10 |
+| WP-110-11 | Video corpus: synthetic streams per codec + App C palette fixture | WP-110-05 | 3 | CI fixtures, `inspect --video`, T-MOD-916 | P10 |
+| WP-110-12 | `DefineVideoStream` header + summed `VideoFrame` byte extents (no packet parsing) | WP-020-05 | 2 | `video/extent.ts`, T-MOD-917 — **Delivered at P6:** `packages/swf/src/video/extent.ts` (the header reader, the frame-extent reader, `summariseVideoStreams`), `packages/swf/test/video-extent.test.ts` (13 tests, all `T-MOD-917`) | P6  |
+| | **Total** | | **36** | | |
 
 ## 10. Open items
 
@@ -435,3 +438,5 @@ deblocking/smoothing semantics, alpha definition) are **settled** — see §3–
 | 1.1 | 2026-10-04 | `SF0249` added for the quality gate the design spec used to cite as `SF0220` (a font code); errata `E-016` |
 | 1.2 | 2026-10-04 | Ch.14-grounded rewrite: `DefineVideoStream` flags/codec table with the **`CodecID = 6` gap** (`SF0290`); `VideoFrame` is `FrameNum`-addressed and display is `Ratio`-driven, with timing from the movie's frame rate only (replaces v1.0's "order encountered" model); two indices (availability + display); H.263 packet headers, the Sorenson feature deltas and the `UB[16]` ≠ `UI16` rule; Screen Video v1 grid/partial-block/BGR/unchanged-block rules; **Screen Video v2 corrected** (per-*packet* palettes via a v1 `IMAGEBLOCK`, 15/7-bit mixed 1-/2-byte pixel stream, diff blocks, zlib priming and its fallback) replacing v1.0's "per-block palettes" model; VP6/VP6-alpha with the chapter's premultiplied-ARGB decode, `OffsetToAlpha` validation and the keyframe-pairing rule; Appendix C's 128-entry palette transcribed; diagnostics `SF0290`–`SF0294`; tests `T-MOD-909`–`916`; WPs 01–11 = 34 d |
 | 1.3 | 2026-10-04 | Appendix pass: the palette obligation is upgraded from spot values to an order-sensitive 128-entry comparison against Appendix C (`T-MOD-911`, cited as `T-TST-104`) |
+| 1.4 | 2026-10-13 | Roadmap §4.6 item C (supply-forward rule, §4.1): `WP-110-12` re-homes the *header and byte-extent* decode of `DefineVideoStream`/`VideoFrame` to **P6**, which is the earliest phase that needs it — the emitter's plan pass must report video bytes in `budgets.json`, and until now no video tag was decoded anywhere, so the P6 asset planner depended on P10's `WP-110-06`. Packet-header validation, alpha pairing, transcode, native decoders, emission and verification stay P10. `WP-110-01` now consumes the extent model instead of re-deriving it, the WP table gains a `Phase owner` column, and `T-MOD-917` owns the extent obligation |
+| 1.5 | 2026-10-15 | `WP-110-12` delivered (`packages/swf/src/video/extent.ts`, `T-MOD-917`): the `DefineVideoStream` header decodes all eight documented fields, `VideoFrame` payloads are measured as *body minus four bytes* without being parsed, and `summariseVideoStreams` attributes frames by `StreamID` across interleaved streams so a `VideoFrame` in a later sprite frame still counts to its stream. No codec validation happens here (`SF0240` stays `WP-110-01`'s) and no `NumFrames` judgement is made (`SF0242` likewise): the declared and counted frames are both returned as data, which is what `IMPL-120-R031`'s budget line needs at P6 |

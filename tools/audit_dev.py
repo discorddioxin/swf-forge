@@ -671,6 +671,109 @@ def work_package_phases():
 
 
 DEFERRED_FORWARD_PHASES = {"P4", "P6", "P8", "P9"}
+# P11 is deliberately NOT admitted: this set validates that a *deferred diagnostic code* is owned by
+# a later phase, and no entry in DEFERRED_DIAGNOSTIC_WPS maps to a P11-owned work package. Admitting
+# P11 here would weaken the check without a consumer. Roadmap §4.4 item 8 asked for this to be
+# reconsidered "once doc 010 carries Phase owner forwards"; doc 010's rows are all P0 (v1.6), and its
+# P11 forward is declared on doc 140's WP-140-07 instead, so there is nothing to admit.
+
+
+# ------------------------------------------------------- dependency direction (roadmap §4.1/§4.3)
+# Supply-forward rule: an artifact a phase's exit gate needs is owned by that phase or an earlier
+# one, so a `Depends` cell may not name a later-phase work package. Two escape hatches exist and both
+# are checked here: the row re-attributes itself through a `Phase owner` column (the doc
+# 060/070/080/090 pattern, read by work_package_phases()), or the edge is dispositioned in roadmap
+# §4.3 and listed in DISPOSITIONED_INVERSIONS. A silent inversion is a specification defect.
+DOC_PHASE = {
+    "010": "P0",
+    "020": "P1",
+    "030": "P2", "040": "P2", "100": "P2",
+    "060": "P3", "070": "P3", "080": "P3", "090": "P3",
+    # doc 130 spans P4 (§5 renderer half), P7 (runtime), P8 (§7 input/audio/shell) and P9
+    # (masks/filters/hit testing/dynamic text). The earlier phase is the conservative reading for
+    # *dependency direction*, and 130 has out-degree 0, so nothing can be missed by pinning it to P4.
+    # Test-obligation attribution is finer than this map: doc 130's own `Phase owner` column assigns
+    # each `T-RT-*` row (only `T-RT-111` is P4's delivered renderer evidence), and
+    # check_test_dispositions() reads that column instead of this constant. Its WP table has no
+    # `Phase owner` column, so WP-130-* rows keep the conservative P4 attribution here.
+    "130": "P4",
+    "050": "P5",
+    "120": "P6",
+    "110": "P10",
+    "140": "P11",
+    "150": "P12",
+    "160": "P13",
+}
+PHASE_ORDER = {f"P{n}": n for n in range(14)}
+
+DISPOSITIONED_INVERSIONS = {
+    # Roadmap §4.3, "accepted forward" rows. Each key is (depending WP, depended-on WP); the value is
+    # the disposition, so the reason travels with the allowlist entry.
+    ("WP-030-06", "WP-050-01"): "P2 decodes CLIPEVENTFLAGS/CLIPACTIONS records; P5 owns action semantics",
+    ("WP-030-12", "WP-050-05"): "P2 models sprite tag sets/naming; P5 owns the CFG and basic blocks",
+    ("WP-100-04", "WP-050-03"): "P2 chains BUTTONCONDACTION records; P5 owns the operand readers",
+    ("WP-040-15", "WP-090-07"): "StartSound controls need SOUNDINFO, which P3 owns; P3 is Completed",
+    ("WP-100-06", "WP-090-07"): "DefineButtonSound needs SOUNDINFO, which P3 owns; P3 is Completed",
+    ("WP-040-09", "WP-130-08"): "DefineScalingGrid metadata is parsed at P2; the renderer handoff is P4/P9",
+    ("WP-070-14", "WP-140-03"): "the morph corpus needs doc 140's oracle runner; P3 closed with the forward",
+}
+
+
+def work_package_depends():
+    """wp id -> (effective phase, sorted dependency ids), from every work-package table row."""
+    declared = work_package_phases()
+    graph = {}
+    row = re.compile(r"^\|\s*`?(WP-\d{3}-\d{2})`?\s*\|", re.M)
+    for path in impl_docs():
+        num = doc_num(path)
+        for line in read(path).splitlines():
+            match = row.match(line)
+            if not match:
+                continue
+            cells = [cell.strip().strip("`") for cell in line.strip().strip("|").split("|")]
+            wp = match.group(1)
+            depends = cells[2] if len(cells) > 2 else ""
+            deps = sorted(set(re.findall(r"WP-\d{3}-\d{2}", depends)) - {wp})
+            owner = sorted(declared.get(wp) or [])
+            phase = owner[0] if len(owner) == 1 else DOC_PHASE.get(num)
+            graph[wp] = (phase, deps)
+    return graph
+
+
+def check_dependency_direction():
+    """Roadmap §4.1: report inversions that are not dispositioned, and stale dispositions."""
+    graph = work_package_depends()
+    observed = set()
+    for wp, (phase, deps) in sorted(graph.items()):
+        if phase not in PHASE_ORDER:
+            report("dependency-direction", f"phase.unknown:{wp}", "error",
+                   f"{wp} has no resolvable phase owner (document phase unknown)")
+            continue
+        for dep in deps:
+            if dep not in graph:
+                report("dependency-direction", f"dangling:{wp}->{dep}", "error",
+                       f"{wp} depends on {dep}, which is not a work package in any numbered "
+                       f"implementation document")
+                continue
+            dep_phase = graph[dep][0]
+            if dep_phase not in PHASE_ORDER:
+                continue
+            if PHASE_ORDER[phase] >= PHASE_ORDER[dep_phase]:
+                continue
+            observed.add((wp, dep))
+            if (wp, dep) not in DISPOSITIONED_INVERSIONS:
+                report("dependency-direction", f"inversion:{wp}->{dep}", "error",
+                       f"{wp} ({phase}) depends on {dep} ({dep_phase}): an earlier phase depending "
+                       f"on a later one. Re-attribute the row with a `Phase owner` cell or "
+                       f"disposition the edge in roadmap §4.3 (supply-forward rule, §4.1)")
+    for wp, dep in sorted(set(DISPOSITIONED_INVERSIONS) - observed):
+        report("dependency-direction", f"inversion.stale:{wp}->{dep}", "error",
+               f"roadmap §4.3 dispositions {wp} -> {dep} "
+               f"({DISPOSITIONED_INVERSIONS[(wp, dep)]}), but that edge no longer exists; "
+               f"remove the disposition")
+    return observed
+
+
 
 
 def check_emission_ownership(rows, by_name, range_owner, emitted, thrown, emission_sites, exception_sites):
@@ -858,6 +961,56 @@ def test_work_package_owners():
     return owners
 
 
+TEST_ROW = re.compile(rf"^\|\s*`?({TEST_ID})`?\s*\|")
+
+
+def test_phase_dispositions():
+    """Map a test id to the `Phase owner` cell of its obligation row.
+
+    Every numbered impl document carries a four-column test-obligation table
+    (`| ID | Test | Level | Phase owner |`), so a deferral is visible in the document that owns the
+    obligation instead of only in an audit that has since been archived. A cell may name several
+    phases when one obligation is split across them ("P2 decode; P6 emitted-bundle prohibition"),
+    which is the convention docs 080/090 established. Cells that name no phase are ignored, so a
+    neighbouring table with the same first column (doc 010 §8's counter contract) cannot be misread.
+    """
+    out = collections.defaultdict(set)
+    for path in impl_docs():
+        num = doc_num(path)
+        for line in read(path).splitlines():
+            match = TEST_ROW.match(line)
+            if not match:
+                continue
+            cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+            if len(cells) < 4:
+                continue
+            # The disposition is the LAST column, not the fourth: an obligation cell may contain a
+            # literal pipe (doc 030's `T-MOD-604` reads "flags `HasMatrix | HasCharacter`"), which
+            # shifts every fixed index after it.
+            cell = cells[-1].strip("` ").strip()
+            if cell and re.search(r"\bP\d+\b", cell):
+                out[match.group(1)].add((num, cell))
+    return out
+
+
+def roadmap_phase_status():
+    """Phase label -> status, read from roadmap §2's table rather than hardcoded here.
+
+    The labels are the repository's own acceptance vocabulary: **Completed** requires a reviewed
+    phase exit verdict or audited green exit gates, and a Completed phase may retain only deferrals
+    that "remain visible in the owning spec". Reading them means this check follows a phase
+    transition instead of silently going stale.
+    """
+    path = os.path.join(ROOT, "docs", "impl", "000-roadmap.md")
+    out = {}
+    if not os.path.exists(path):
+        return out
+    row = re.compile(r"^\|\s*\*\*(P\d+)\*\*\s*\|[^|]*\|\s*\*\*([^*|]+)\*\*\s*\|", re.M)
+    for match in row.finditer(read(path)):
+        out[match.group(1)] = match.group(2).strip()
+    return out
+
+
 def check_tests():
     # Numbered docs are the only general declaration source: errata and generated STATUS rows are
     # not tests. The P3 closeout audit is an explicit, narrow supplement for T-P3-REG-* only.
@@ -907,6 +1060,54 @@ def check_tests():
                          "owner": owners, "test_files": sorted(citation["test"]),
                          "source_files": sorted(citation["src"])})
     return declared, cited, coverage
+
+
+def check_test_dispositions(coverage):
+    """An uncited obligation must say which phase finishes it.
+
+    `check_tests()` can only measure whether an id is cited; whether an uncited id is *expected* is a
+    specification fact. Until 2026-10-13 that fact lived in audit prose, so P2 closed with
+    `T-MOD-030`/`T-MOD-602` uncited and their forwards recorded only in
+    `audits/archive/P2-RESOLUTION-AUDIT.md` — the live record showed a Completed phase with two
+    unexplained holes, and finding them took an audit
+    (`audits/P0-P5-COMPLETION-AND-P6-READINESS.md` F-P2-03/F-P2-04/F-REG-01). The `Phase owner`
+    column is now the register and this check is what keeps it honest.
+
+    Only ids declared by an *impl* document are checked: design-spec bands (`T-AVM1-*`, `T-GFX-*`,
+    `T-AST-*`, …) state language and format obligations whose phase ownership arrives with the impl
+    document that consumes them, so they have no obligation row to carry a disposition.
+    """
+    dispositions = test_phase_dispositions()
+    phase_status = roadmap_phase_status()
+    for rec in coverage:
+        cells = sorted(dispositions.get(rec["id"], ()))
+        rec["disposition"] = [cell for _, cell in cells]
+        if rec["status"] != "scheduled-or-unwired":
+            continue
+        if not any("/impl/" in doc for doc in rec["declared_in"]):
+            continue
+        if not cells:
+            report("tests", f"tests.undispositioned:{rec['id']}", "error",
+                   f"{rec['id']} is cited by no test and its obligation row carries no `Phase owner` "
+                   f"cell (declared in {', '.join(rec['declared_in'])}); cite it, or name the phase "
+                   f"that finishes it in the document that owns it")
+            continue
+        docs = {num for num, _ in cells}
+        later = set()
+        for num, cell in cells:
+            own = DOC_PHASE.get(num)
+            for found in re.findall(r"\bP(\d+)\b", cell):
+                phase = "P" + found
+                if own is None or PHASE_ORDER[phase] > PHASE_ORDER[own]:
+                    later.add(phase)
+        completed = sorted({DOC_PHASE[num] for num in docs
+                            if phase_status.get(DOC_PHASE.get(num, "")) == "Completed"})
+        if completed and not later:
+            report("tests", f"tests.openincompleted:{rec['id']}", "error",
+                   f"{rec['id']} is uncited, its document is owned by {'/'.join(completed)} which "
+                   f"roadmap §2 lists as Completed, and its `Phase owner` cell ({cells[0][1]!r}) names "
+                   f"no later phase; a Completed phase may retain only deferrals that stay visible in "
+                   f"the owning spec")
 
 # ------------------------------------------------------------------------------ 8. imports
 IMPORT_FROM = re.compile(r"\bimport\b[^;]*?\bfrom\s*['\"]([^'\"]+)['\"]", re.S)
@@ -1663,7 +1864,9 @@ def main():
     referenced, unemitted, emitted, thrown, emission_sites, exception_sites = check_unemitted(rows, by_name)
     defined, cited, uncited, _ = check_rules()
     declared, cited_tests, test_coverage = check_tests()
+    check_test_dispositions(test_coverage)
     check_imports()
+    check_dependency_direction()
     check_determinism()
     check_op_field_sets()
     gated = check_version_gates(rows, unemitted)

@@ -40,6 +40,45 @@ export class ByteWriter {
     return this.u32(value >>> 0);
   }
 
+  u24(value: number): this {
+    return this.u8(value & 0xff)
+      .u8((value >>> 8) & 0xff)
+      .u8((value >>> 16) & 0xff);
+  }
+
+  /** Canonical (minimal-length) little-endian base-128 `EncodedU32`. */
+  encodedU32(value: number): this {
+    let rest = value >>> 0;
+    for (;;) {
+      const group = rest & 0x7f;
+      rest >>>= 7;
+      if (rest === 0) return this.u8(group);
+      this.u8(group | 0x80);
+    }
+  }
+
+  /** 16.16 fixed point, from its semantic value. */
+  fixed(value: number): this {
+    return this.s32(Math.round(value * 65_536));
+  }
+
+  /** 8.8 fixed point, from its semantic value. */
+  fixed8(value: number): this {
+    return this.s16(Math.round(value * 256));
+  }
+
+  float32(value: number): this {
+    const view = new DataView(new ArrayBuffer(4));
+    view.setFloat32(0, value, true);
+    return this.bytes(new Uint8Array(view.buffer));
+  }
+
+  float64(value: number): this {
+    const view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, value, true);
+    return this.bytes(new Uint8Array(view.buffer));
+  }
+
   bytes(source: ArrayLike<number>): this {
     this.align();
     for (let i = 0; i < source.length; i += 1) {
@@ -288,16 +327,21 @@ export function buildSwf(options: SwfFixtureOptions): Uint8Array {
 }
 
 /**
- * A `DoAction`-style action block: a `UI32` `Length` then the record bytes. An `End` (0x00) is
- * appended when the caller did not supply one. (`IMPL-050-R003`/`R006`.)
+ * A `DoAction` payload: the `ACTIONRECORD` bytes and nothing else. An `End` (0x00) is appended when
+ * the caller did not supply one (`IMPL-050-R006` accepts a missing terminator, but a generator
+ * should emit one).
+ *
+ * There is **no** block-level length prefix. `IMPL-050-R003`'s `Length` is the *per-record* `UI16`
+ * inside an `ACTIONRECORDHEADER`, present only when the `ActionCode`'s high bit is set; the only
+ * `UI32` size in this area is `CLIPACTIONRECORD.ActionRecordSize`, which belongs to clip actions and
+ * not to `DoAction`/`DoInitAction`. Emitting one here once made this helper agree with a front end
+ * that skipped four bytes, so the two were self-consistent and both wrong — every real-world file
+ * mis-parsed while the suite stayed green (`E-034`).
  */
 export function actionBlock(records: readonly number[]): Uint8Array {
   const body = [...records];
   if (body.length === 0 || body[body.length - 1] !== 0x00) body.push(0x00);
-  const w = new ByteWriter();
-  w.u32(body.length);
-  for (const b of body) w.bytes(Uint8Array.from([b]));
-  return w.toUint8Array();
+  return Uint8Array.from(body);
 }
 
 /** Minimal valid file: header, one `ShowFrame`, `End`. */

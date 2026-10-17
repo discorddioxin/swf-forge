@@ -6,7 +6,11 @@ import { decode as decodeJpeg } from 'jpeg-js';
 import { GifReader } from 'omggif';
 import { PNG } from 'pngjs';
 
-import type { BitmapAssetModel } from '@swf-forge/swf';
+import { Codes, type BitmapAssetModel } from '@swf-forge/swf';
+
+/** `AST`'s embedded-format version note: design-owned (`SF0200–0239`, doc 010 §7), so it has no
+ * `Codes.*` constant in the `codes.ts` registry; named here once for both format arms. */
+const EMBEDDED_FORMAT_VERSION = 'SF0203';
 
 export interface BitmapDiagnostic {
   readonly code: string;
@@ -245,14 +249,14 @@ function normalizeJpeg(
   }
   if (!image.subarray(Math.max(0, image.length - 2)).every((byte, index) => byte === (index === 0 ? 0xff : 0xd9))) {
     diagnostics.push({
-      code: 'SF0255',
+      code: Codes.IMAGE_JPEG_MARKER_MISSING,
       severity: 'warning',
       message: 'JPEG payload is missing its EOI marker; decoder recovery attempted',
     });
   }
   if (isProgressiveJpeg(image)) {
     diagnostics.push({
-      code: 'SF0256',
+      code: Codes.IMAGE_PROGRESSIVE_JPEG,
       severity: 'warning',
       message: 'progressive JPEG payload passed to the configured decoder',
     });
@@ -270,7 +274,7 @@ function normalizeJpeg(
   }
   if (removed > 0) {
     diagnostics.push({
-      code: 'SF0258',
+      code: Codes.IMAGE_JPEG_PREFIX_SKIPPED,
       severity: 'info',
       message: `skipped ${removed} erroneous FFD9FFD8 marker pair(s) in the JPEG stream`,
     });
@@ -477,14 +481,14 @@ function decodeJpegImage(
       alphaBytes = inflate(alpha, expectedAlphaLength, 'SF0255');
     } catch (error) {
       diagnostics.push({
-        code: 'SF0255',
+        code: Codes.IMAGE_JPEG_MARKER_MISSING,
         severity: 'warning',
         message: error instanceof Error ? error.message : String(error),
       });
     }
     if (alphaBytes !== null && alphaBytes.length !== expectedAlphaLength) {
       diagnostics.push({
-        code: 'SF0253',
+        code: Codes.IMAGE_ALPHA_LENGTH_MISMATCH,
         severity: 'error',
         message: `JPEG alpha plane has ${alphaBytes.length} bytes; expected ${expectedAlphaLength}`,
       });
@@ -505,14 +509,14 @@ function decodeEmbeddedOrJpeg(
   if (startsWith(payload, PNG_SIGNATURE)) {
     if (model.alpha !== null && model.alpha.length > 0) {
       diagnostics.push({
-        code: 'SF0269',
+        code: Codes.IMAGE_ALPHA_ON_PNG_GIF,
         severity: 'error',
         message: 'JPEG3/4 alpha data is ignored for embedded PNG; PNG alpha is retained',
       });
     }
     if (swfVersion < 8) {
       diagnostics.push({
-        code: 'SF0203',
+        code: EMBEDDED_FORMAT_VERSION,
         severity: 'info',
         message: `embedded PNG is decoded despite SWF version ${swfVersion}`,
       });
@@ -522,14 +526,14 @@ function decodeEmbeddedOrJpeg(
   if (startsWith(payload, GIF89A)) {
     if (model.alpha !== null && model.alpha.length > 0) {
       diagnostics.push({
-        code: 'SF0269',
+        code: Codes.IMAGE_ALPHA_ON_PNG_GIF,
         severity: 'error',
         message: 'JPEG3/4 alpha data is ignored for embedded GIF',
       });
     }
     if (swfVersion < 8) {
       diagnostics.push({
-        code: 'SF0203',
+        code: EMBEDDED_FORMAT_VERSION,
         severity: 'info',
         message: `embedded GIF is decoded despite SWF version ${swfVersion}`,
       });
@@ -560,7 +564,7 @@ export function decodeBitmap(
   }
   if (model.alphaDataOffset !== null && bitmap.contentType === 'jpeg' && model.alpha === null) {
     diagnostics.push({
-      code: 'SF0255',
+      code: Codes.IMAGE_JPEG_MARKER_MISSING,
       severity: 'warning',
       message: 'JPEG alpha data offset was present but the alpha plane is absent',
     });

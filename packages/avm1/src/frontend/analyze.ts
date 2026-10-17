@@ -13,7 +13,7 @@
 
 import type { MovieModel, SwfFile } from '@swf-forge/swf';
 
-import { scanRecords, type ActionRecord, type Emit } from './record.js';
+import { scanRecords, type ActionRecord, type Emit, type ScanOptions } from './record.js';
 import {
   decodeRecord,
   makeStringReader,
@@ -78,6 +78,21 @@ export interface AnalyzedBlock {
 
 const withCapFor = (version: number): number => (version <= 5 ? 8 : 16);
 
+/**
+ * The block kinds a terminating `End` closes (R006; doc 050 §3.2's terminator column): frame and init
+ * scripts only. A function body is delimited by its `CodeSize` and a clip-event or button handler by
+ * its record size, so requiring `End` there reports a phantom `SF0420` for *every* such block
+ * (`E-037`). Measured over the C4-c corpus: **0 of 66** function bodies end with `End`, and 64 of the
+ * 66 contain interior zero bytes — payload zeros, which a record-framed scan never mistakes for a
+ * terminator, but which is why a size-delimited body must not stop at one either (`stopAtEnd: false`,
+ * the same reading R008 already gives `With`/`Try` bodies).
+ */
+const END_TERMINATED_KINDS: readonly BlockKind[] = ['timeline', 'init'];
+
+function scanOptionsFor(kind: BlockKind): ScanOptions {
+  return END_TERMINATED_KINDS.includes(kind) ? {} : { requireEnd: false, stopAtEnd: false };
+}
+
 export function analyzeActionBlock(input: AnalyzeBlockInput): AnalyzedBlock {
   const withCap = input.withCap ?? withCapFor(input.version);
   const ctx = new BlockContext(input, withCap);
@@ -85,8 +100,11 @@ export function analyzeActionBlock(input: AnalyzeBlockInput): AnalyzedBlock {
   // 1+2. Framing + operands. Records inside `With`/`Try` bodies are scanned as their own record
   // streams and merged back in (R008: bodies carry no `End`), so the CFG sees them as scoped
   // records and the region ops get real body blocks.
-  const merged = scanWithRegionBodies(input.bytes, input.emit, (record) =>
-    decodeRecord(record, input.bytes, ctx.operandContext()),
+  const merged = scanWithRegionBodies(
+    input.bytes,
+    input.emit,
+    (record, limit) => decodeRecord(record, input.bytes, ctx.operandContext(limit)),
+    scanOptionsFor(input.kind),
   );
   const scan = merged;
   const records = merged.records;
@@ -195,10 +213,15 @@ interface MergedScan {
  * size delimits it, so the walk always terminates. The merged arrays stay parallel (index `i`
  * of `records` pairs with index `i` of `decoded`) and are sorted by offset.
  */
-function scanWithRegionBodies(bytes: Uint8Array, emit: Emit, decode: (record: ActionRecord) => DecodedOp): MergedScan {
-  const top = scanRecords(bytes, emit);
+function scanWithRegionBodies(
+  bytes: Uint8Array,
+  emit: Emit,
+  decode: (record: ActionRecord, limit: number) => DecodedOp,
+  options: ScanOptions = {},
+): MergedScan {
+  const top = scanRecords(bytes, emit, options);
   const records: ActionRecord[] = [...top.records];
-  const decoded: DecodedOp[] = top.records.map((record) => decode(record));
+  const decoded: DecodedOp[] = top.records.map((record) => decode(record, bytes.length));
 
   let desync = top.desync;
   // BFS over the region bodies every decoded op exposes. A body's declared size delimits it, so
@@ -220,9 +243,15 @@ function scanWithRegionBodies(bytes: Uint8Array, emit: Emit, decode: (record: Ac
     const newRecords: ActionRecord[] = [];
     const newDecoded: DecodedOp[] = [];
     for (const record of sub.records) {
-      const shifted: ActionRecord = { ...record, offset: record.offset + range.start, end: record.end + range.start };
+      const shifted: ActionRecord = {
+        ...record,
+        offset: record.offset + range.start,
+        end: record.end + range.start,
+        regionEnd: record.regionEnd + range.start,
+      };
       newRecords.push(shifted);
-      newDecoded.push(decode(shifted));
+      // A record inside a region is bounded by that region, not by the whole block (R071).
+      newDecoded.push(decode(shifted, range.end));
     }
     records.push(...newRecords);
     decoded.push(...newDecoded);
@@ -290,7 +319,7 @@ class BlockContext {
     });
   }
 
-  operandContext(): OperandContext {
+  operandContext(limit?: number): OperandContext {
     const input = this.input;
     const legacyEncoding = input.legacyEncoding ?? 'windows-1252';
     const closedReader = makeStringReader(input.bytes, input.version, legacyEncoding);
@@ -302,6 +331,7 @@ class BlockContext {
       string: (_bytes, from, to) => closedReader(from, to),
       decodeFunctionBody: (shell) => this.decodeFunctionBody(shell),
       flags: this.flags,
+      ...(limit !== undefined ? { limit } : {}),
     };
   }
 
@@ -396,11 +426,12 @@ function collectTierReasons(
   }[],
   sim: { readonly stackMismatch: boolean; readonly dynamicStack: boolean; readonly blocks: readonly BasicBlock[] },
 ): void {
-  // Framing-level.
-  if (scan.desync) {
-    if (ctx.flags.truncated) ctx.reason('record-truncated', 'action stream truncated mid-record', null);
-    if (ctx.flags.overrun) ctx.reason('record-overrun', 'action record overruns its block', null);
-  }
+  // Framing-level. Not gated on `desync`: a *region* that overruns its block (R071) sets these flags
+  // while the walker clamps and carries on, so gating the reason on a desynchronised walk let an
+  // error-severity `SF0400`/`SF0404` leave the block claiming tier 0 (`E-038`). R004's reading is the
+  // one that applies: an overrun marks the enclosing function residual.
+  if (ctx.flags.truncated) ctx.reason('record-truncated', 'action stream truncated mid-record', null);
+  if (ctx.flags.overrun) ctx.reason('record-overrun', 'action record overruns its block', null);
   for (let i = 0; i < scan.records.length; i += 1) {
     const record = scan.records[i];
     if (record === undefined) continue;
@@ -419,7 +450,7 @@ function collectTierReasons(
 
   // Operand-level.
   if (ctx.flags.pushMalformed) ctx.reason('push-malformed', 'malformed Push pair / unrecognised type byte', null);
-  if (ctx.flags.tryMalformed) ctx.reason('try-malformed', 'Try bodies do not tile the record', null);
+  if (ctx.flags.tryMalformed) ctx.reason('try-malformed', 'Try bodies do not tile their region', null);
   if (ctx.flags.registerOutOfRange) ctx.reason('register-out-of-range', 'register number out of range', null);
   for (let i = 0; i < decoded.length; i += 1) {
     const op = decoded[i];
@@ -522,20 +553,22 @@ function checkTryTiling(
     const record = records[i];
     const op = decoded[i];
     if (record === undefined || op === undefined || op.kind !== 'try') continue;
-    const payloadStart = record.offset + (record.hasLength ? 3 : 1);
     const bodies = op.header;
     const expectedEnd = bodies.headerEnd + bodies.trySize + bodies.catchSize + bodies.finallySize;
-    const malformed = expectedEnd !== record.end;
+    // R034/R071: the three bodies tile the *region* past the header. `decodeRecord` already reports a
+    // region clamped by the enclosing block, so the disagreement left to report here is a declared
+    // `Length` that covers more than the header and the bodies — the table, not the stream, decides
+    // the layout (R003), and those extra bytes belong to no region.
+    const malformed = expectedEnd !== record.regionEnd;
     out.set(i, malformed);
-    if (malformed) {
+    if (malformed && record.end > expectedEnd) {
       emit(
         'SF0404',
         'error',
-        `Try at block offset ${record.offset}: header + bodies end at ${expectedEnd} but the record ends at ${record.end} (R034)`,
+        `Try at block offset ${record.offset}: its Length covers ${record.end - expectedEnd} byte(s) past its header and bodies (R034)`,
         record.offset,
       );
     }
-    void payloadStart;
     void bytes;
   }
   return out;
@@ -614,12 +647,12 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
   // Frame scripts (main timeline + sprite timelines) via the schedule.
   for (const entry of schedule.frameScripts) {
     const ref = entry.block;
-    const bytes = sliceBlock(file, ref);
+    const bytes = sliceActionBytes(file, ref);
     if (bytes === null) continue;
     blocks.push(
       analyzeActionBlock({
         bytes,
-        offsetBase: ref.offset + 4,
+        offsetBase: ref.offset,
         kind: 'timeline',
         id: `frame_${entry.frame}_${entry.order}`,
         version: file.version,
@@ -634,12 +667,12 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
   for (const entry of schedule.initScripts) {
     if (entry.unknownSprite) continue; // dropped (SF0422)
     const ref = entry.block;
-    const bytes = sliceBlock(file, ref);
+    const bytes = sliceActionBytes(file, ref);
     if (bytes === null) continue;
     blocks.push(
       analyzeActionBlock({
         bytes,
-        offsetBase: ref.offset + 4,
+        offsetBase: ref.offset,
         kind: 'init',
         id: `init_${entry.spriteId}_${entry.initOrder}`,
         version: file.version,
@@ -732,15 +765,18 @@ export function analyzeMovie(file: SwfFile, model: MovieModel, options: AnalyzeM
 }
 
 /** The action bytes of a block ref (`offset` points at the 4-byte `Length`). */
-function sliceBlock(file: SwfFile, ref: { readonly offset: number; readonly length: number }): Uint8Array | null {
-  if (ref.length < 4) return null;
-  const start = ref.offset + 4;
-  const end = ref.offset + ref.length;
-  if (start < 0 || end > file.body.length || start >= end) return null;
-  return file.body.subarray(start, end);
-}
-
-/** ActionBlockRef ranges from button/clip records already point at their first ACTIONRECORD byte. */
+/**
+ * `ActionBlockRef` ranges point at their first `ACTIONRECORD` byte for **every** block kind —
+ * `DoAction` (whose payload *is* the record stream), `DoInitAction` (the decoder already consumed
+ * its `UI16 SpriteID`), and the button/clip records — so one slicer serves all of them
+ * (`IMPL-030-R029`, `IMPL-050-R003`/`R006`).
+ *
+ * No prefix is skipped and no minimum length is imposed: a block may legally be a single `End`
+ * (0x00) byte, and `IMPL-050-R006` requires it to be scanned and tiered like any other. Skipping a
+ * phantom four-byte prefix here (`E-034`) desynchronised every frame and init script on real
+ * content — the payload's first record was read from its fifth byte, so `Push "text"` became
+ * `unknown-opcode 0x2f` and a 726-byte script reported as a lone `End`.
+ */
 function sliceActionBytes(file: SwfFile, ref: { readonly offset: number; readonly length: number }): Uint8Array | null {
   const start = ref.offset;
   const end = ref.offset + ref.length;

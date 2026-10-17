@@ -12,10 +12,56 @@ python3 tools/adpcm_hunt.py             # goes and finds the files for it (netwo
 pnpm test:audit                         # unit tests for every tool above
 ```
 
+The browser lane has its own Node tool:
+
+```bash
+pnpm browser:probe                      # what engine would the browser lane use? (JSON; exit 3 if none)
+pnpm browser:install                    # fetch an engine where only the npm registry is reachable
+pnpm test:browser                       # run packages/*/test/**/*.lanes.test.ts in that engine
+```
+
+The open-corpus lane is a third Node tool, and the only evidence in the repository that is not local
+and synthetic:
+
+```bash
+pnpm corpus:fetch                       # download the pinned movies into .forge-cache/corpus/
+pnpm corpus:verify                      # re-hash the cache against fixtures/open/manifest.json
+pnpm corpus:report                      # build, then write audits/P5-C4-CORPUS-EXTERNAL.json
+node tools/open-corpus.mjs list         # what the manifest pins, by group
+```
+
+`fixtures/open/manifest.json` is the committed half: upstream repository, pinned commit, licence, the
+reuse basis, and a sha256 per file. The bytes are **never** committed — doc 020 sanctions exactly three
+roles for a committed binary and an external movie is none of them — so the cache is gitignored and
+`report` refuses to run on a partial corpus. Transport is `raw.githubusercontent.com`, then the
+`api.github.com` contents endpoint, then the same URL through `curl`, because Node's undici ignores
+`HTTPS_PROXY` and is blocked outright in some sandboxes where `curl` works. Set `GITHUB_TOKEN` to lift
+the contents API off its 60-requests-per-hour unauthenticated limit. Class C4-c of
+`docs/impl/registers/corpus.md` describes the selection and what the report does and does not
+discharge; `E-034` and `E-035` in `docs/impl/registers/errata.md` are what running it found.
+
+The P6 round-trip lane is a fourth Node tool, and it is the one that measures *this repository's* corpus:
+
+```bash
+pnpm corpus:roundtrip                 # build + verify every committed .swf, write the report
+pnpm corpus:roundtrip:check           # the same, then fail if audits/P6-CORPUS-ROUNDTRIP.json drifted
+pnpm corpus:roundtrip:open            # also cover C4-c, refusing to run on a partial or mismatched cache
+```
+
+For every input it runs `plan`, `inspect`, a cold `build`, the same build again on a warm stage cache, the same
+build in a second workspace, `verify`, and `verify --deep --against` — so cache equivalence (`IMPL-120-R002`) and
+double-build determinism (`T-CMP-003`) are measured on the corpus rather than asserted by one fixture, and a
+`plan` that wrote a file or a `verify` that found something on a clean project is a finding. It calls the CLI's
+`runCli` in one process rather than spawning a CLI per input: a crash inside a build is what the lane is looking
+for, and a wrapper that swallowed exit 5 into a tally would hide it. `check` is what CI runs (`determinism` job),
+and `--with-open` writes a second artifact so the default one stays reproducible without a corpus cache.
+
 The AVM1 process-restart probe is a separate Node tool: `corepack pnpm test:avm1-restart` builds the workspace, then compares synthetic direct-analysis and CLI reports across fresh processes. The fixture includes T0, T1 (`dynamic-pool`), and T2 (`unknown-opcode`) entries, recovered names, and non-empty requirements; the evidence is local and synthetic only, not open-corpus evidence. Its hashes and report summary are recorded in `audits/P5-C4-RESTART-PROBE.json`.
 
-`adpcm_hunt.py` is the one exception to "no network": it exists to search GitHub and npm for
-Flash content. Everything else is offline.
+`adpcm_hunt.py`, `browser-lane.mjs` and `open-corpus.mjs` are the three exceptions to "no network": the
+first exists to search GitHub and npm for Flash content, the second to fetch a browser engine, the third
+to fetch the licensed external corpus. Everything else is offline — including `corpus-roundtrip.mjs`, which reads
+the corpus cache `open-corpus.mjs` filled but never reaches the network itself.
 
 ## `verify_docs.py`
 
@@ -158,6 +204,33 @@ writes `docs/impl/registers/STATUS.md`: per-document work packages, dev-days, op
 diagnostics, and the chapter/appendix coverage table. The output is generated — never hand-edit it;
 edit the documents and re-run the script. `verify_docs.py` check 7c fails if the snapshot's totals
 disagree with the documents.
+
+## `browser-lane.mjs`
+
+Node, standard library only (no `node_modules`, no build step), three subcommands. It exists so the
+browser lane of roadmap §4.2 has a resolvable engine on hosts where the ordinary installer cannot
+reach the network.
+
+- **`probe`** — prints a JSON report of the engine the lane would use and exits 0, or prints the
+  reason and exits **3** when no engine is usable. Resolution order: `SWF_FORGE_BROWSER_EXECUTABLE` →
+  the cache this tool fills (`~/.cache/swf-forge-browser`) → Playwright's own registry
+  (`~/.cache/ms-playwright/chromium-*/chrome-linux/{headless_shell,chrome}`, the normal CI path) →
+  a system browser on `PATH` (`headless_shell`, `chromium`, `chromium-browser`, `google-chrome`,
+  `google-chrome-stable`). `vitest.browser.config.ts` calls this and passes `executablePath` through
+  `providerOptions.launch` only when the engine is *not* Playwright's own managed build.
+- **`install`** — restricted-network fallback. Downloads `@sparticuz/chromium` from
+  `registry.npmjs.org` (an allowed host), brotli-expands `bin/chromium.br` and `bin/al2023.tar.br`
+  into `~/.cache/swf-forge-browser`, and verifies the engine reports a version before exiting 0.
+  About 70 MB down, 203 MB on disk, ~3 s. Linux x64 only. The package's documented
+  `executablePath()` API does not exist at 153.0.0, and `chromium.br` is a bare ELF despite its
+  sibling's `*.tar.br` naming — both are handled here rather than in the config.
+- **`env`** — prints the `LD_LIBRARY_PATH`/`SWF_FORGE_BROWSER_EXECUTABLE` exports for a shell, for
+  driving the engine by hand.
+
+Nothing is committed: `~/.cache` is outside the repository, and the engine is reproducible from the
+registry, which is what `REPO-R017` requires of large binaries. The cache is disposable — deleting it
+costs one `install`. Ordinary development and CI never need this tool at all: `pnpm exec playwright
+install chromium` populates the registry path the probe already searches.
 
 These tools are the first implementation work packages of the roadmap (`WP-140-08` in
 `docs/impl/harness/140-conformance-harness.md`); when the full test toolchain lands they move to

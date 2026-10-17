@@ -58,9 +58,10 @@ started” are phase states, not completion percentages.
       every file (doc 010 v1.8, roadmap Draft 1.42).
 - [ ] `T-SWF-014/015/016` evidence completed to their full obligation: `-015` and `-016` have one test
       file each, `-014` none.
-- [ ] The diagnostic-literal lint of `IMPL-010` §11.5, with its scope ruled (production only, or tests
-      too). No `check_codes*` script exists in `tools/` and no root script invokes one, so nothing today
-      fails if a `sink.record(...)` call passes a computed code.
+- [x] ~~The diagnostic-literal lint of `IMPL-010` §11.5~~ — delivered 2026-10-16: `tools/check_codes.py`
+      (`pnpm code:lint`, CI-wired, unit-tested in `tools/test_check_codes.py`), scope ruled
+      production-only in `IMPL-010` §11.5 (doc 010 v1.9). Its first run migrated the 10 raw `code:`
+      literals in `packages/assets/src/images/decode.ts` to `Codes.*` constants.
 - [ ] Fresh P0 closeout audit after the above.
 
 The fuzz target is **done** in substance and mis-described in the ledger: it lives in the gated tree as

@@ -1,6 +1,6 @@
 # IMPL-000 — Implementation Roadmap
 
-**Doc ID:** IMPL-000 · **Status:** Draft 1.42 · **Audience:** everyone building swf-forge
+**Doc ID:** IMPL-000 · **Status:** Draft 1.43 · **Audience:** everyone building swf-forge
 **Companion docs:** the per-area implementation specs in this directory; design specs in `docs/specs/`
 
 ---
@@ -540,7 +540,7 @@ assumed to belong to P11, §4.2 names the relocation and P11's extension scope.
 | "Every fixture" in `T-SWF-009` is a checked-in inventory of the in-repo corpus | **Delivered (C1)** — `packages/swf/test/fixture-inventory.test.ts` (2026-10-16) asserts the 26-file C1 inventory against the directory walk and the register count, with repeat-parse identity over all 26. C2's synthetic set remains enumerated as tests, not files (`registers/corpus.md` §4 item 4); `TST-§3.1`'s `open`/`archive` classes are P11's corpus program, with the forward recorded |
 | The primitive-consumer register answers §10 items 3–4 without consulting a later phase | **Open** — P0 owns it (§4.1): `FLOAT16` → `DefineFontAlignZones` (tag 73, decoded by doc 080 → P3); no `SI24` exists in the encoded set; the sole 24-bit field is doc 110's `OffsetToAlpha UI24`, which **consumes** this register rather than supplying it |
 | The reader fuzz target (`WP-010-12`) lives inside the gated tree | **Delivered** — `packages/swf/test/fuzz.test.ts` (+ `fuzz/corpus/`), typechecked, linted and run by `pnpm test:fuzz` in the gated tree; doc 140's long-run hosting (`WP-140-07`) remains the P11 forward, not a P0 obligation |
-| The diagnostic-literal lint rule exists (`IMPL-010` §11.5) | **Open** — P0-owned; needs its scope ruling (production only, or tests too) |
+| The diagnostic-literal lint rule exists (`IMPL-010` §11.5) | **Delivered** — `tools/check_codes.py` (`pnpm code:lint`, CI), scope ruled production-only in `IMPL-010` §11.5 (v1.9): R1 every production literal registered, R2 no raw `code:` literal outside `codes.ts`, R3 no computed code |
 | Diagnostic framework emits `SF` codes with scope | unit tests |
 
 ### P1 — Container & dictionary
@@ -844,3 +844,4 @@ art):
 | 1.40 | 2026-10-15 | P6's remaining lane is *wider than `IMPL-120`'s table*, and saying so plainly: seven packages across the roadmap carry `Phase owner: P6`, six of them in docs 070/080/090/110, so "13 of 14 delivered" describes one document only. `WP-110-12` is now delivered — the `DefineVideoStream` header plus summed  `VideoFrame` byte extents that doc 120's video-budget rule (`IMPL-120` §4) names as the P6 reading (`packages/swf/src/video/extent.ts`, `T-MOD-917`, 13 tests; doc 110 1.5, doc 120 1.16). What keeps `WP-120-07` open is the encode side, not the reading side: `WP-070-06/07/08/09` (classify, re-encode ladder + mips, `.sfa` writer, texture budgets), `WP-080-11` (glyph subsetter) and `WP-090-12` (audio budgets section) are all still open, and `budgets.json` is composed from the last of each. Repo-wide: 79 test files / 1,084 tests, type-check 0, verify_docs and audit_dev clean |
 | 1.41 | 2026-10-16 | Temporary P0–P6 close-out roadmap Wave 0 (doc hygiene only, no phase status changed): `WP-120-01`'s row in `IMPL-120` §9 gains its **Done** marker (doc 120 v1.17), and `WP-010-12`'s deliverable is re-pointed at the delivered fuzz target `packages/swf/test/fuzz.test.ts` (doc 010 v1.7; roadmap §6's P0 fuzz row now reads Delivered). Both items were done in substance and mis-described in the ledger |
 | 1.42 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-1: `T-SWF-009` delivered and wired to its inventory (`packages/swf/test/fixture-inventory.test.ts`), so the last uncited P0 inventory obligation is evidence rather than a substance claim. P0 stays **In progress**: `T-SWF-014/015/016/017`, the diagnostic-literal lint and the `UI32` disposition (`E-033`) remain |
+| 1.43 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the diagnostic-literal lint (`IMPL-010` §11.5) delivered and scope-ruled, and roadmap §6's P0 lint row now reads Delivered. The lint's first run migrated the 10 raw `code:` literals in `packages/assets/src/images/decode.ts` to `Codes.*` constants with no emitted value changed |

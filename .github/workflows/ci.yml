@@ -38,6 +38,8 @@ jobs:
 
       - name: Verify specification documents
         run: pnpm spec:verify
+      - name: Diagnostic-literal lint
+        run: pnpm code:lint
 
       - name: Test audit tooling
         run: pnpm test:audit

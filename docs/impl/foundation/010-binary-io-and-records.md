@@ -692,6 +692,19 @@ obligation).
 6. This document's changelog records any divergence found while implementing, and errata entries are
    filed for anything that is upstream's fault rather than ours.
 
+## 11.5 Diagnostic-literal lint (scope ruling)
+
+Criterion 5's lint exists as `tools/check_codes.py` (`pnpm code:lint`, in CI). Its scope is ruled
+**production only** (`packages/*/src`, `apps/*/src`): tests assert literals, which is their job.
+Three rules: **R1** every `SFdddd` literal outside `codes.ts` must be registered there or in a §7
+allocation row (including the design-owned blocks the registry deliberately skips); **R2** no raw
+literal in a diagnostic object's `code:` property outside `codes.ts` — emission goes through a
+`Codes.*` constant (or a named module constant for a design-owned code); **R3** no computed
+`code:` value (template interpolation or concatenation) at an emission site. Comparison literals
+(`code === 'SF0250'`) and error-constructor arguments are covered by R1, not R2: they cannot mint
+a code the registry does not know, and the sink-facing `code:` property is where a computed or
+typo'd code would otherwise pass silently. Unit tests: `tools/test_check_codes.py`.
+
 ## 12. Changelog
 
 | Version | Date | Change |
@@ -705,3 +718,4 @@ obligation).
 | 1.6 | 2026-10-13 | Roadmap §4.4 follow-ups applied (supply-forward rule, `IMPL-000` 1.20): §8 gains the normative **allocation/copy counter contract** (`IMPL-010-R043`–`R045`, adopting P4's instrumented-counter precedent and separating `T-SWF-017`'s hot-read object count from `SWF-R001`'s payload-copy bound) and the **primitive-consumer register**; §10 items 3–4 close on that register — item 3 **positively** (`DefineFontAlignZones`, tag 73, consumes `FLOAT16`; `E-004`'s risk sentence corrected) and item 4 negatively (no `SI24` in the encoded set; the sole 24-bit field is doc 110's `OffsetToAlpha UI24`, which consumes the register rather than supplying it); §9 gains a `Phase owner` column (all rows P0) and `WP-010-12` is re-sited from the ungated `tools/fuzz/readers.ts` into `packages/swf/test/fuzz/`, with long-run hosting declared as a P11 forward on `WP-140-07`; §11 criterion 1 records the delivered browser lane and criterion 4 cites the counter contract; the §8 `UI32` row is annotated as disputed and filed as `E-033` rather than silently corrected |
 | 1.7 | 2026-10-16 | Temporary P0–P6 close-out roadmap, Wave 0: `WP-010-12`'s deliverable cell re-pointed at the delivered target (`packages/swf/test/fuzz.test.ts` + `fuzz/corpus/`, `pnpm test:fuzz`). The fuzz target was done in substance and mis-described in the ledger; no obligation changed |
 | 1.8 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-1: `T-SWF-009` delivered — `packages/swf/test/fixture-inventory.test.ts` carries the checked-in C1 inventory (the 21 committed fixtures + 5 crasher-corpus files the register counts), asserts the directory walk and `registers/corpus.md` §1's count against it, and asserts two parses of every file produce identical header values, tag offsets, dictionary entries and diagnostics. Adding a fixture without updating the inventory now fails a gated test |
+| 1.9 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the §11.5 diagnostic-literal lint delivered as `tools/check_codes.py` (`pnpm code:lint`, CI-wired, unit-tested), with its scope ruled production-only in the new §11.5 (R1 registry membership, R2 no raw `code:` literals, R3 no computed codes). Its first run found the 10 raw `code:` literals in `packages/assets/src/images/decode.ts`, now `Codes.*` constants (plus one named constant for design-owned `SF0203`); no emitted code value changed |

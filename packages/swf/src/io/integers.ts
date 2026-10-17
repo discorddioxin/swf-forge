@@ -65,7 +65,16 @@ export interface EncodedU32Result {
  *
  * The 5th byte contributes only 4 significant bits; the result is always an unsigned 32-bit number.
  */
-export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
+export interface MutableEncodedU32Result {
+  value: number;
+  bytesRead: number;
+  overlong: boolean;
+  overflow: boolean;
+  danglingContinuation: boolean;
+}
+
+/** `encodedU32`'s loop, filling a caller-owned scratch object (allocation-free hot path). */
+export function encodedU32Into(bytes: Uint8Array, at: number, out: MutableEncodedU32Result): void {
   let value = 0;
   let shift = 0;
   let count = 0;
@@ -109,5 +118,21 @@ export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
     overlong = true;
   }
 
-  return { value: unsigned, bytesRead: count, overlong, overflow, danglingContinuation };
+  out.value = unsigned;
+  out.bytesRead = count;
+  out.overlong = overlong;
+  out.overflow = overflow;
+  out.danglingContinuation = danglingContinuation;
+}
+
+export function encodedU32(bytes: Uint8Array, at: number): EncodedU32Result {
+  const out: MutableEncodedU32Result = {
+    value: 0,
+    bytesRead: 0,
+    overlong: false,
+    overflow: false,
+    danglingContinuation: false,
+  };
+  encodedU32Into(bytes, at, out);
+  return out;
 }

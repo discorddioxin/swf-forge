@@ -6,6 +6,7 @@
  */
 
 import { Codes } from '../diagnostics/codes.js';
+import { noteRecordAllocation } from './counter.js';
 import type { Cursor } from './cursor.js';
 import { IDENTITY_CXFORM, type Cxform, type Mat2D, type Rect } from './types.js';
 
@@ -15,6 +16,7 @@ export function readRect(c: Cursor): Rect {
   if (nbits > 31) {
     c.emit(Codes.RECT_NBITS_INVALID, 'error', `RECT Nbits ${nbits} > 31`);
     c.align();
+    noteRecordAllocation();
     return { xMin: 0, xMax: 0, yMin: 0, yMax: 0 };
   }
   const xMin = c.sb(nbits);
@@ -31,6 +33,7 @@ export function readRect(c: Cursor): Rect {
   ) {
     c.emit(Codes.VALUE_OUT_OF_RANGE, 'info', 'RECT coordinate outside the plausible twip range');
   }
+  noteRecordAllocation();
   return { xMin, xMax, yMin, yMax };
 }
 
@@ -59,10 +62,12 @@ export function readMatrix(c: Cursor): Mat2D {
   const tx = c.sb(nTranslateBits);
   const ty = c.sb(nTranslateBits);
   c.align();
+  noteRecordAllocation();
   return { a, b, c: cc, d, tx, ty };
 }
 
 function cxform(c: Cursor, hasAlpha: boolean): Cxform {
+  noteRecordAllocation();
   const hasAdd = c.ub(1) === 1;
   const hasMult = c.ub(1) === 1;
   const nbits = c.ub(4);

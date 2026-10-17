@@ -40,6 +40,45 @@ export class ByteWriter {
     return this.u32(value >>> 0);
   }
 
+  u24(value: number): this {
+    return this.u8(value & 0xff)
+      .u8((value >>> 8) & 0xff)
+      .u8((value >>> 16) & 0xff);
+  }
+
+  /** Canonical (minimal-length) little-endian base-128 `EncodedU32`. */
+  encodedU32(value: number): this {
+    let rest = value >>> 0;
+    for (;;) {
+      const group = rest & 0x7f;
+      rest >>>= 7;
+      if (rest === 0) return this.u8(group);
+      this.u8(group | 0x80);
+    }
+  }
+
+  /** 16.16 fixed point, from its semantic value. */
+  fixed(value: number): this {
+    return this.s32(Math.round(value * 65_536));
+  }
+
+  /** 8.8 fixed point, from its semantic value. */
+  fixed8(value: number): this {
+    return this.s16(Math.round(value * 256));
+  }
+
+  float32(value: number): this {
+    const view = new DataView(new ArrayBuffer(4));
+    view.setFloat32(0, value, true);
+    return this.bytes(new Uint8Array(view.buffer));
+  }
+
+  float64(value: number): this {
+    const view = new DataView(new ArrayBuffer(8));
+    view.setFloat64(0, value, true);
+    return this.bytes(new Uint8Array(view.buffer));
+  }
+
   bytes(source: ArrayLike<number>): this {
     this.align();
     for (let i = 0; i < source.length; i += 1) {

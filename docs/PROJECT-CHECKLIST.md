@@ -48,16 +48,20 @@ started” are phase states, not completion percentages.
       resolved**; the discrepancy is pinned and derived mechanically today (`VECTOR_TABLE_DISCREPANCIES`),
       so a row-by-row exact-equality matrix cannot be asserted until this is dispositioned in
       [`impl/registers/errata.md`](impl/registers/errata.md).
-- [ ] Allocation and copy counts measured by a **named, deterministic counter** (roadmap §6, `T-SWF-017`,
-      `SWF-R001`'s 5 MiB payload-copy budget). `T-SWF-017` appears in no test file, and the only
-      allocation-shaped code in the reader is `packages/swf/src/node/lzma.ts`'s pre-bound. A heap-size
-      delta or a memoization test is not a substitute.
+- [x] ~~Allocation and copy counts measured by a **named, deterministic counter**~~ — delivered
+      2026-10-16: `allocationCounter` (`packages/swf/src/io/counter.ts`, `IMPL-010-R043`) asserted in
+      `packages/swf/test/io-allocations.test.ts` — 0 primitive allocations over 10⁶ warm reads, exactly
+      1 result object per record read, ≤ 1 payload copy over a ≥ 5 MiB `FWS` parse. Three hot paths
+      (`float16`, `encodedU32`, `float32`/`float64`) were made allocation-free to earn the 0 (doc 010
+      v1.11).
 - [x] ~~`T-SWF-009`'s "every fixture" as a **checked-in inventory artifact**~~ — delivered 2026-10-16:
       `packages/swf/test/fixture-inventory.test.ts` carries the id, asserts the 26-file C1 inventory
       against the directory walk and the register's count line, and asserts repeat-parse identity over
       every file (doc 010 v1.8, roadmap Draft 1.42).
-- [ ] `T-SWF-014/015/016` evidence completed to their full obligation: `-015` and `-016` have one test
-      file each, `-014` none.
+- [x] ~~`T-SWF-014/015/016` evidence completed~~ — delivered 2026-10-16: `T-SWF-014` wired in
+      `packages/swf/test/io-property.test.ts` (10⁵ seeded values over 12 kinds, fixed-point bytes with
+      counterexample reporting; `ByteWriter` gained the six missing encoders), and `-015`/`-016`
+      strengthened there to their full recovery/error contracts (doc 010 v1.10).
 - [x] ~~The diagnostic-literal lint of `IMPL-010` §11.5~~ — delivered 2026-10-16: `tools/check_codes.py`
       (`pnpm code:lint`, CI-wired, unit-tested in `tools/test_check_codes.py`), scope ruled
       production-only in `IMPL-010` §11.5 (doc 010 v1.9). Its first run migrated the 10 raw `code:`

@@ -542,10 +542,10 @@ applies).
 | `T-SWF-004` | primitive vectors below, exact equality | F1 | P0 |
 | `T-SWF-009` | two parses of every fixture produce identical offsets and values | F1 | P0 — **delivered**: `packages/swf/test/fixture-inventory.test.ts` asserts the checked-in C1 inventory (21 + 5 = 26) against the directory walk and the register's count, and repeat-parse identity over all 26 |
 | `T-SWF-013` | MATRIX rotation convention round-trip (E-005) | F2 | P0 |
-| `T-SWF-014` | property test: `writer → reader → writer` is a fixed point for 10⁵ random values | F1 | P0 open — WP-010-11 property test |
-| `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 | P0 — cited; recovery contract strengthening open |
-| `T-SWF-016` | strict mode throws `SwfReadError` with the documented code and offset | F1 | P0 — cited; error contract strengthening open |
-| `T-SWF-017` | zero allocations from a warm cursor over 10⁶ reads (allocation counter) | F1 | P0 open — WP-010-11, IMPL-010-R043–R045 |
+| `T-SWF-014` | property test: `writer → reader → writer` is a fixed point for 10⁵ random values | F1 | P0 — **delivered**: `packages/swf/test/io-property.test.ts` (100,000 seeded values over 12 reader kinds; counterexamples throw with kind, value and bytes) |
+| `T-SWF-015` | soft-mode recovery: a corrupt record yields a diagnostic and later records still parse | F1 | P0 — **delivered**: cited, and strengthened in `io-property.test.ts` (later values parse exactly after an invalid-width soft read and after an overlong `EncodedU32` mid-stream) |
+| `T-SWF-016` | strict mode throws `SwfReadError` with the documented code and offset | F1 | P0 — **delivered**: cited, and strengthened in `io-property.test.ts` (the thrown `SwfReadError` carries an `SFdddd` code and the exact offset, and the cursor has not moved) |
+| `T-SWF-017` | zero allocations from a warm cursor over 10⁶ reads (allocation counter) | F1 | P0 — **delivered**: `packages/swf/test/io-allocations.test.ts` measures `allocationCounter` (`io/counter.ts`) over 10⁶ warm reads per class; record readers carry their separately stated budget of exactly 1 object per read |
 | `T-SWF-024` | every registered diagnostic severity matches its owning implementation §8 table | F1 | P0 |
 
 ### Vector table
@@ -640,7 +640,7 @@ does not supply it. This is what lets §10 items 3–4 close without waiting on 
 | WP-010-08 | `RECT` | WP-010-04 | 0.5 | `io/records.ts` + T-SWF-004 rect row | P0 |
 | WP-010-09 | `MATRIX` + `decomposeMatrix` | WP-010-05 | 2 | `io/records.ts` + T-SWF-013 | P0 |
 | WP-010-10 | `CXFORM` / `CXFORMWITHALPHA` (shared impl) | WP-010-04 | 1 | `io/records.ts` + T-SWF-004 cxform rows | P0 |
-| WP-010-11 | Test writer + property tests + allocation test | WP-010-03…10 | 3 | `test-support/writer.ts`, T-SWF-014/017 | P0 |
+| WP-010-11 | Test writer + property tests + allocation test | WP-010-03…10 | 3 | `test-support/writer.ts` (extended v1.10), T-SWF-014 + T-SWF-017 delivered (v1.10/v1.11) — **Done** | P0 |
 | WP-010-12 | Reader fuzz target (in-process, no I/O) | WP-010-02 | 1 | `packages/swf/test/fuzz.test.ts` (+ `packages/swf/test/fuzz/corpus/`) — delivered at that re-sited home under `pnpm test:fuzz`; re-sited from `tools/fuzz/readers.ts` (v1.6), and the v1.7 changelog records that the delivered filename is `fuzz.test.ts`, not the `readers.*.test.ts` glob this row originally named: `tools/**` is outside both `eslint.config.js` and the root `tsconfig.json`, so the declared path would be neither linted nor typechecked (`REPO-R009`). Long-run hosting is doc 140's `WP-140-07` | P0 |
 | | **Total** | | **20** | | |
 
@@ -658,7 +658,7 @@ consuming a P0 deliverable), and the undeclared cycle described in
 As of v1.6 this table is **empty of open rows**. That is a statement about chapter-text questions, not
 about acceptance: §11's done criteria are a separate list, and several are still open — the §8 vector
 matrix is incomplete until `WP-010-11`'s writer exists for the `RECT`/`MATRIX`/`CXFORMWITHALPHA` rows,
-the `UI32` row is disputed (`E-033`), and `T-SWF-014`/`015`/`016`/`017` still lack their full evidence (`T-SWF-009` closed 2026-10-16, v1.8).
+the `UI32` row is disputed (`E-033`) is the last §8 item without evidence (`T-SWF-009` closed v1.8; `T-SWF-014`/`017` delivered and `T-SWF-015`/`016` strengthened v1.10–v1.11).
 `docs/impl/registers/STATUS.md` counts the rows below, so "0 open items" here must not be read as P0
 being closeable (roadmap §2's status policy: code presence or a test citation alone does not close an
 obligation).
@@ -719,3 +719,5 @@ typo'd code would otherwise pass silently. Unit tests: `tools/test_check_codes.p
 | 1.7 | 2026-10-16 | Temporary P0–P6 close-out roadmap, Wave 0: `WP-010-12`'s deliverable cell re-pointed at the delivered target (`packages/swf/test/fuzz.test.ts` + `fuzz/corpus/`, `pnpm test:fuzz`). The fuzz target was done in substance and mis-described in the ledger; no obligation changed |
 | 1.8 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-1: `T-SWF-009` delivered — `packages/swf/test/fixture-inventory.test.ts` carries the checked-in C1 inventory (the 21 committed fixtures + 5 crasher-corpus files the register counts), asserts the directory walk and `registers/corpus.md` §1's count against it, and asserts two parses of every file produce identical header values, tag offsets, dictionary entries and diagnostics. Adding a fixture without updating the inventory now fails a gated test |
 | 1.9 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the §11.5 diagnostic-literal lint delivered as `tools/check_codes.py` (`pnpm code:lint`, CI-wired, unit-tested), with its scope ruled production-only in the new §11.5 (R1 registry membership, R2 no raw `code:` literals, R3 no computed codes). Its first run found the 10 raw `code:` literals in `packages/assets/src/images/decode.ts`, now `Codes.*` constants (plus one named constant for design-owned `SF0203`); no emitted code value changed |
+| 1.10 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-2: `WP-010-11`'s writer/property half delivered — `ByteWriter` gains the six missing encoders and `packages/swf/test/io-property.test.ts` wires `T-SWF-014` (10⁵ seeded values, 12 kinds, byte fixed point with counterexample reporting) and strengthens `T-SWF-015`/`T-SWF-016` to their full contracts. `WP-010-11` stays open for `T-SWF-017`'s allocation counter only |
+| 1.11 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-3: `T-SWF-017` and the `SWF-R001` copy bound delivered. New `packages/swf/src/io/counter.ts` is the named deterministic counter (`IMPL-010-R043`); three hot paths were made allocation-free so the bound is honestly 0 — `float16` gained non-allocating `float16Value`/`float16Special` accessors, `encodedU32Into` fills a per-cursor scratch, and `float32`/`float64` share one per-cursor `DataView` created at warm-up. Record readers count exactly their one result object; `takeBytes`/`rest` count as classified payload copies and `viewBytes`/tag payloads are asserted to share the input buffer. `packages/swf/test/io-allocations.test.ts`: 0 primitive allocations over 10⁶ warm reads (byte- and bit-aligned), exactly 3 record objects per rect+matrix+cxform triple over 10⁴ reads, and ≤ 1 payload copy for a ≥ 5 MiB in-memory `FWS` parse. `WP-010-11` is Done |

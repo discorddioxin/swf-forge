@@ -14,6 +14,7 @@ export type { Diagnostic, DiagnosticInput, DiagnosticSummary, Severity } from '.
 
 // ---- binary IO (`IMPL-010`) ---------------------------------------------------------------------
 export { Cursor } from './io/cursor.js';
+export { allocationCounter, resetAllocationCounter, type AllocationCounter } from './io/counter.js';
 export { SwfReadError } from './io/errors.js';
 export { fixed8_8, fixed16_16, float16 } from './io/real.js';
 export { maskFor, signExtend } from './io/bits.js';

@@ -11,8 +11,9 @@ import { DiagnosticSink } from '../diagnostics/sink.js';
 import type { Code } from '../diagnostics/codes.js';
 import type { Diagnostic, Severity } from '../diagnostics/types.js';
 import { SwfReadError } from './errors.js';
-import { encodedU32, s8, s16, s32, s64, u16, u24, u32, u64 } from './integers.js';
-import { fixed16_16, fixed8_8, float16 } from './real.js';
+import { encodedU32Into, s8, s16, s32, s64, u16, u24, u32, u64, type MutableEncodedU32Result } from './integers.js';
+import { fixed16_16, fixed8_8, float16Special, float16Value } from './real.js';
+import { notePayloadCopy, notePrimitiveAllocation } from './counter.js';
 import { maskFor, signExtend } from './bits.js';
 import { decodeString, type StringReadOptions } from './strings.js';
 
@@ -38,6 +39,16 @@ export interface CursorOptions {
 export class Cursor {
   readonly bytes: Uint8Array;
   #pos: number;
+  /** One `DataView` over the whole buffer, created lazily at warm-up (`IMPL-010-R044`). */
+  #view: DataView | undefined;
+  /** Reused `EncodedU32` scratch, so the hot read allocates nothing (`IMPL-010-R045`). */
+  readonly #encoded: MutableEncodedU32Result = {
+    value: 0,
+    bytesRead: 0,
+    overlong: false,
+    overflow: false,
+    danglingContinuation: false,
+  };
   #bit = 0;
   readonly limit: number;
   readonly mode: 'soft' | 'strict';
@@ -132,6 +143,7 @@ export class Cursor {
     offset = this.#pos,
     extra: Partial<Pick<Diagnostic, 'tagCode' | 'decision' | 'context'>> & { characterId?: number | null } = {},
   ): void {
+    notePrimitiveAllocation();
     this.sink.emit({
       code,
       severity,
@@ -185,6 +197,7 @@ export class Cursor {
 
   takeBytes(length: number): Uint8Array {
     if (!this.#need(length)) return new Uint8Array(0);
+    notePayloadCopy(length);
     const copy = this.bytes.slice(this.#pos, this.#pos + length);
     this.#pos += length;
     return copy;
@@ -198,6 +211,7 @@ export class Cursor {
   }
 
   rest(): Uint8Array {
+    notePayloadCopy(this.limit - this.#pos);
     const copy = this.bytes.slice(this.#pos, this.limit);
     this.#pos = this.limit;
     return copy;
@@ -304,23 +318,32 @@ export class Cursor {
   /** IEEE binary16 -> float64. */
   float16(): number {
     const raw = this.u16();
-    const { value, special } = float16(raw);
+    const special = float16Special(raw);
     if (special !== 'none') {
       this.emit(Codes.FLOAT16_SPECIAL, 'info', `FLOAT16 ${special} payload 0x${raw.toString(16)} canonicalised`);
     }
-    return value;
+    return float16Value(raw);
+  }
+
+  /** The cursor's one cached `DataView`; its creation is the counted allocation. */
+  #dataView(): DataView {
+    if (this.#view === undefined) {
+      notePrimitiveAllocation();
+      this.#view = new DataView(this.bytes.buffer, this.bytes.byteOffset, this.bytes.byteLength);
+    }
+    return this.#view;
   }
 
   float32(): number {
     if (!this.#need(4)) return 0;
-    const v = new DataView(this.bytes.buffer, this.bytes.byteOffset + this.#pos, 4).getFloat32(0, true);
+    const v = this.#dataView().getFloat32(this.#pos, true);
     this.#pos += 4;
     return v;
   }
 
   float64(): number {
     if (!this.#need(8)) return 0;
-    const v = new DataView(this.bytes.buffer, this.bytes.byteOffset + this.#pos, 8).getFloat64(0, true);
+    const v = this.#dataView().getFloat64(this.#pos, true);
     this.#pos += 8;
     return v;
   }
@@ -328,7 +351,8 @@ export class Cursor {
   /** Little-endian base-128, 1–5 bytes (`IMPL-010-R013`). */
   encodedU32(): number {
     const at = this.#pos;
-    const res = encodedU32(this.bytes, at);
+    encodedU32Into(this.bytes, at, this.#encoded);
+    const res = this.#encoded;
     this.#pos += res.bytesRead;
     if (res.overlong || res.overflow || res.danglingContinuation) {
       const what = res.overflow

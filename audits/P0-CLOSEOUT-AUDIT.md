@@ -55,3 +55,12 @@ P0 in the meantime (the reader's behaviour is already the byte-derived one).
 - `E-005` (`MATRIX` rotation sign) stays open in the register but is dispositioned `resolved
   (v1.1)` in doc 010 §10 item 2 with `T-SWF-013` as its regression check; register reconciliation
   is a register edit, not P0 evidence.
+
+---
+
+**Addendum (2026-10-16, same day).** The user supplied the upstream SWF v19 specification, and
+ruling D1 was taken from its Chapter 1 text rather than held for a decision meeting: upstream
+prints the hex value and bytes with no decimal, so the disputed cell was our own miscomputation.
+`E-033` is closed (errata 2.25; doc 010 v1.12; the `ui32` pin removed), §11 criterion 1 now passes
+in full, and **P0 is marked Completed** (roadmap Draft 1.45). This addendum supersedes §4's
+recommendation above, which was written before the text was available.

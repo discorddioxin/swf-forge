@@ -19,7 +19,7 @@ jobs on `3ffb70f`.
 
 | Phase | Status | Disposition |
 | --- | --- | --- |
-| P0 — Foundations | **In progress** | Implementation is delivered and every gate is green; five **evidence** obligations in [roadmap §6](impl/000-roadmap.md) still read Open/Partly, and one disposition ruling is outstanding (below). See [P0 audit](../audits/P0-AUDIT.md) and [resolution](../audits/P0-AUDIT-RESOLUTION.md). |
+| P0 — Foundations | **Completed** | Closed 2026-10-16: every §6 evidence obligation is in the gate set and the `UI32` ruling was taken from the upstream SWF v19 text (`E-033` closed). See [P0 closeout audit](../audits/P0-CLOSEOUT-AUDIT.md). |
 | P1 — Container & dictionary | **Completed** | Exit-ready with explicit non-blocking deferrals; see [P1 audit](../audits/P1-AUDIT.md) and [resolution](../audits/P1-AUDIT-RESOLUTION.md). |
 | P2 — Model & timeline | **Completed** | See [P2 audit](../audits/P2-AUDIT.md) and [resolution](../audits/P2-AUDIT-RESOLUTION.md). |
 | P3 — Media decode & build assets | **Completed** | C7 checkpoint and phase closeout complete; the *asset-encode* half of P3's later packages is re-homed to P6 and is open there (`WP-070-06…09`, `WP-080-11`, `WP-090-12`). See [P3 audit](../audits/P3-AUDIT.md) and [resolution](../audits/P3-AUDIT-RESOLUTION.md). |
@@ -42,12 +42,10 @@ started” are phase states, not completion percentages.
 
 ### P0 — Foundations
 
-- [ ] `IMPL-010` §8's `UI32` row (`0x456e7120` printing `1163342112`) needs its ruling: bytes-are-authoritative
-      (the `E-025` class) or a transcription error in our table. Carried as roadmap §4.4 item 10 and
-      [`audits/P0-PHASE-DEPENDENCY-MAP.md`](../audits/P0-PHASE-DEPENDENCY-MAP.md) §10.4 — **reported, not
-      resolved**; the discrepancy is pinned and derived mechanically today (`VECTOR_TABLE_DISCREPANCIES`),
-      so a row-by-row exact-equality matrix cannot be asserted until this is dispositioned in
-      [`impl/registers/errata.md`](impl/registers/errata.md).
+- [x] ~~`IMPL-010` §8's `UI32` row needs its ruling~~ — ruled 2026-10-16 from the upstream SWF v19
+      Chapter 1 text (user-supplied): upstream prints the hex value and the bytes with no decimal, so
+      the cell was our own miscomputation. Corrected to `1164865824`, the `ui32` pin removed, `E-033`
+      closed (errata 2.25, doc 010 v1.12).
 - [x] ~~Allocation and copy counts measured by a **named, deterministic counter**~~ — delivered
       2026-10-16: `allocationCounter` (`packages/swf/src/io/counter.ts`, `IMPL-010-R043`) asserted in
       `packages/swf/test/io-allocations.test.ts` — 0 primitive allocations over 10⁶ warm reads, exactly
@@ -66,7 +64,8 @@ started” are phase states, not completion percentages.
       (`pnpm code:lint`, CI-wired, unit-tested in `tools/test_check_codes.py`), scope ruled
       production-only in `IMPL-010` §11.5 (doc 010 v1.9). Its first run migrated the 10 raw `code:`
       literals in `packages/assets/src/images/decode.ts` to `Codes.*` constants.
-- [ ] Fresh P0 closeout audit after the above.
+- [x] ~~Fresh P0 closeout audit~~ — [`audits/P0-CLOSEOUT-AUDIT.md`](../audits/P0-CLOSEOUT-AUDIT.md),
+      2026-10-16: §11's six criteria re-measured; **P0 Completed** (roadmap Draft 1.45).
 
 The fuzz target is **done** in substance and mis-described in the ledger: it lives in the gated tree as
 `packages/swf/test/fuzz.test.ts` (with `packages/swf/test/fuzz/corpus/`) and runs under `pnpm test:fuzz`,
@@ -194,8 +193,8 @@ Sources: [roadmap §2/§6](impl/000-roadmap.md) and the owning specs listed ther
       the writers generate per test; (5) §2 requirement 3's hash-pinned-manifest arm is proposed, not agreed;
       (6) the C4-c lane is run by hand (`tools/open-corpus.mjs report`) and no test asserts its invariants,
       so a regression like `E-034` could return unnoticed.
-- [ ] 16 errata entries stay open in [`impl/registers/errata.md`](impl/registers/errata.md): `E-005`,
-      `E-033`, `E-041`–`E-053`, `E-055`, plus `E-056`'s spec-ask half. The ones that bear on P6's
+- [ ] 15 errata entries stay open in [`impl/registers/errata.md`](impl/registers/errata.md): `E-005`,
+      `E-041`–`E-053`, `E-055`, plus `E-056`'s spec-ask half. The ones that bear on P6's
       acceptance are `E-042` (`CMP`'s acceptance table and `IMPL-120` §8 give the same `T-CMP-*` ids
       different meanings), `E-043` (three severities implemented, four plus a `requirement` field
       specified), `E-046` (three payloads a dead-code proof cannot read), `E-048`–`E-051` (artifact and
@@ -238,8 +237,8 @@ The product is not ready for v1.0 until the roadmap's release definition is sati
       the other two engines are P11's.)*
 - [ ] Security suite is green and `THIRD_PARTY.md` is complete.
 - [ ] Every design decision is settled or explicitly accepted; no un-triaged decision remains.
-- [ ] [`impl/registers/errata.md`](impl/registers/errata.md) is current — 16 open entries as of this
-      snapshot, and each of them is triaged rather than un-triaged.
+- [ ] [`impl/registers/errata.md`](impl/registers/errata.md) is current — 15 open entries as of
+      2026-10-16 (`E-033` closed by ruling D1), and each of them is triaged rather than un-triaged.
 
 ## Source of truth and update rules
 

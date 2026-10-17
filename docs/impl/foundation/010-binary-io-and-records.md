@@ -552,7 +552,7 @@ applies).
 
 | Value | Bytes (hex) | Expected | Source |
 | --- | --- | --- | --- |
-| `UI32` `0x456e7120` | `20 71 6e 45` | `1163342112` ⚠ **disputed, `E-033`** — the cell disagrees with the row's own bytes *and* hex label; the byte-derived value is `1164865824` | Ch.1 |
+| `UI32` `0x456e7120` | `20 71 6e 45` | `1164865824` | Ch.1 (value and bytes printed verbatim upstream; the decimal is derived — an earlier printing of this cell miscomputed it, `E-033` closed) |
 | `UI16` `0xe712` | `12 e7` | `59154` | Ch.1 |
 | `UI24` `0x123456` | `56 34 12` | `1193046` | type table |
 | `FIXED` `7.5` | `00 80 07 00` | `7.5` | Ch.1 |
@@ -658,7 +658,7 @@ consuming a P0 deliverable), and the undeclared cycle described in
 As of v1.6 this table is **empty of open rows**. That is a statement about chapter-text questions, not
 about acceptance: §11's done criteria are a separate list, and several are still open — the §8 vector
 matrix is incomplete until `WP-010-11`'s writer exists for the `RECT`/`MATRIX`/`CXFORMWITHALPHA` rows,
-the `UI32` row is disputed (`E-033`) is the last §8 item without evidence (`T-SWF-009` closed v1.8; `T-SWF-014`/`017` delivered and `T-SWF-015`/`016` strengthened v1.10–v1.11).
+every §8 row now carries its evidence (`T-SWF-009` closed v1.8; `T-SWF-014`/`017` delivered and `T-SWF-015`/`016` strengthened v1.10–v1.11; the `UI32` row's Expected cell corrected under ruling D1, v1.12).
 `docs/impl/registers/STATUS.md` counts the rows below, so "0 open items" here must not be read as P0
 being closeable (roadmap §2's status policy: code presence or a test citation alone does not close an
 obligation).
@@ -721,3 +721,4 @@ typo'd code would otherwise pass silently. Unit tests: `tools/test_check_codes.p
 | 1.9 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-4: the §11.5 diagnostic-literal lint delivered as `tools/check_codes.py` (`pnpm code:lint`, CI-wired, unit-tested), with its scope ruled production-only in the new §11.5 (R1 registry membership, R2 no raw `code:` literals, R3 no computed codes). Its first run found the 10 raw `code:` literals in `packages/assets/src/images/decode.ts`, now `Codes.*` constants (plus one named constant for design-owned `SF0203`); no emitted code value changed |
 | 1.10 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-2: `WP-010-11`'s writer/property half delivered — `ByteWriter` gains the six missing encoders and `packages/swf/test/io-property.test.ts` wires `T-SWF-014` (10⁵ seeded values, 12 kinds, byte fixed point with counterexample reporting) and strengthens `T-SWF-015`/`T-SWF-016` to their full contracts. `WP-010-11` stays open for `T-SWF-017`'s allocation counter only |
 | 1.11 | 2026-10-16 | Temporary P0–P6 close-out roadmap P0-3: `T-SWF-017` and the `SWF-R001` copy bound delivered. New `packages/swf/src/io/counter.ts` is the named deterministic counter (`IMPL-010-R043`); three hot paths were made allocation-free so the bound is honestly 0 — `float16` gained non-allocating `float16Value`/`float16Special` accessors, `encodedU32Into` fills a per-cursor scratch, and `float32`/`float64` share one per-cursor `DataView` created at warm-up. Record readers count exactly their one result object; `takeBytes`/`rest` count as classified payload copies and `viewBytes`/tag payloads are asserted to share the input buffer. `packages/swf/test/io-allocations.test.ts`: 0 primitive allocations over 10⁶ warm reads (byte- and bit-aligned), exactly 3 record objects per rect+matrix+cxform triple over 10⁴ reads, and ≤ 1 payload copy for a ≥ 5 MiB in-memory `FWS` parse. `WP-010-11` is Done |
+| 1.12 | 2026-10-16 | Ruling D1 applied (`E-033` closed): the upstream SWF v19 Chapter 1 text (user-supplied) prints `0x456e7120` and its bytes with no decimal, so §8's Expected cell — our own derivation — is corrected from `1163342112` to **1164865824** and the `ui32` pin is removed from the shared vector table. §11 criterion 1 is now fully evidenced; no reader code changed |

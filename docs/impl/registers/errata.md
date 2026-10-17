@@ -865,7 +865,7 @@ complete sound against the expected classifications.
 
 ---
 
-## E-033 — `IMPL-010` §8's `UI32` vector row contradicts its own bytes (open)
+## E-033 — `IMPL-010` §8's `UI32` vector row contradicts its own bytes (closed 2026-10-16)
 
 **Found in:** `IMPL-010` §8, "Vector table", first row — on 2026-10-13, while building the shared
 cross-lane vector table for the browser lane (roadmap §4.2). This is the first time §8 was executed
@@ -898,6 +898,22 @@ error instead and the vector flips; that is a one-cell change, and this entry re
 A second, **benign** difference was found in the same pass and is recorded so it is not mistaken for a
 disagreement: `FB[19]`'s Expected cell prints `3.0` where the canonical form of the same value is `3`.
 Not a defect; the vector table canonicalises it.
+
+**Closed 2026-10-16 (ruling D1, from the upstream text).** The user supplied the SWF File Format
+Specification v19 (Adobe, 2012; mirror at `open-flash.github.io/mirrors/swf-spec-19.pdf`), and its
+Chapter 1, "Integer types and byte order", was read directly: it prints *"The 32-bit value
+0x456e7120 is stored as 20 71 6e 45"* and *"The 16-bit value 0xe712 is stored as 12 e7"* — hex value
+and bytes, **no decimal**. So the upstream text corroborates the row's hex label and bytes exactly,
+and the wrong cell is ours: `1163342112` was a miscomputed Expected value in `IMPL-010` §8 (it
+equals `0x45573120`, a digit transposition of the correct `0x456e7120` = 1164865824), not an
+upstream `E-025`-class defect and not a byte transcription error. Resolution: `IMPL-010` §8's cell
+corrected to **1164865824**, the `ui32` pin removed from `VECTOR_TABLE_DISCREPANCIES` (the shared
+table's `docExpected` now equals its bytes-derived `expected`, so the mechanical discrepancy check
+passes with the pin gone), and the reader — which already implemented the byte-derived value — is
+unchanged. Noted beside it from the same reading: the same Chapter 1 text prints *"5 bits for the
+exponent, with an exponent bias of 16"* for `FLOAT16`, where IEEE 754 binary16 uses bias 15 and
+`E-004` settled bias 15 from the working decoder (tag 73 consumes it); upstream's "16" is a spec
+misprint, so doc 010's bias-15 reading stands and `E-004` is not re-opened.
 
 **Encoded by:** `packages/swf/test/support/vector-table.ts` — the `ui32` row carries the byte-derived
 value with the document's cell kept as `docExpected`, and `VECTOR_TABLE_DISCREPANCIES` records the
@@ -1936,3 +1952,4 @@ here: neither table is P6's, and `REPO-R013` forbids quietly restating another p
 | 2.22 | 2026-10-15 | `E-054`, from `WP-120-13`: `swfforge verify` over the output of a clean `swfforge build` warns eight times about exports nothing references, because `EMITTED_PUBLIC_EXPORTS` omits them or the emitted project has no module that imports them, and the two readings want opposite fixes; `WP-120-14` owns the decision, and `verify` keeps reporting what it sees rather than being given a suppression list by the CLI that calls it |
 | 2.23 | 2026-10-15 | `E-055`, from `WP-120-14`: `CMP-§8`'s "Fail after n warnings" does not say whether `n` counts occurrences or sink rows, and the 52-byte fuzz crasher that warns 92,680 times in one row exited 0 under a 200 budget; budgets are now counted in occurrences, the summary keeps its row semantics (doc 010/020's contract, read by the decompiler), the exit-4 line prints both numbers, and `E-054` closes in the same package — doc 120 §4 emits no bootstrap module, so the outward tables are declared as the emitter's own surface (`path#name` where a module is fixed, a trailing-slash directory where the file count is a property of the movie), `swfforge verify` over a clean build reports zero findings, and the dead-export arm still fires on a porter-authored module |
 | 2.24 | 2026-10-15 | `E-056`: `CMP-§8`'s `--graphics.max-draw-calls` default of 700 shipped as 200 for three commits and no gate could see it, because `CMP-R028`'s pairing was tested as name-to-path and never as value; found while starting `WP-120-07`, closed on our side by aligning the default and pinning every row of the table's Default column in `packages/cli/test/cli.test.ts`, with the ask to `CMP` left open |
+| 2.25 | 2026-10-16 | `E-033` **closed** by ruling D1 from the upstream SWF v19 Chapter 1 text (supplied by the user): upstream prints the hex value and the bytes and no decimal, so `IMPL-010` §8's `1163342112` was our own miscomputed Expected cell, corrected to 1164865824; the `ui32` discrepancy pin is removed. The same reading notes upstream's FLOAT16 "bias of 16" misprint against `E-004`'s settled bias 15. 15 entries remain open |

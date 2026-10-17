@@ -114,12 +114,11 @@ export const VECTOR_ROWS: readonly VectorRow[] = [
     source: 'Ch.1',
     provenance: 'doc-literal',
     bytes: [0x20, 0x71, 0x6e, 0x45],
-    // Little-endian per IMPL-010 §4.1: 0x456e7120 = 1164865824. The §8 "Expected" cell prints
-    // 1163342112 (= 0x45573120), which matches neither the row's own hex nor its bytes — filed as
-    // errata `E-033` (open) and pinned in VECTOR_TABLE_DISCREPANCIES. The reader is asserted against
-    // the bytes, per E-025's rule that the bytes are authoritative, not against the disputed decimal.
+    // Little-endian per IMPL-010 §4.1: 0x456e7120 = 1164865824. Upstream Ch.1 prints the hex
+    // value and the bytes verbatim and no decimal; §8's earlier Expected cell (1163342112) was our
+    // own miscomputation, corrected under ruling D1 (`E-033`, closed) — so doc and bytes agree.
     expected: '1164865824',
-    docExpected: '1163342112',
+    docExpected: '1164865824',
     docComparable: true,
     diagnostics: [],
     read: (c) => canonicalNumber(c.u32()),
@@ -397,19 +396,6 @@ export function docTableDiscrepancies(): readonly VectorRow[] {
  * new one fails the suite until it is dispositioned here and in the owning document.
  */
 export const VECTOR_TABLE_DISCREPANCIES: readonly VectorTableDiscrepancy[] = [
-  {
-    id: 'ui32',
-    row: '`UI32` `0x456e7120` / `20 71 6e 45`',
-    docExpected: '1163342112',
-    requiredByBytes: '1164865824 (= 0x456e7120, the row\'s own "Value" cell)',
-    note:
-      "The Expected decimal equals 0x45573120, which matches neither the row's hex label nor its " +
-      'byte pattern, so the decimal is the inconsistent field. Filed as errata `E-033` (open): ' +
-      'whether upstream Ch.1 prints the same mismatch (an E-025-class typesetting defect) or this is ' +
-      "our transcription cannot be settled without the chapter text. Until it is, E-025's rule " +
-      'applies provisionally — the bytes are authoritative — `IMPL-010` §8 carries the row annotated ' +
-      'as disputed rather than overwritten, and this row is reported rather than absorbed.',
-  },
   {
     id: 'fb19',
     row: '`FB[19]` `0x30000`',
